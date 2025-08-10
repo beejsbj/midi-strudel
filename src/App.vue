@@ -62,13 +62,13 @@
 
         <!-- Font Size Control -->
         <div class="setting-item">
-          <label>Font Size: {{ currentFontSize }}px</label>
+          <label>Font Size: {{ editorConfig.fontSize }}px</label>
           <input
             type="range"
             min="10"
             max="24"
             step="1"
-            :value="currentFontSize"
+            :value="editorConfig.fontSize"
             @input="handleFontSizeChange"
             class="slider"
           />
@@ -77,7 +77,7 @@
         <!-- Font Family Selector -->
         <div class="setting-item">
           <label>Font Family:</label>
-          <select @change="handleFontFamilyChange" class="font-select">
+          <select @change="handleFontFamilyChange" v-model="editorConfig.fontFamily" class="font-select">
             <option value="Courier New">Courier New</option>
             <option value="Monaco">Monaco</option>
             <option value="Menlo">Menlo</option>
@@ -91,7 +91,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="editorSettings.lineWrapping"
+              :checked="editorConfig.isLineWrappingEnabled"
               @change="toggleLineWrapping"
             />
             Line Wrapping
@@ -99,7 +99,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="editorSettings.lineNumbers"
+              :checked="editorConfig.isLineNumbersDisplayed"
               @change="toggleLineNumbers"
             />
             Line Numbers
@@ -107,7 +107,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="editorSettings.bracketMatching"
+              :checked="editorConfig.isBracketMatchingEnabled"
               @change="toggleBracketMatching"
             />
             Bracket Matching
@@ -115,7 +115,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="editorSettings.bracketClosing"
+              :checked="editorConfig.isBracketClosingEnabled"
               @change="toggleBracketClosing"
             />
             Auto Bracket Closing
@@ -123,7 +123,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="editorSettings.autocompletion"
+              :checked="editorConfig.isAutoCompletionEnabled"
               @change="toggleAutocompletion"
             />
             Autocompletion
@@ -136,7 +136,7 @@
           <select
             @change="handleThemeChange"
             class="theme-select"
-            v-model="currentTheme"
+            v-model="editorConfig.theme"
           >
             <optgroup label="Strudel Themes">
               <option value="strudelTheme">Strudel (Default)</option>
@@ -209,7 +209,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="strudelSettings.flashEnabled"
+              :checked="editorConfig.isFlashEnabled"
               @change="toggleFlash"
             />
             Flash Effects
@@ -225,7 +225,7 @@
           <label class="checkbox-item">
             <input
               type="checkbox"
-              :checked="strudelSettings.tooltipsEnabled"
+              :checked="editorConfig.isTooltipEnabled"
               @change="toggleTooltips"
             />
             Tooltips
@@ -238,13 +238,7 @@
     <div class="container">
       <!-- Left side: Code editor -->
       <div class="editor-container">
-        <StrudelEditor
-          ref="editor"
-          v-model:code="currentCode"
-          @error="handleError"
-          @success="handleSuccess"
-          @draw="handleDraw"
-        />
+        <div ref="editorRoot" class="strudel-editor"></div>
       </div>
 
       <!-- Right side: Visualization and console -->
@@ -252,25 +246,6 @@
         <!-- Canvas for pianoroll visualization -->
         <div class="canvas-container">
           <canvas ref="canvas" id="pianoroll" width="800" height="400"></canvas>
-        </div>
-
-        <!-- Console output for logs and errors -->
-        <div class="console-output" ref="console">
-          <div class="console-header">
-            <h4>Console Output</h4>
-            <button @click="clearConsole" class="clear-btn">Clear</button>
-          </div>
-          <div class="console-entries">
-            <div
-              v-for="(entry, index) in consoleEntries"
-              :key="index"
-              class="log-entry"
-              :class="entry.type"
-            >
-              <span class="timestamp">[{{ entry.timestamp }}]</span>
-              {{ entry.message }}
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -289,13 +264,26 @@
  * - Real-time visualization and console logging
  */
 
-import { ref, reactive, computed, onMounted, nextTick } from "vue";
-
-// Import only what App.vue actually needs
+import {
+  ref,
+  reactive,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+} from "vue";
+import { StrudelMirror } from "@strudel/codemirror";
+import { evalScope } from "@strudel/core";
+import { transpiler } from "@strudel/transpiler";
+import {
+  getAudioContext,
+  webaudioOutput,
+  initAudioOnFirstClick,
+  registerSynthSounds,
+} from "@strudel/webaudio";
+import { registerSoundfonts } from "@strudel/soundfonts";
+import { themes } from "@strudel/codemirror";
 import { drawPianoroll } from "@strudel/draw";
-
-// Import our custom components
-import StrudelEditor from "./components/StrudelEditor.vue";
 
 // Example patterns demonstrating different Strudel features
 const examplePatterns = {
@@ -403,35 +391,39 @@ stack(
 };
 
 // Component refs
-const editor = ref(null);
+const editorRoot = ref(null);
 const canvas = ref(null);
-const console = ref(null);
 
 // Reactive state
 const currentCode = ref(examplePatterns.basic.code);
 const status = ref("stopped");
-const consoleEntries = reactive([]);
 const currentCps = ref(0.6); // Default tempo
 
-// Editor settings state
-const currentFontSize = ref(18);
-const currentTheme = ref("strudelTheme");
-const editorSettings = reactive({
-  lineWrapping: true,
-  lineNumbers: true,
-  bracketMatching: true,
-  bracketClosing: true,
-  autocompletion: true,
+// StrudelMirror editor settings
+const editorConfig = reactive({
+  fontSize: 18,
+  fontFamily: "monospace",
+  theme: "strudelTheme",
+  isBracketMatchingEnabled: true,
+  isBracketClosingEnabled: true,
+  isLineNumbersDisplayed: true,
+  isActiveLineHighlighted: true,
+  isAutoCompletionEnabled: true,
+  isPatternHighlightingEnabled: true,
+  isFlashEnabled: true,
+  isTooltipEnabled: true,
+  isLineWrappingEnabled: true,
+  isTabIndentationEnabled: true,
+  isMultiCursorEnabled: true,
 });
 
-// Strudel-specific settings
+// Strudel-specific settings (for UI controls)
 const strudelSettings = reactive({
-  flashEnabled: true,
   slidersEnabled: true,
-  tooltipsEnabled: true,
 });
 
-// Non-reactive state (only for canvas visualization)
+// Non-reactive state
+let editor = null;
 let drawContext = null;
 const drawTime = [-2, 2]; // Time window for visualization
 
@@ -452,19 +444,67 @@ const statusText = computed(() => {
 });
 
 /**
+ * Initialize the StrudelMirror editor with all necessary configuration
+ */
+async function initializeEditor() {
+  try {
+    if (!editorRoot.value) {
+      throw new Error("Editor root element not found");
+    }
+    initAudioOnFirstClick();
+    editor = new StrudelMirror({
+      defaultOutput: webaudioOutput,
+      getTime: () => getAudioContext().currentTime,
+      transpiler,
+      root: editorRoot.value,
+      initialCode: currentCode.value,
+      onDraw: (haps, time) => {
+        handleDraw(haps, time);
+      },
+      onCode: (code) => {
+        currentCode.value = code;
+      },
+      onError: (error) => {
+        handleError(error);
+      },
+      prebake: async () => {
+        try {
+          const loadModules = evalScope(
+            import("@strudel/core"),
+            import("@strudel/mini"),
+            import("@strudel/tonal"),
+            import("@strudel/webaudio")
+          );
+          await Promise.all([
+            loadModules,
+            registerSynthSounds(),
+            registerSoundfonts(),
+          ]);
+        } catch (error) {
+          handleError(
+            new Error(`Failed to initialize editor: ${error.message}`)
+          );
+          throw error;
+        }
+      },
+    });
+    editor.updateSettings(editorConfig);
+  } catch (error) {
+    handleError(new Error(`Editor initialization failed: ${error.message}`));
+    throw error;
+  }
+}
+
+/**
  * Set up the canvas for pianoroll visualization
  */
 async function setupCanvas() {
   if (canvas.value) {
-    // Set up high-DPI canvas rendering
     canvas.value.width = canvas.value.offsetWidth * 2;
     canvas.value.height = canvas.value.offsetHeight * 2;
     drawContext = canvas.value.getContext("2d");
     drawContext.scale(2, 2);
-
-    // Initial canvas setup
     clearCanvas();
-    log("Canvas initialized", "info");
   }
 }
 
@@ -472,19 +512,13 @@ async function setupCanvas() {
  * Handle play button click - uses evaluate()
  */
 async function handlePlay() {
-  if (!editor.value) {
-    log("Editor not ready", "error");
+  if (!editor) {
     return;
   }
-
   try {
     status.value = "loading";
-
-    // Use StrudelMirror's evaluate method - it handles all audio setup internally
-    await editor.value.evaluate();
-
+    await editor.evaluate();
     status.value = "playing";
-    log("Pattern started with evaluate()", "success");
   } catch (error) {
     status.value = "stopped";
     handleError(error);
@@ -496,13 +530,11 @@ async function handlePlay() {
  */
 function handleStop() {
   try {
-    if (editor.value) {
-      editor.value.stop();
+    if (editor) {
+      editor.stop();
     }
-
     status.value = "stopped";
     clearCanvas();
-    log("Playbook stopped", "info");
   } catch (error) {
     handleError(error);
   }
@@ -513,16 +545,10 @@ function handleStop() {
  */
 function handleToggle() {
   try {
-    if (editor.value) {
-      // Use the exposed toggle method
-      editor.value.toggle();
-
-      // Update status based on current playing state
-      const isPlaying = editor.value.isPlaying();
+    if (editor) {
+      editor.toggle();
+      const isPlaying = editor.repl?.scheduler?.started || false;
       status.value = isPlaying ? "playing" : "stopped";
-
-      log(`Playback toggled: ${isPlaying ? "playing" : "stopped"}`, "success");
-
       if (!isPlaying) {
         clearCanvas();
       }
@@ -546,11 +572,8 @@ function handleCpsChange(event) {
 function setCps(cps) {
   try {
     currentCps.value = cps;
-
-    if (editor.value) {
-      // Use the exposed setCps method
-      editor.value.setCps(cps);
-      log(`Tempo set to ${cps} CPS using setCps()`, "success");
+    if (editor?.repl?.setCps) {
+      editor.repl.setCps(cps);
     }
   } catch (error) {
     handleError(error);
@@ -563,11 +586,9 @@ function setCps(cps) {
 function loadExamplePattern(patternKey) {
   try {
     const pattern = examplePatterns[patternKey];
-    if (pattern && editor.value) {
-      // Use the exposed setCode method
-      editor.value.setCode(pattern.code);
+    if (pattern && editor) {
+      editor.setCode(pattern.code);
       currentCode.value = pattern.code;
-      log(`Loaded pattern: ${pattern.name} using setCode()`, "success");
     }
   } catch (error) {
     handleError(error);
@@ -579,20 +600,13 @@ function loadExamplePattern(patternKey) {
  */
 function showRepl() {
   try {
-    if (editor.value) {
-      const repl = editor.value.getRepl();
-      const state = editor.value.getState();
-      const isPlaying = editor.value.isPlaying();
-
-      log(`REPL State - Playing: ${isPlaying}`, "info");
-      log(`REPL instance available: ${!!repl}`, "info");
-      log(`State object available: ${!!state}`, "info");
-
-      // Log some interesting REPL properties if available
-      if (repl) {
-        console.log("Full REPL object:", repl);
-        log("Check browser console for full REPL object", "info");
-      }
+    if (editor) {
+      const repl = editor.repl;
+      const state = editor.repl?.state;
+      const isPlaying = editor.repl?.scheduler?.started || false;
+      console.log("REPL State - Playing:", isPlaying);
+      console.log("REPL instance:", repl);
+      console.log("State object:", state);
     }
   } catch (error) {
     handleError(error);
@@ -604,10 +618,9 @@ function showRepl() {
  */
 function clearCode() {
   try {
-    if (editor.value) {
-      editor.value.setCode("");
+    if (editor) {
+      editor.setCode("");
       currentCode.value = "";
-      log("Code cleared", "info");
     }
   } catch (error) {
     handleError(error);
@@ -615,202 +628,97 @@ function clearCode() {
 }
 
 /**
- * Clear console output
- */
-function clearConsole() {
-  consoleEntries.splice(0, consoleEntries.length);
-  log("Console cleared", "info");
-}
-
-/**
- * Editor Settings Functions - demonstrate all StrudelMirror configuration methods
- */
-
-/**
- * Handle font size change - uses setFontSize()
+ * Editor Settings Functions
  */
 function handleFontSizeChange(event) {
   const newSize = parseInt(event.target.value);
-  currentFontSize.value = newSize;
-  log(newSize);
-
-  if (editor.value) {
-    editor.value.setFontSize(newSize);
-    log(`Font size changed to ${newSize}px using setFontSize()`, "success");
+  editorConfig.fontSize = newSize;
+  if (editor) {
+    editor.setFontSize(newSize);
   }
 }
 
-/**
- * Handle font family change - uses setFontFamily()
- */
 function handleFontFamilyChange(event) {
   const newFamily = event.target.value;
-
-  if (editor.value) {
-    editor.value.setFontFamily(newFamily);
-    log(`Font family changed to ${newFamily} using setFontFamily()`, "success");
+  editorConfig.fontFamily = newFamily;
+  if (editor) {
+    editor.setFontFamily(newFamily);
   }
 }
 
-/**
- * Toggle line wrapping - uses setLineWrappingEnabled()
- */
 function toggleLineWrapping(event) {
   const enabled = event.target.checked;
-  editorSettings.lineWrapping = enabled;
-
-  if (editor.value) {
-    editor.value.setLineWrappingEnabled(enabled);
-    log(
-      `Line wrapping ${
-        enabled ? "enabled" : "disabled"
-      } using setLineWrappingEnabled()`,
-      "success"
-    );
+  editorConfig.isLineWrappingEnabled = enabled;
+  if (editor) {
+    editor.setLineWrappingEnabled(enabled);
   }
 }
 
-/**
- * Toggle line numbers - uses setLineNumbersDisplayed()
- */
 function toggleLineNumbers(event) {
   const enabled = event.target.checked;
-  editorSettings.lineNumbers = enabled;
-
-  if (editor.value) {
-    editor.value.setLineNumbersDisplayed(enabled);
-    log(
-      `Line numbers ${
-        enabled ? "enabled" : "disabled"
-      } using setLineNumbersDisplayed()`,
-      "success"
-    );
+  editorConfig.isLineNumbersDisplayed = enabled;
+  if (editor) {
+    editor.setLineNumbersDisplayed(enabled);
   }
 }
 
-/**
- * Toggle bracket matching - uses setBracketMatchingEnabled()
- */
 function toggleBracketMatching(event) {
   const enabled = event.target.checked;
-  editorSettings.bracketMatching = enabled;
-
-  if (editor.value) {
-    editor.value.setBracketMatchingEnabled(enabled);
-    log(
-      `Bracket matching ${
-        enabled ? "enabled" : "disabled"
-      } using setBracketMatchingEnabled()`,
-      "success"
-    );
+  editorConfig.isBracketMatchingEnabled = enabled;
+  if (editor) {
+    editor.setBracketMatchingEnabled(enabled);
   }
 }
 
-/**
- * Toggle bracket auto-closing - uses setBracketClosingEnabled()
- */
 function toggleBracketClosing(event) {
   const enabled = event.target.checked;
-  editorSettings.bracketClosing = enabled;
-
-  if (editor.value) {
-    editor.value.setBracketClosingEnabled(enabled);
-    log(
-      `Auto bracket closing ${
-        enabled ? "enabled" : "disabled"
-      } using setBracketClosingEnabled()`,
-      "success"
-    );
+  editorConfig.isBracketClosingEnabled = enabled;
+  if (editor) {
+    editor.setBracketClosingEnabled(enabled);
   }
 }
 
-/**
- * Toggle autocompletion - uses setAutocompletionEnabled()
- */
 function toggleAutocompletion(event) {
   const enabled = event.target.checked;
-  editorSettings.autocompletion = enabled;
-
-  if (editor.value) {
-    editor.value.setAutocompletionEnabled(enabled);
-    log(
-      `Autocompletion ${
-        enabled ? "enabled" : "disabled"
-      } using setAutocompletionEnabled()`,
-      "success"
-    );
+  editorConfig.isAutoCompletionEnabled = enabled;
+  if (editor) {
+    editor.setAutocompletionEnabled(enabled);
   }
 }
 
-/**
- * Handle theme change - uses setTheme()
- */
 function handleThemeChange(event) {
   const newTheme = event.target.value;
-  currentTheme.value = newTheme;
-
-  if (editor.value) {
-    editor.value.setTheme(newTheme);
-    log(`Theme changed to ${newTheme} using setTheme()`, "success");
+  editorConfig.theme = newTheme;
+  if (editor) {
+    editor.setTheme(newTheme);
   }
 }
 
-/**
- * Show available themes - demonstrates theme system
- */
 function showAvailableThemes() {
-  if (editor.value) {
-    const availableThemes = Object.keys(editor.value.getEditor()?.themes || {});
-    log(
-      `Available Strudel themes: ${
-        availableThemes.length > 0 ? availableThemes.join(", ") : "Loading..."
-      } `,
-      "info"
-    );
-    log(
-      "Theme categories: Strudel, Retro/Terminal, Popular, Material & Tokyo, GitHub & VS Code, Solarized, IDE",
-      "info"
-    );
+  if (editor) {
+    const availableThemes = Object.keys(themes || {});
+    console.log("Available themes:", availableThemes);
   }
 }
 
-/**
- * Toggle flash effects - uses Strudel flash system
- */
 function toggleFlash(event) {
   const enabled = event.target.checked;
-  strudelSettings.flashEnabled = enabled;
-
-  if (editor.value) {
-    // Flash effects are typically enabled by default in StrudelMirror
-    log(`Flash effects ${enabled ? "enabled" : "disabled"}`, "success");
+  editorConfig.isFlashEnabled = enabled;
+  if (editor) {
+    editor.updateSettings({ isFlashEnabled: enabled });
   }
 }
 
-/**
- * Toggle interactive sliders - uses Strudel slider system
- */
 function toggleSliders(event) {
   const enabled = event.target.checked;
   strudelSettings.slidersEnabled = enabled;
-
-  if (editor.value) {
-    // Sliders are part of the transpiler and widget system
-    log(`Interactive sliders ${enabled ? "enabled" : "disabled"}`, "success");
-    log("Try using slider(0.5, 0, 1) in your patterns!", "info");
-  }
 }
 
-/**
- * Toggle tooltips - uses Strudel tooltip system
- */
 function toggleTooltips(event) {
   const enabled = event.target.checked;
-  strudelSettings.tooltipsEnabled = enabled;
-
-  if (editor.value) {
-    // Tooltips provide documentation on hover
-    log(`Tooltips ${enabled ? "enabled" : "disabled"}`, "success");
+  editorConfig.isTooltipEnabled = enabled;
+  if (editor) {
+    editor.updateSettings({ isTooltipEnabled: enabled });
   }
 }
 
@@ -819,12 +727,8 @@ function toggleTooltips(event) {
  */
 function handleDraw(haps, time) {
   if (!drawContext) return;
-
   try {
-    // Clear previous frame
     clearCanvas();
-
-    // Draw pianoroll visualization
     drawPianoroll({
       haps,
       time,
@@ -853,68 +757,38 @@ function clearCanvas() {
 }
 
 /**
- * Handle successful operations
- */
-function handleSuccess(message) {
-  log(message || "Operation successful", "success");
-}
-
-/**
  * Handle errors
  */
 function handleError(error) {
   const message = error?.message || error || "Unknown error";
-  log(`Error: ${message}`, "error");
+  console.error(`Error: ${message}`);
   status.value = "stopped";
-}
-
-/**
- * Add entry to console log
- */
-function log(message, type = "info") {
-  const timestamp = new Date().toLocaleTimeString();
-  consoleEntries.push({
-    message,
-    type,
-    timestamp,
-  });
-
-  // Auto-scroll console to bottom
-  nextTick(() => {
-    if (console.value) {
-      const entries = console.value.querySelector(".console-entries");
-      if (entries) {
-        entries.scrollTop = entries.scrollHeight;
-      }
-    }
-  });
-
-  // Limit console entries to prevent memory issues
-  if (consoleEntries.length > 100) {
-    consoleEntries.shift();
-  }
 }
 
 /**
  * Initialize the playground
  */
 onMounted(async () => {
-  log("Initializing Comprehensive Strudel API Playground...", "info");
+  await initializeEditor();
+  await setupCanvas();
+});
 
-  try {
-    // Set up canvas for visualization (App.vue only handles UI, not Strudel internals)
-    await setupCanvas();
-
-    log(
-      "🎵 Playground ready! StrudelEditor will handle all audio initialization.",
-      "success"
-    );
-    log(
-      "📝 Available functions: evaluate(), stop(), toggle(), setCps(), setCode(), getRepl()",
-      "info"
-    );
-  } catch (error) {
-    handleError(error);
+/**
+ * Clean up editor when component unmounts
+ */
+onBeforeUnmount(() => {
+  if (editor) {
+    editor.destroy();
   }
 });
+
+watch(
+  () => currentCode.value,
+  (newCode) => {
+    if (editor && editor.getCode() !== newCode) {
+      editor.setCode(newCode);
+    }
+  },
+  { immediate: false }
+);
 </script>
