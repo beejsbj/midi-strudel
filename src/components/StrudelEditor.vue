@@ -1,3 +1,4 @@
+<!-- StrudelEditor.vue -->
 <template>
   <!-- Container for the StrudelMirror editor -->
   <div ref="editorRoot" class="strudel-editor" @click="focusEditor"></div>
@@ -23,11 +24,15 @@ import { ref, reactive, onMounted, onBeforeUnmount, watch } from "vue";
 import { StrudelMirror } from "@strudel/codemirror";
 import { evalScope } from "@strudel/core";
 import { transpiler } from "@strudel/transpiler";
+import { useStore } from "@nanostores/vue";
+
 import {
   getAudioContext,
   webaudioOutput,
   initAudioOnFirstClick,
   registerSynthSounds,
+  samples,
+  soundMap,
 } from "@strudel/webaudio";
 import { registerSoundfonts } from "@strudel/soundfonts";
 import { activateTheme, themes } from "@strudel/codemirror";
@@ -175,7 +180,17 @@ async function initializeEditor() {
            * - registerSynthSounds(): Built-in synthesizers (sine, sawtooth, etc.)
            * - registerSoundfonts(): General MIDI instrument samples
            */
+          const ds =
+            "https://raw.githubusercontent.com/felixroos/dough-samples/main/";
+
           await Promise.all([
+            loadModules,
+            // samples(`${ds}/tidal-drum-machines.json`),
+            // samples(`${ds}/piano.json`),
+            // samples(`${ds}/Dirt-Samples.json`),
+            // samples(`${ds}/EmuSP12.json`),
+            // samples(`${ds}/vcsl.json`),
+            // samples(`${ds}/mridangam.json`),
             loadModules,
             registerSynthSounds(),
             registerSoundfonts(),
@@ -532,6 +547,10 @@ onBeforeUnmount(() => {
     editor.value.destroy();
   }
 });
+
+//this is how we see what samples we have loaded
+const sounds = useStore(soundMap);
+console.log(sounds);
 </script>
 
 <style scoped>

@@ -1,3 +1,4 @@
+<!-- App.vue -->
 <template>
   <!-- Main app container with status indicator -->
   <div id="app">

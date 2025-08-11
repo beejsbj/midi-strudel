@@ -9,15 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "@strudel/core": "latest",
+    "@nanostores/vue": "^1.0.1",
     "@strudel/codemirror": "latest",
-    "@strudel/webaudio": "latest",
-    "@strudel/transpiler": "latest",
-    "@strudel/mini": "latest",
-    "@strudel/tonal": "latest",
+    "@strudel/core": "latest",
     "@strudel/draw": "latest",
-    "@strudel/soundfonts": "latest"
+    "@strudel/mini": "latest",
+    "@strudel/soundfonts": "latest",
+    "@strudel/tonal": "latest",
+    "@strudel/transpiler": "latest",
+    "@strudel/webaudio": "latest",
+    "vue": "^3.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
