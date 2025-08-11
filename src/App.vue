@@ -21,12 +21,15 @@ import {
 import { StrudelMirror } from "@strudel/codemirror";
 import { evalScope } from "@strudel/core";
 import { transpiler } from "@strudel/transpiler";
+import { useStore } from "@nanostores/vue";
+
 import {
   getAudioContext,
   webaudioOutput,
   initAudioOnFirstClick,
   registerSynthSounds,
   samples,
+  soundMap,
 } from "@strudel/webaudio";
 import { registerSoundfonts } from "@strudel/soundfonts";
 import { themes } from "@strudel/codemirror";
@@ -547,6 +550,10 @@ watch(
   },
   { immediate: false }
 );
+
+//this is how we get access to all the loaded samples
+const sounds = useStore(soundMap);
+console.log(sounds);
 </script>
 
 <template>
