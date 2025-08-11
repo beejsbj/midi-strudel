@@ -406,3 +406,17 @@ body {
     height: 120px;
   }
 }
+
+.sample-list ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+
+  li {
+    padding: 2px;
+    margin: 0;
+
+    background: #333;
+  }
+}
