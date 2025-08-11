@@ -1,257 +1,3 @@
-<template>
-  <!-- Main app container with status indicator -->
-  <div id="app">
-    <!-- Status indicator showing current playback state -->
-    <div class="status-indicator" :class="status">
-      {{ statusText }}
-    </div>
-
-    <!-- Comprehensive control panel -->
-    <nav class="controls">
-      <!-- Playback Controls -->
-      <div class="control-group">
-        <h4>Playback</h4>
-        <button @click="handlePlay" :disabled="status === 'loading'">
-          ▶ Play
-        </button>
-        <button @click="handleStop" :disabled="status === 'loading'">
-          ⏹ Stop
-        </button>
-        <button @click="handleToggle" :disabled="status === 'loading'">
-          ⏯ Toggle
-        </button>
-      </div>
-
-      <!-- Tempo Control -->
-      <div class="control-group">
-        <h4>Tempo (CPS): {{ currentCps.toFixed(1) }}</h4>
-        <input
-          type="range"
-          min="0.1"
-          max="4.0"
-          step="0.1"
-          :value="currentCps"
-          @input="handleCpsChange"
-          class="slider"
-        />
-        <div class="tempo-buttons">
-          <button @click="setCps(0.5)">0.5</button>
-          <button @click="setCps(1.0)">1.0</button>
-          <button @click="setCps(2.0)">2.0</button>
-        </div>
-      </div>
-
-      <!-- Example Patterns -->
-      <div class="control-group">
-        <h4>Example Patterns</h4>
-        <div class="pattern-buttons">
-          <button
-            v-for="(pattern, key) in examplePatterns"
-            :key="key"
-            @click="loadExamplePattern(key)"
-            class="pattern-btn"
-          >
-            {{ pattern.name }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Editor Settings -->
-      <div class="control-group">
-        <h4>Editor Settings</h4>
-
-        <!-- Font Size Control -->
-        <div class="setting-item">
-          <label>Font Size: {{ editorConfig.fontSize }}px</label>
-          <input
-            type="range"
-            min="10"
-            max="24"
-            step="1"
-            :value="editorConfig.fontSize"
-            @input="handleFontSizeChange"
-            class="slider"
-          />
-        </div>
-
-        <!-- Font Family Selector -->
-        <div class="setting-item">
-          <label>Font Family:</label>
-          <select @change="handleFontFamilyChange" v-model="editorConfig.fontFamily" class="font-select">
-            <option value="Courier New">Courier New</option>
-            <option value="Monaco">Monaco</option>
-            <option value="Menlo">Menlo</option>
-            <option value="Consolas">Consolas</option>
-            <option value="monospace">Monospace</option>
-          </select>
-        </div>
-
-        <!-- Boolean Settings -->
-        <div class="checkbox-settings">
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isLineWrappingEnabled"
-              @change="toggleLineWrapping"
-            />
-            Line Wrapping
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isLineNumbersDisplayed"
-              @change="toggleLineNumbers"
-            />
-            Line Numbers
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isBracketMatchingEnabled"
-              @change="toggleBracketMatching"
-            />
-            Bracket Matching
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isBracketClosingEnabled"
-              @change="toggleBracketClosing"
-            />
-            Auto Bracket Closing
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isAutoCompletionEnabled"
-              @change="toggleAutocompletion"
-            />
-            Autocompletion
-          </label>
-        </div>
-
-        <!-- Theme Selector -->
-        <div class="setting-item">
-          <label>Editor Theme:</label>
-          <select
-            @change="handleThemeChange"
-            class="theme-select"
-            v-model="editorConfig.theme"
-          >
-            <optgroup label="Strudel Themes">
-              <option value="strudelTheme">Strudel (Default)</option>
-              <option value="algoboy">Algoboy</option>
-              <option value="CutiePi">CutiePi</option>
-              <option value="sonicPink">Sonic Pink</option>
-            </optgroup>
-            <optgroup label="Retro/Terminal">
-              <option value="blackscreen">Black Screen</option>
-              <option value="bluescreen">Blue Screen</option>
-              <option value="whitescreen">White Screen</option>
-              <option value="teletext">Teletext</option>
-              <option value="greenText">Green Text</option>
-              <option value="redText">Red Text</option>
-            </optgroup>
-            <optgroup label="Popular Themes">
-              <option value="dracula">Dracula</option>
-              <option value="monokai">Monokai</option>
-              <option value="nord">Nord</option>
-              <option value="sublime">Sublime</option>
-              <option value="darcula">Darcula</option>
-              <option value="atomone">Atom One</option>
-            </optgroup>
-            <optgroup label="Material & Tokyo">
-              <option value="materialDark">Material Dark</option>
-              <option value="materialLight">Material Light</option>
-              <option value="tokyoNight">Tokyo Night</option>
-              <option value="tokyoNightDay">Tokyo Night Day</option>
-              <option value="tokyoNightStorm">Tokyo Night Storm</option>
-            </optgroup>
-            <optgroup label="GitHub & VS Code">
-              <option value="githubDark">GitHub Dark</option>
-              <option value="githubLight">GitHub Light</option>
-              <option value="vscodeDark">VS Code Dark</option>
-              <option value="vscodeLight">VS Code Light</option>
-            </optgroup>
-            <optgroup label="Solarized & Others">
-              <option value="solarizedDark">Solarized Dark</option>
-              <option value="solarizedLight">Solarized Light</option>
-              <option value="gruvboxDark">Gruvbox Dark</option>
-              <option value="gruvboxLight">Gruvbox Light</option>
-              <option value="duotoneDark">Duotone Dark</option>
-              <option value="aura">Aura</option>
-              <option value="noctisLilac">Noctis Lilac</option>
-            </optgroup>
-            <optgroup label="IDE Themes">
-              <option value="androidstudio">Android Studio</option>
-              <option value="eclipse">Eclipse</option>
-              <option value="xcodeLight">Xcode Light</option>
-              <option value="bbedit">BBEdit</option>
-            </optgroup>
-          </select>
-        </div>
-      </div>
-
-      <!-- Advanced Controls -->
-      <div class="control-group">
-        <h4>Advanced</h4>
-        <button @click="showRepl" class="advanced-btn">Show REPL State</button>
-        <button @click="clearCode" class="advanced-btn">Clear Code</button>
-        <button @click="showAvailableThemes" class="advanced-btn">
-          Show Available Themes
-        </button>
-      </div>
-
-      <!-- Strudel Features -->
-      <div class="control-group">
-        <h4>Strudel Features</h4>
-        <div class="checkbox-settings">
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isFlashEnabled"
-              @change="toggleFlash"
-            />
-            Flash Effects
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="strudelSettings.slidersEnabled"
-              @change="toggleSliders"
-            />
-            Interactive Sliders
-          </label>
-          <label class="checkbox-item">
-            <input
-              type="checkbox"
-              :checked="editorConfig.isTooltipEnabled"
-              @change="toggleTooltips"
-            />
-            Tooltips
-          </label>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Main content area -->
-    <div class="container">
-      <!-- Left side: Code editor -->
-      <div class="editor-container">
-        <div ref="editorRoot" class="strudel-editor"></div>
-      </div>
-
-      <!-- Right side: Visualization and console -->
-      <div class="output-container">
-        <!-- Canvas for pianoroll visualization -->
-        <div class="canvas-container">
-          <canvas ref="canvas" id="pianoroll" width="800" height="400"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup>
 /**
  * Comprehensive Strudel API Playground
@@ -280,6 +26,7 @@ import {
   webaudioOutput,
   initAudioOnFirstClick,
   registerSynthSounds,
+  samples,
 } from "@strudel/webaudio";
 import { registerSoundfonts } from "@strudel/soundfonts";
 import { themes } from "@strudel/codemirror";
@@ -475,8 +222,17 @@ async function initializeEditor() {
             import("@strudel/tonal"),
             import("@strudel/webaudio")
           );
+          const ds =
+            "https://raw.githubusercontent.com/felixroos/dough-samples/main/";
+
           await Promise.all([
             loadModules,
+            samples(`${ds}/tidal-drum-machines.json`),
+            samples(`${ds}/piano.json`),
+            samples(`${ds}/Dirt-Samples.json`),
+            samples(`${ds}/EmuSP12.json`),
+            samples(`${ds}/vcsl.json`),
+            samples(`${ds}/mridangam.json`),
             registerSynthSounds(),
             registerSoundfonts(),
           ]);
@@ -792,3 +548,261 @@ watch(
   { immediate: false }
 );
 </script>
+
+<template>
+  <!-- Main app container with status indicator -->
+  <div id="app">
+    <!-- Status indicator showing current playback state -->
+    <div class="status-indicator" :class="status">
+      {{ statusText }}
+    </div>
+
+    <!-- Comprehensive control panel -->
+    <nav class="controls">
+      <!-- Playback Controls -->
+      <div class="control-group">
+        <h4>Playback</h4>
+        <button @click="handlePlay" :disabled="status === 'loading'">
+          ▶ Play
+        </button>
+        <button @click="handleStop" :disabled="status === 'loading'">
+          ⏹ Stop
+        </button>
+        <button @click="handleToggle" :disabled="status === 'loading'">
+          ⏯ Toggle
+        </button>
+      </div>
+
+      <!-- Tempo Control -->
+      <div class="control-group">
+        <h4>Tempo (CPS): {{ currentCps.toFixed(1) }}</h4>
+        <input
+          type="range"
+          min="0.1"
+          max="4.0"
+          step="0.1"
+          :value="currentCps"
+          @input="handleCpsChange"
+          class="slider"
+        />
+        <div class="tempo-buttons">
+          <button @click="setCps(0.5)">0.5</button>
+          <button @click="setCps(1.0)">1.0</button>
+          <button @click="setCps(2.0)">2.0</button>
+        </div>
+      </div>
+
+      <!-- Example Patterns -->
+      <div class="control-group">
+        <h4>Example Patterns</h4>
+        <div class="pattern-buttons">
+          <button
+            v-for="(pattern, key) in examplePatterns"
+            :key="key"
+            @click="loadExamplePattern(key)"
+            class="pattern-btn"
+          >
+            {{ pattern.name }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor Settings -->
+      <div class="control-group">
+        <h4>Editor Settings</h4>
+
+        <!-- Font Size Control -->
+        <div class="setting-item">
+          <label>Font Size: {{ editorConfig.fontSize }}px</label>
+          <input
+            type="range"
+            min="10"
+            max="24"
+            step="1"
+            :value="editorConfig.fontSize"
+            @input="handleFontSizeChange"
+            class="slider"
+          />
+        </div>
+
+        <!-- Font Family Selector -->
+        <div class="setting-item">
+          <label>Font Family:</label>
+          <select
+            @change="handleFontFamilyChange"
+            v-model="editorConfig.fontFamily"
+            class="font-select"
+          >
+            <option value="Courier New">Courier New</option>
+            <option value="Monaco">Monaco</option>
+            <option value="Menlo">Menlo</option>
+            <option value="Consolas">Consolas</option>
+            <option value="monospace">Monospace</option>
+          </select>
+        </div>
+
+        <!-- Boolean Settings -->
+        <div class="checkbox-settings">
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isLineWrappingEnabled"
+              @change="toggleLineWrapping"
+            />
+            Line Wrapping
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isLineNumbersDisplayed"
+              @change="toggleLineNumbers"
+            />
+            Line Numbers
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isBracketMatchingEnabled"
+              @change="toggleBracketMatching"
+            />
+            Bracket Matching
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isBracketClosingEnabled"
+              @change="toggleBracketClosing"
+            />
+            Auto Bracket Closing
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isAutoCompletionEnabled"
+              @change="toggleAutocompletion"
+            />
+            Autocompletion
+          </label>
+        </div>
+
+        <!-- Theme Selector -->
+        <div class="setting-item">
+          <label>Editor Theme:</label>
+          <select
+            @change="handleThemeChange"
+            class="theme-select"
+            v-model="editorConfig.theme"
+          >
+            <optgroup label="Strudel Themes">
+              <option value="strudelTheme">Strudel (Default)</option>
+              <option value="algoboy">Algoboy</option>
+              <option value="CutiePi">CutiePi</option>
+              <option value="sonicPink">Sonic Pink</option>
+            </optgroup>
+            <optgroup label="Retro/Terminal">
+              <option value="blackscreen">Black Screen</option>
+              <option value="bluescreen">Blue Screen</option>
+              <option value="whitescreen">White Screen</option>
+              <option value="teletext">Teletext</option>
+              <option value="greenText">Green Text</option>
+              <option value="redText">Red Text</option>
+            </optgroup>
+            <optgroup label="Popular Themes">
+              <option value="dracula">Dracula</option>
+              <option value="monokai">Monokai</option>
+              <option value="nord">Nord</option>
+              <option value="sublime">Sublime</option>
+              <option value="darcula">Darcula</option>
+              <option value="atomone">Atom One</option>
+            </optgroup>
+            <optgroup label="Material & Tokyo">
+              <option value="materialDark">Material Dark</option>
+              <option value="materialLight">Material Light</option>
+              <option value="tokyoNight">Tokyo Night</option>
+              <option value="tokyoNightDay">Tokyo Night Day</option>
+              <option value="tokyoNightStorm">Tokyo Night Storm</option>
+            </optgroup>
+            <optgroup label="GitHub & VS Code">
+              <option value="githubDark">GitHub Dark</option>
+              <option value="githubLight">GitHub Light</option>
+              <option value="vscodeDark">VS Code Dark</option>
+              <option value="vscodeLight">VS Code Light</option>
+            </optgroup>
+            <optgroup label="Solarized & Others">
+              <option value="solarizedDark">Solarized Dark</option>
+              <option value="solarizedLight">Solarized Light</option>
+              <option value="gruvboxDark">Gruvbox Dark</option>
+              <option value="gruvboxLight">Gruvbox Light</option>
+              <option value="duotoneDark">Duotone Dark</option>
+              <option value="aura">Aura</option>
+              <option value="noctisLilac">Noctis Lilac</option>
+            </optgroup>
+            <optgroup label="IDE Themes">
+              <option value="androidstudio">Android Studio</option>
+              <option value="eclipse">Eclipse</option>
+              <option value="xcodeLight">Xcode Light</option>
+              <option value="bbedit">BBEdit</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <!-- Advanced Controls -->
+      <div class="control-group">
+        <h4>Advanced</h4>
+        <button @click="showRepl" class="advanced-btn">Show REPL State</button>
+        <button @click="clearCode" class="advanced-btn">Clear Code</button>
+        <button @click="showAvailableThemes" class="advanced-btn">
+          Show Available Themes
+        </button>
+      </div>
+
+      <!-- Strudel Features -->
+      <div class="control-group">
+        <h4>Strudel Features</h4>
+        <div class="checkbox-settings">
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isFlashEnabled"
+              @change="toggleFlash"
+            />
+            Flash Effects
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="strudelSettings.slidersEnabled"
+              @change="toggleSliders"
+            />
+            Interactive Sliders
+          </label>
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              :checked="editorConfig.isTooltipEnabled"
+              @change="toggleTooltips"
+            />
+            Tooltips
+          </label>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main content area -->
+    <div class="container">
+      <!-- Left side: Code editor -->
+      <div class="editor-container">
+        <div ref="editorRoot" class="strudel-editor"></div>
+      </div>
+
+      <!-- Right side: Visualization and console -->
+      <div class="output-container">
+        <!-- Canvas for pianoroll visualization -->
+        <div class="canvas-container">
+          <canvas ref="canvas" id="pianoroll" width="800" height="400"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
