@@ -1,4 +1,4 @@
-import { Note, WHOLE, HALF, QUARTER, EIGHTH, SIXTEENTH } from '@/types/music';
+import { Note, WHOLE, HALF, QUARTER, EIGHTH, SIXTEENTH, THIRTY_SECOND } from '@/types/music';
 
 // Convert MIDI number to note name
 export function midiNumberToNoteName(midi: number): string {
@@ -15,6 +15,7 @@ function formatDuration(duration: number): string {
   if (duration === QUARTER) return '@0.25';
   if (duration === EIGHTH) return '@0.125';
   if (duration === SIXTEENTH) return '@0.0625';
+  if (duration === THIRTY_SECOND) return '@0.03125';
   
   // Round to 4 decimal places to avoid floating point precision issues
   const rounded = Math.round(duration * 10000) / 10000;

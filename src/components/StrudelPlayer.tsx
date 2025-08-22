@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Play, Pause, Square, Copy, Download } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+import React, { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Play, Pause, Square, Copy, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface StrudelPlayerProps {
   bracketNotation: string;
+  codeOverride?: string; // when provided, use this code instead of generating from bracketNotation
   statistics?: {
     noteCount: number;
     restCount: number;
@@ -14,81 +15,109 @@ interface StrudelPlayerProps {
   };
 }
 
-export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProps) {
+export function StrudelPlayer({ bracketNotation, codeOverride, statistics }: StrudelPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const strudelCode = bracketNotation 
-    ? `note(\`${bracketNotation}\`).piano()`
-    : 'note("c d e f").piano()';
+  const strudelCode = codeOverride && codeOverride.trim().length > 0
+    ? codeOverride
+    : (bracketNotation 
+      ? `note(\`${bracketNotation}\`).s("triangle")`
+      : 'note("c d e f").s("triangle")');
 
   useEffect(() => {
     let isMounted = true;
-
     const initStrudel = async () => {
       try {
-        // Simple initialization without full Strudel editor
-        const { evalScope } = await import('@strudel/core');
-        const { initAudioOnFirstClick } = await import('@strudel/mini');
+        const [
+          { StrudelMirror },
+          { evalScope },
+          WA,
+          { registerSoundfonts },
+          { transpiler },
+        ] = await Promise.all([
+          import("@strudel/codemirror"),
+          import("@strudel/core"),
+          import("@strudel/webaudio"),
+          import("@strudel/soundfonts"),
+          import("@strudel/transpiler"),
+        ]);
 
         if (!isMounted) return;
 
-        // Initialize audio context on first click
-        initAudioOnFirstClick();
+        // Initialize audio context on first user interaction
+        WA.initAudioOnFirstClick();
 
-        // Load core modules
+        // Ensure core modules and webaudio backend are available
         await evalScope(
-          import('@strudel/core'),
-          import('@strudel/mini'),
-          import('@strudel/tonal'),
+          import("@strudel/core"),
+          import("@strudel/mini"),
+          import("@strudel/tonal"),
+          import("@strudel/webaudio")
         );
 
-        if (!isMounted) return;
-
-        // Create a simple text editor instead of full CodeMirror
-        const textarea = document.createElement('textarea');
-        textarea.value = strudelCode;
-        textarea.className = 'w-full h-32 p-3 bg-muted font-mono text-sm rounded border resize-none';
-        textarea.readOnly = true;
-
-        if (containerRef.current) {
-          containerRef.current.innerHTML = '';
-          containerRef.current.appendChild(textarea);
+        // Best-effort registration of synths and soundfonts
+        try {
+          await Promise.all([
+            WA.registerSynthSounds?.(),
+            registerSoundfonts?.(),
+          ]);
+        } catch (err) {
+          console.warn("Strudel optional registration step failed:", err);
         }
 
-        // Simple evaluation function
+        const root = containerRef.current;
+        if (!root) return;
+
+        // Keep track of the current code so copy works even after edits
+        const currentCodeRef = { current: strudelCode } as { current: string };
+
+        const editor = new StrudelMirror({
+          defaultOutput: WA.webaudioOutput,
+          getTime: () => WA.getAudioContext().currentTime,
+          transpiler,
+          root,
+          initialCode: strudelCode,
+          onCode: (code: string) => {
+            currentCodeRef.current = code;
+          },
+          onError: (error: any) => {
+            console.error("Strudel editor error:", error);
+          },
+          prebake: async () => {
+            // Already baked via evalScope above; keep this hook in case library expects it
+            return;
+          },
+        } as any);
+
+        // Expose evaluate/stop using the editor API
         editorRef.current = {
           evaluate: async () => {
             try {
-              const { evaluate, Pattern } = await import('@strudel/core');
-              // Create pattern from the bracket notation
-              const pattern = evaluate(strudelCode);
-              if (pattern && typeof pattern.play === 'function') {
-                await pattern.play();
-                setIsPlaying(true);
-              }
+              await editor.evaluate();
+              setIsPlaying(true);
             } catch (error) {
-              console.error('Strudel evaluation error:', error);
+              console.error("Strudel evaluate() failed:", error);
             }
           },
           stop: async () => {
             try {
-              const { Pattern } = await import('@strudel/core');
-              // Stop any playing patterns
-              Pattern.silence();
+              editor.stop();
               setIsPlaying(false);
             } catch (error) {
-              console.error('Strudel stop error:', error);
+              console.error("Strudel stop() failed:", error);
             }
-          }
+          },
+          getCode: () => currentCodeRef.current,
+          destroy: () => editor.destroy?.(),
         };
 
         setIsLoaded(true);
       } catch (error) {
-        console.error('Failed to initialize Strudel:', error);
+        console.error("Failed to initialize Strudel:", error);
       }
     };
 
@@ -96,8 +125,8 @@ export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProp
 
     return () => {
       isMounted = false;
-      if (editorRef.current?.stop) {
-        editorRef.current.stop();
+      if (editorRef.current?.destroy) {
+        editorRef.current.destroy();
       }
     };
   }, [strudelCode]);
@@ -116,9 +145,12 @@ export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProp
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(bracketNotation);
+      const code = editorRef.current?.getCode
+        ? editorRef.current.getCode()
+        : strudelCode;
+      await navigator.clipboard.writeText(code);
       toast({
-        description: "Bracket notation copied to clipboard!",
+        description: "Strudel code copied to clipboard!",
       });
     } catch (error) {
       toast({
@@ -129,11 +161,11 @@ export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProp
   };
 
   const downloadAsText = () => {
-    const blob = new Blob([bracketNotation], { type: 'text/plain' });
+    const blob = new Blob([bracketNotation], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'bracket-notation.txt';
+    a.download = "bracket-notation.txt";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -144,13 +176,15 @@ export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProp
     const data = {
       notation: bracketNotation,
       statistics: statistics,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'bracket-notation.json';
+    a.download = "bracket-notation.json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
