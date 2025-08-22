@@ -15,7 +15,10 @@ function formatDuration(duration: number): string {
   if (duration === QUARTER) return '@0.25';
   if (duration === EIGHTH) return '@0.125';
   if (duration === SIXTEENTH) return '@0.0625';
-  return `@${duration}`;
+  
+  // Round to 4 decimal places to avoid floating point precision issues
+  const rounded = Math.round(duration * 10000) / 10000;
+  return `@${rounded}`;
 }
 
 // Check if notes overlap (at least 1 unit simultaneous)
