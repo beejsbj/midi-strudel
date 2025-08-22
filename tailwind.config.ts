@@ -26,7 +26,8 @@ export default {
 				foreground: 'hsl(var(--foreground))',
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
-					foreground: 'hsl(var(--primary-foreground))'
+					foreground: 'hsl(var(--primary-foreground))',
+					glow: 'hsl(var(--primary-glow))'
 				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
@@ -61,6 +62,12 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				musical: {
+					'note-bar': 'hsl(var(--note-bar))',
+					'note-active': 'hsl(var(--note-bar-active))',
+					'rest-bar': 'hsl(var(--rest-bar))',
+					'timeline-grid': 'hsl(var(--timeline-grid))'
 				}
 			},
 			borderRadius: {
