@@ -21,9 +21,10 @@ export function MidiUpload({ onFileUpload, isProcessing }: MidiUploadProps) {
 
     // Validate file type
     const validExtensions = ['.mid', '.midi', '.mid.rtx'];
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    const fileName = file.name.toLowerCase();
+    const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
     
-    if (!validExtensions.includes(fileExtension)) {
+    if (!isValidExtension) {
       setUploadError('Please upload a valid MIDI file (.mid, .midi, or .mid.rtx)');
       return;
     }
