@@ -1,47 +1,60 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { MidiUpload } from '@/components/MidiUpload';
-import { TimelineVisualization } from '@/components/TimelineVisualization';
 import { StrudelPlayer } from '@/components/StrudelPlayer';
 import { Note } from '@/types/music';
-import { convertMidiToNotes, MidiPlayback } from '@/lib/midiProcessor';
+import { analyzeMidiFile, convertMidiToNotes, defaultSettings, type MidiAnalysis } from '@/lib/midiProcessor';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { generateBracketNotation, calculateStatistics } from '@/lib/bracketNotation';
+import { assignToStreams, buildSequentialBracket, wrapInAngles } from '@/lib/multiStream';
 import { useToast } from '@/hooks/use-toast';
 import { Music } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const Index = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [bracketNotation, setBracketNotation] = useState('');
   const [statistics, setStatistics] = useState({ noteCount: 0, restCount: 0, totalDuration: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  
-  const playbackRef = useRef<MidiPlayback | null>(null);
   const { toast } = useToast();
-
-  useEffect(() => {
-    playbackRef.current = new MidiPlayback();
-    playbackRef.current.setTimeUpdateCallback(setCurrentTime);
-    
-    return () => {
-      playbackRef.current?.dispose();
-    };
-  }, []);
+  const [analysis, setAnalysis] = useState<MidiAnalysis | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [selectedTracks, setSelectedTracks] = useState<number[]>([]);
+  const [codeOverride, setCodeOverride] = useState<string>('');
+  const [useInstrumentSamples, setUseInstrumentSamples] = useState<boolean>(false);
+  const [outMode, setOutMode] = useState<'single' | 'multi'>('single');
+  const [currentCps, setCurrentCps] = useState<number>(0.5);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
+    setUploadedFile(file);
     
     try {
-      const convertedNotes = await convertMidiToNotes(file);
+      // Analyze MIDI for metadata (tempo, time signature, tracks, keys)
+      const res = await analyzeMidiFile(file);
+      setAnalysis(res);
+      // Select all tracks by default
+      const allTracks = res.trackInfo.map((_, idx) => idx);
+      setSelectedTracks(allTracks);
+
+      // Use analyzed notes initially (cycles)
+      const convertedNotes = res.notes;
       const notation = generateBracketNotation(convertedNotes);
       const stats = calculateStatistics(convertedNotes, notation);
+
+      // Log analysis and initial conversion
+      console.log('[MIDI Analysis]', res);
+      console.log('[Converted Notes]', { cps: currentCps, notes: convertedNotes, stats });
       
       setNotes(convertedNotes);
       setBracketNotation(notation);
       setStatistics(stats);
-      
-      // Set up playback
-      playbackRef.current?.setNotes(convertedNotes);
+
+      // If multi-stream selected, regenerate code
+      if (outMode === 'multi') {
+        void regenerateMultiStream(useInstrumentSamples);
+      }
       
       toast({
         title: "MIDI file processed successfully",
@@ -58,23 +71,95 @@ const Index = () => {
     }
   };
 
-  const handlePlay = () => {
-    playbackRef.current?.play();
-    setIsPlaying(true);
+  const toggleTrack = async (index: number) => {
+    // Toggle selection state
+    const isSelected = selectedTracks.includes(index);
+    const newSelected = isSelected
+      ? selectedTracks.filter(i => i !== index)
+      : [...selectedTracks, index].sort((a, b) => a - b);
+    setSelectedTracks(newSelected);
+
+    // Reprocess notes for selected tracks if a file is present
+    if (!uploadedFile) return;
+    setIsProcessing(true);
+    try {
+      const filteredNotes = await convertMidiToNotes(uploadedFile, { ...defaultSettings, cyclesPerSecond: currentCps, selectedTracks: newSelected });
+      const notation = generateBracketNotation(filteredNotes);
+      const stats = calculateStatistics(filteredNotes, notation);
+
+      console.log('[Track Toggle] selectedTracks', newSelected);
+      console.log('[Converted Notes]', { cps: currentCps, notes: filteredNotes, stats });
+
+      setNotes(filteredNotes);
+      setBracketNotation(notation);
+      setStatistics(stats);
+
+      if (outMode === 'multi') {
+        void regenerateMultiStream(useInstrumentSamples);
+      }
+    } catch (error) {
+      toast({
+        title: "Error updating track selection",
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handlePause = () => {
-    playbackRef.current?.pause();
-    setIsPlaying(false);
+  // Map track instrument names to sample names (basic heuristic)
+  const mapInstrumentToSample = (name: string | undefined) => {
+    const n = (name || '').toLowerCase();
+    if (n.includes('piano')) return 'piano';
+    if (n.includes('kick') || n.includes('bd')) return 'bd';
+    if (n.includes('snare') || n.includes('sd')) return 'sd';
+    if (n.includes('hat') || n.includes('hh')) return 'hh';
+    if (n.includes('bass')) return 'bass';
+    if (n.includes('organ')) return 'organ';
+    if (n.includes('guitar') || n.includes('gtr')) return 'guitar';
+    if (n.includes('string')) return 'strings';
+    if (n.includes('saw') || n.includes('synth')) return 'sawtooth';
+    return 'triangle';
   };
 
-  const handleReset = () => {
-    playbackRef.current?.reset();
-    setIsPlaying(false);
-    setCurrentTime(0);
-  };
+  // Regenerate multi-stream code based on current state
+  const regenerateMultiStream = async (perInstrument: boolean) => {
+    if (!uploadedFile || !analysis) { setCodeOverride(''); return; }
 
-  const totalDuration = notes.length > 0 ? Math.max(...notes.map(n => n.release)) : 0;
+    if (perInstrument) {
+      // Build one stream per selected track with per-instrument sample mapping
+      const tracks = selectedTracks.length > 0 ? selectedTracks : analysis.trackInfo.map((_, i) => i);
+      const lines: string[] = [];
+      for (const idx of tracks) {
+        const perTrackNotes = await convertMidiToNotes(uploadedFile, { ...defaultSettings, cyclesPerSecond: currentCps, selectedTracks: [idx] });
+        const seq = buildSequentialBracket(perTrackNotes);
+        const wrapped = wrapInAngles(seq);
+        const instrument = analysis.trackInfo[idx]?.instrument;
+        const sample = mapInstrumentToSample(instrument);
+        lines.push(`$: note(\`${wrapped}\`).s("${sample}")`);
+      }
+      const code = lines.join("\n\n");
+      console.log('[Multi-Stream Code] perInstrument', code);
+      setCodeOverride(code);
+    } else {
+      // Greedy concurrency streams on current notes
+      const assigned = assignToStreams(notes);
+      const byStream = new Map<number, Note[]>();
+      for (const n of assigned) {
+        byStream.set(n.stream, [...(byStream.get(n.stream) || []), n]);
+      }
+      const lines: string[] = [];
+      Array.from(byStream.keys()).sort((a,b)=>a-b).forEach((k) => {
+        const seq = buildSequentialBracket(byStream.get(k) || []);
+        const wrapped = wrapInAngles(seq);
+        lines.push(`$: note(\`${wrapped}\`).s("triangle")`);
+      });
+      const code = lines.join("\n\n");
+      console.log('[Multi-Stream Code] concurrency', code);
+      setCodeOverride(code);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -119,22 +204,206 @@ const Index = () => {
           </div>
         )}
 
-        {/* Visualization */}
-        <TimelineVisualization
-          notes={notes}
-          totalDuration={totalDuration}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          onPlay={handlePlay}
-          onPause={handlePause}
-          onReset={handleReset}
-        />
+        {/* Player + Details layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Sidebar: MIDI Details and Controls */}
+          <aside className="lg:col-span-1">
+            {analysis && (
+              <Card className="p-6 space-y-4">
+                <h3 className="text-lg font-semibold">MIDI Details</h3>
 
-        {/* Strudel Player */}
-        <StrudelPlayer 
-          bracketNotation={bracketNotation}
-          statistics={statistics}
-        />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-muted p-3 rounded">
+                    <div className="text-xs text-muted-foreground">Tempo (BPM)</div>
+                    <div className="text-lg font-semibold">{analysis.tempo?.toFixed(2) ?? '—'}</div>
+                  </div>
+                  <div className="bg-muted p-3 rounded">
+                    <div className="text-xs text-muted-foreground">Time Signature</div>
+                    <div className="text-lg font-semibold">{analysis.timeSignature ? `${analysis.timeSignature.numerator}/${analysis.timeSignature.denominator}` : '—'}</div>
+                  </div>
+                  <div className="bg-muted p-3 rounded sm:col-span-2">
+                    <div className="text-xs text-muted-foreground">Key Signature</div>
+                    <div className="text-lg font-semibold">{analysis.keySignatures && analysis.keySignatures.length > 0 ? analysis.keySignatures[0] : 'Unavailable'}</div>
+                  </div>
+                </div>
+
+                {/* CPS Slider */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Cycles per Second (cps)</div>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={2}
+                    step={0.05}
+                    defaultValue={0.5}
+                    onChange={async (e) => {
+                      const cps = parseFloat(e.target.value);
+                      setCurrentCps(cps);
+                      if (!uploadedFile) return;
+                      setIsProcessing(true);
+                      try {
+                        const filteredNotes = await convertMidiToNotes(uploadedFile, { ...defaultSettings, cyclesPerSecond: cps, selectedTracks });
+                        const notation = generateBracketNotation(filteredNotes);
+                        const stats = calculateStatistics(filteredNotes, notation);
+
+                        console.log('[CPS Change]', cps);
+                        console.log('[Converted Notes]', { cps, notes: filteredNotes, stats });
+
+                        setNotes(filteredNotes);
+                        setBracketNotation(notation);
+                        setStatistics(stats);
+
+                        if (outMode === 'multi') {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                  />
+                  <div className="text-xs text-muted-foreground">Default cps is 0.5 (1 cycle = 2s)</div>
+                </div>
+
+                {/* Timing Mode Radio */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Timing mode</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="timingMode" defaultChecked onChange={async () => {
+                        // Raw: cyclesPerSecond = 1
+                        if (!uploadedFile) return;
+                        setIsProcessing(true);
+                        try {
+                          setCurrentCps(1);
+                          const rawNotes = await convertMidiToNotes(uploadedFile, { ...defaultSettings, cyclesPerSecond: 1, selectedTracks });
+                          const notation = generateBracketNotation(rawNotes);
+                          const stats = calculateStatistics(rawNotes, notation);
+
+                          console.log('[Timing Mode] Raw cps=1');
+                          console.log('[Converted Notes]', { cps: 1, notes: rawNotes, stats });
+
+                          setNotes(rawNotes);
+                          setBracketNotation(notation);
+                          setStatistics(stats);
+
+                          if (outMode === 'multi') {
+                            await regenerateMultiStream(useInstrumentSamples);
+                          }
+                        } finally {
+                          setIsProcessing(false);
+                        }
+                      }} />
+                      <span className="text-sm">Raw (seconds → cycles directly, cps = 1)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="timingMode" onChange={async () => {
+                        // Normalize to Strudel default: cps = 0.5
+                        if (!uploadedFile) return;
+                        setIsProcessing(true);
+                        try {
+                          setCurrentCps(0.5);
+                          const normNotes = await convertMidiToNotes(uploadedFile, { ...defaultSettings, cyclesPerSecond: 0.5, selectedTracks });
+                          const notation = generateBracketNotation(normNotes);
+                          const stats = calculateStatistics(normNotes, notation);
+
+                          console.log('[Timing Mode] Normalize cps=0.5');
+                          console.log('[Converted Notes]', { cps: 0.5, notes: normNotes, stats });
+
+                          setNotes(normNotes);
+                          setBracketNotation(notation);
+                          setStatistics(stats);
+
+                          if (outMode === 'multi') {
+                            await regenerateMultiStream(useInstrumentSamples);
+                          }
+                        } finally {
+                          setIsProcessing(false);
+                        }
+                      }} />
+                      <span className="text-sm">Normalize to Strudel default (cps = 0.5)</span>
+                    </label>
+
+                    {/* Removed quantize mode per feedback */}
+                  </div>
+                </div>
+
+                {/* Instruments / Tracks */}
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Instruments / Tracks</div>
+                  <div className="space-y-2">
+                    {analysis.trackInfo.map((t, idx) => (
+                      <label key={idx} className="flex items-center gap-3 p-3 border rounded">
+                        <Checkbox
+                          checked={selectedTracks.includes(idx)}
+                          onCheckedChange={() => toggleTrack(idx)}
+                          aria-label={`Select track ${idx + 1}`}
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium">Track {idx + 1}: {t.name || 'Untitled'}</div>
+                          <div className="text-sm text-muted-foreground">Instrument: {t.instrument} • Notes: {t.noteCount}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-muted p-3 rounded">
+                  Bracket durations are in cycles. At cps=0.5, @1 lasts 2s.
+                </div>
+
+                {/* JSON viewers */}
+                <details>
+                  <summary className="text-sm font-medium cursor-pointer">Analysis JSON</summary>
+                  <ScrollArea className="h-48 border rounded p-2 bg-muted">
+                    <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(analysis, null, 2)}</pre>
+                  </ScrollArea>
+                </details>
+                <details>
+                  <summary className="text-sm font-medium cursor-pointer">Converted Notes JSON</summary>
+                  <ScrollArea className="h-48 border rounded p-2 bg-muted">
+                    <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(notes, null, 2)}</pre>
+                  </ScrollArea>
+                </details>
+              </Card>
+            )}
+          </aside>
+          {/* Main: Strudel Player + options */}
+          <section className="lg:col-span-2 space-y-4">
+            <Card className="p-4 flex items-center justify-between">
+              <div className="text-sm">Output mode</div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="outmode" defaultChecked onChange={() => { setOutMode('single'); setCodeOverride(''); }} />
+                  <span className="text-sm">Single stream (polyphonic)</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="outmode"
+                    onChange={async () => {
+                      setOutMode('multi');
+                      await regenerateMultiStream(useInstrumentSamples);
+                    }}
+                  />
+                  <span className="text-sm">Multi stream (monophonic)</span>
+                </label>
+
+                {/* Instrument mapping toggle */}
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={useInstrumentSamples} onChange={async (e)=> { setUseInstrumentSamples(e.currentTarget.checked); if (outMode==='multi') { await regenerateMultiStream(e.currentTarget.checked); } }} />
+                  <span className="text-sm">Use instrument samples (per stream)</span>
+                </label>
+              </div>
+            </Card>
+
+            <StrudelPlayer 
+              bracketNotation={bracketNotation}
+              codeOverride={codeOverride}
+              statistics={statistics}
+            />
+          </section>
+        </div>
       </main>
     </div>
   );
