@@ -1,18 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Play, Pause, Square } from 'lucide-react';
+import { Play, Pause, Square, Copy, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 interface StrudelPlayerProps {
   bracketNotation: string;
+  statistics?: {
+    noteCount: number;
+    restCount: number;
+    totalDuration: number;
+  };
 }
 
-export function StrudelPlayer({ bracketNotation }: StrudelPlayerProps) {
+export function StrudelPlayer({ bracketNotation, statistics }: StrudelPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const strudelCode = bracketNotation 
     ? `note(\`${bracketNotation}\`).piano()`
@@ -23,30 +30,21 @@ export function StrudelPlayer({ bracketNotation }: StrudelPlayerProps) {
 
     const initStrudel = async () => {
       try {
-        // Dynamic imports to handle potential loading issues
-        const [
-          { evalScope },
-          { initAudioOnFirstClick },
-          { getAudioContext, webaudioOutput, registerSynthSounds }
-        ] = await Promise.all([
-          import('@strudel/core'),
-          import('@strudel/mini'), 
-          import('@strudel/mini')
-        ]);
+        // Simple initialization without full Strudel editor
+        const { evalScope } = await import('@strudel/core');
+        const { initAudioOnFirstClick } = await import('@strudel/mini');
 
         if (!isMounted) return;
 
         // Initialize audio context on first click
         initAudioOnFirstClick();
 
-        // Load modules
-        const loadModules = evalScope(
+        // Load core modules
+        await evalScope(
           import('@strudel/core'),
           import('@strudel/mini'),
           import('@strudel/tonal'),
         );
-
-        await Promise.all([loadModules, registerSynthSounds()]);
 
         if (!isMounted) return;
 
@@ -65,21 +63,22 @@ export function StrudelPlayer({ bracketNotation }: StrudelPlayerProps) {
         editorRef.current = {
           evaluate: async () => {
             try {
-              const { evaluate } = await import('@strudel/core');
+              const { evaluate, Pattern } = await import('@strudel/core');
+              // Create pattern from the bracket notation
               const pattern = evaluate(strudelCode);
-              pattern.play();
-              setIsPlaying(true);
+              if (pattern && typeof pattern.play === 'function') {
+                await pattern.play();
+                setIsPlaying(true);
+              }
             } catch (error) {
               console.error('Strudel evaluation error:', error);
             }
           },
           stop: async () => {
             try {
-              const { getAudioContext } = await import('@strudel/mini');
-              const ctx = getAudioContext();
-              if (ctx.state !== 'closed') {
-                await ctx.suspend();
-              }
+              const { Pattern } = await import('@strudel/core');
+              // Stop any playing patterns
+              Pattern.silence();
               setIsPlaying(false);
             } catch (error) {
               console.error('Strudel stop error:', error);
@@ -115,6 +114,49 @@ export function StrudelPlayer({ bracketNotation }: StrudelPlayerProps) {
     }
   };
 
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(bracketNotation);
+      toast({
+        description: "Bracket notation copied to clipboard!",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        description: "Failed to copy to clipboard",
+      });
+    }
+  };
+
+  const downloadAsText = () => {
+    const blob = new Blob([bracketNotation], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bracket-notation.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadAsJson = () => {
+    const data = {
+      notation: bracketNotation,
+      statistics: statistics,
+      timestamp: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bracket-notation.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!bracketNotation) {
     return (
       <Card className="p-6">
@@ -146,6 +188,22 @@ export function StrudelPlayer({ bracketNotation }: StrudelPlayerProps) {
             size="sm"
           >
             <Square className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={copyToClipboard}
+            disabled={!bracketNotation}
+            variant="outline"
+            size="sm"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={downloadAsText}
+            disabled={!bracketNotation}
+            variant="outline"
+            size="sm"
+          >
+            <Download className="h-4 w-4" />
           </Button>
         </div>
       </div>

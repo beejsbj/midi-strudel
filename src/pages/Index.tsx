@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MidiUpload } from '@/components/MidiUpload';
 import { TimelineVisualization } from '@/components/TimelineVisualization';
-import { BracketNotationDisplay } from '@/components/BracketNotationDisplay';
 import { StrudelPlayer } from '@/components/StrudelPlayer';
 import { Note } from '@/types/music';
 import { convertMidiToNotes, MidiPlayback } from '@/lib/midiProcessor';
@@ -131,14 +130,11 @@ const Index = () => {
           onReset={handleReset}
         />
 
-        {/* Bracket Notation Output */}
-        <BracketNotationDisplay
-          notation={bracketNotation}
+        {/* Strudel Player */}
+        <StrudelPlayer 
+          bracketNotation={bracketNotation}
           statistics={statistics}
         />
-
-        {/* Strudel Player */}
-        <StrudelPlayer bracketNotation={bracketNotation} />
       </main>
     </div>
   );

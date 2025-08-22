@@ -18,7 +18,79 @@ export const defaultSettings: ConversionSettings = {
   velocityThreshold: 0.1
 };
 
-// Convert MIDI file to Note array
+// MIDI file analysis result
+export interface MidiAnalysis {
+  notes: Note[];
+  tempo: number;
+  timeSignature: { numerator: number; denominator: number };
+  trackInfo: Array<{ name: string; instrument: string; noteCount: number }>;
+}
+
+// Analyze MIDI file and extract all information
+export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = async (e) => {
+      try {
+        const arrayBuffer = e.target?.result as ArrayBuffer;
+        const midi = new Midi(arrayBuffer);
+        
+        // Extract tempo (first tempo change or default)
+        const tempo = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
+        
+        // Extract time signature (first time signature or default)
+        const timeSignature = midi.header.timeSignatures.length > 0 
+          ? { 
+              numerator: midi.header.timeSignatures[0].timeSignature[0],
+              denominator: midi.header.timeSignatures[0].timeSignature[1]
+            }
+          : { numerator: 4, denominator: 4 };
+        
+        // Extract track information
+        const trackInfo = midi.tracks.map((track, index) => ({
+          name: track.name || `Track ${index + 1}`,
+          instrument: track.instrument?.name || 'Unknown',
+          noteCount: track.notes.length
+        }));
+        
+        // Convert to notes using detected tempo
+        const beatsPerSecond = tempo / 60;
+        const allNotes: Note[] = [];
+        
+        midi.tracks.forEach(track => {
+          track.notes.forEach(midiNote => {
+            const note: Note = {
+              name: midiNumberToNoteName(midiNote.midi),
+              start: midiNote.time * beatsPerSecond,
+              release: (midiNote.time + midiNote.duration) * beatsPerSecond
+            };
+            allNotes.push(note);
+          });
+        });
+        
+        allNotes.sort((a, b) => a.start - b.start);
+        
+        resolve({
+          notes: allNotes,
+          tempo,
+          timeSignature,
+          trackInfo
+        });
+      } catch (error) {
+        reject(new Error(`Failed to analyze MIDI file: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+    
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Convert MIDI file to Note array (legacy function for backward compatibility)
 export async function convertMidiToNotes(
   file: File, 
   settings: ConversionSettings = defaultSettings
@@ -33,8 +105,14 @@ export async function convertMidiToNotes(
         // Parse MIDI using Tone.js
         const midi = new Midi(arrayBuffer);
         
-        // Calculate beats per second from BPM
-        const beatsPerSecond = settings.beatsPerMinute / 60;
+        // Extract tempo and time signature from MIDI
+        const actualTempo = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : settings.beatsPerMinute;
+        const actualTimeSignature = midi.header.timeSignatures.length > 0 
+          ? midi.header.timeSignatures[0] 
+          : settings.timeSignature;
+        
+        // Calculate beats per second from actual or default BPM
+        const beatsPerSecond = actualTempo / 60;
         
         const allNotes: Note[] = [];
         
