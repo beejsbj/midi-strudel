@@ -20,11 +20,11 @@ export function MidiUpload({ onFileUpload, isProcessing }: MidiUploadProps) {
     if (!file) return;
 
     // Validate file type
-    const validExtensions = ['.mid', '.midi'];
+    const validExtensions = ['.mid', '.midi', '.mid.rtx'];
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
     
     if (!validExtensions.includes(fileExtension)) {
-      setUploadError('Please upload a valid MIDI file (.mid or .midi)');
+      setUploadError('Please upload a valid MIDI file (.mid, .midi, or .mid.rtx)');
       return;
     }
 
@@ -38,8 +38,8 @@ export function MidiUpload({ onFileUpload, isProcessing }: MidiUploadProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'audio/midi': ['.mid', '.midi'],
-      'audio/x-midi': ['.mid', '.midi']
+      'audio/midi': ['.mid', '.midi', '.mid.rtx'],
+      'audio/x-midi': ['.mid', '.midi', '.mid.rtx']
     },
     maxFiles: 1,
     disabled: isProcessing
@@ -78,7 +78,7 @@ export function MidiUpload({ onFileUpload, isProcessing }: MidiUploadProps) {
                   Drag & drop a MIDI file, or click to browse
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Supports .mid and .midi files
+                  Supports .mid, .midi, and .mid.rtx files
                 </p>
               </div>
               <Button variant="musical" size="lg">
