@@ -408,7 +408,7 @@ const Index = () => {
               bracketNotation={bracketNotation}
               codeOverride={codeOverride}
               statistics={statistics}
-              onSamplesChanged={(names)=> setAvailableSamples(names)}
+              onSamplesChanged={(names)=> { console.log('[Available Samples]', names); setAvailableSamples(names); }}
             />
           </section>
         </div>
