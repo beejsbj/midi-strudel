@@ -13,9 +13,10 @@ interface StrudelPlayerProps {
     restCount: number;
     totalDuration: number;
   };
+  onSamplesChanged?: (names: string[]) => void;
 }
 
-export function StrudelPlayer({ bracketNotation, codeOverride, statistics }: StrudelPlayerProps) {
+export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSamplesChanged }: StrudelPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const editorRef = useRef<any>(null);
@@ -59,14 +60,36 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics }: Str
           import("@strudel/webaudio")
         );
 
-        // Best-effort registration of synths and soundfonts
+        // Load common sample sets and best-effort registration of synths and soundfonts
         try {
+          const ds = 'https://raw.githubusercontent.com/felixroos/dough-samples/main/';
           await Promise.all([
+            WA.samples(`${ds}/tidal-drum-machines.json`),
+            WA.samples(`${ds}/piano.json`),
+            WA.samples(`${ds}/Dirt-Samples.json`),
+            WA.samples(`${ds}/EmuSP12.json`),
+            WA.samples(`${ds}/vcsl.json`),
+            WA.samples(`${ds}/mridangam.json`),
             WA.registerSynthSounds?.(),
             registerSoundfonts?.(),
           ]);
         } catch (err) {
           console.warn("Strudel optional registration step failed:", err);
+        }
+
+        // Report available sample names to parent if requested
+        try {
+          const names = (() => {
+            const store: any = (WA as any).soundMap;
+            if (!store) return [] as string[];
+            if (typeof store.get === 'function') return Object.keys(store.get() || {});
+            if ('value' in store) return Object.keys(store.value || {});
+            return [] as string[];
+          })();
+          if (onSamplesChanged) onSamplesChanged(names);
+          console.log('[Strudel Samples]', names);
+        } catch (e) {
+          console.warn('Failed to read soundMap', e);
         }
 
         const root = containerRef.current;

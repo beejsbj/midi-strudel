@@ -25,6 +25,7 @@ const Index = () => {
   const [useInstrumentSamples, setUseInstrumentSamples] = useState<boolean>(false);
   const [outMode, setOutMode] = useState<'single' | 'multi'>('single');
   const [currentCps, setCurrentCps] = useState<number>(0.5);
+  const [availableSamples, setAvailableSamples] = useState<string[]>([]);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -136,7 +137,13 @@ const Index = () => {
         const seq = buildSequentialBracket(perTrackNotes);
         const wrapped = wrapInAngles(seq);
         const instrument = analysis.trackInfo[idx]?.instrument;
-        const sample = mapInstrumentToSample(instrument);
+        // Try to map to a sample that actually exists
+        let sample = mapInstrumentToSample(instrument);
+        if (availableSamples.length > 0) {
+          const lower = availableSamples.map(s => s.toLowerCase());
+          const tryNames = [sample, 'bd','sd','hh','piano','bass','organ','guitar','strings','sawtooth','triangle'];
+          sample = tryNames.find(n => lower.includes(n.toLowerCase())) || sample;
+        }
         lines.push(`$: note(\`${wrapped}\`).s("${sample}")`);
       }
       const code = lines.join("\n\n");
@@ -401,6 +408,7 @@ const Index = () => {
               bracketNotation={bracketNotation}
               codeOverride={codeOverride}
               statistics={statistics}
+              onSamplesChanged={(names)=> setAvailableSamples(names)}
             />
           </section>
         </div>
