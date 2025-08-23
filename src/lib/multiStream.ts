@@ -1,10 +1,13 @@
-import { Note, WHOLE } from '@/types/music';
+import { Note, WHOLE } from "@/types/music";
+import { formatBracketNotation } from "./bracketNotation";
 
 export type AssignedNote = Note & { stream: number };
 
 // Assign notes to monophonic streams using greedy allocation by start time
 export function assignToStreams(notes: Note[]): AssignedNote[] {
-  const sorted = [...notes].sort((a, b) => a.start - b.start || a.release - b.release);
+  const sorted = [...notes].sort(
+    (a, b) => a.start - b.start || a.release - b.release
+  );
   const lastEndPerStream: number[] = [];
   const result: AssignedNote[] = [];
 
@@ -30,14 +33,14 @@ export function assignToStreams(notes: Note[]): AssignedNote[] {
 
 // Local duration formatter (cycles). Mirrors bracketNotation formatting.
 function formatDuration(duration: number): string {
-  if (duration === WHOLE) return '';
+  if (duration === WHOLE) return "";
   const rounded = Math.round(duration * 10000) / 10000;
   return `@${rounded}`;
 }
 
 // Build a simple sequential bracket for a monophonic stream of notes (cycles)
 export function buildSequentialBracket(notes: Note[]): string {
-  if (!notes || notes.length === 0) return '';
+  if (!notes || notes.length === 0) return "";
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   const parts: string[] = [];
   let lastEnd = 0;
@@ -50,10 +53,19 @@ export function buildSequentialBracket(notes: Note[]): string {
     parts.push(`${n.name}${formatDuration(dur)}`);
     lastEnd = end;
   }
-  return parts.join(' ');
+  const notation = parts.join(" ");
+  return formatBracketNotation(notation);
 }
 
 // Wrap a sequential string in angle brackets for Strudel
 export function wrapInAngles(seq: string): string {
-  return `<\n    ${seq}\n  >`;
+  if (!seq.trim()) return "<\n  >";
+
+  // If seq has multiple lines, indent each line properly
+  const lines = seq.split("\n");
+  const indentedLines = lines.map((line) =>
+    line.trim() ? `    ${line}` : line
+  );
+
+  return `<\n${indentedLines.join("\n")}\n  >`;
 }
