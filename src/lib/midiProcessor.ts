@@ -1,7 +1,7 @@
-import * as Tone from 'tone';
-import { Midi } from '@tonejs/midi';
-import { Note, MidiNote, ConversionSettings } from '@/types/music';
-import { midiNumberToNoteName } from './bracketNotation';
+import * as Tone from "tone";
+import { Midi } from "@tonejs/midi";
+import { Note, MidiNote, ConversionSettings } from "@/types/music";
+import { midiNumberToNoteName } from "./bracketNotation";
 
 // Default conversion settings
 export const DEFAULT_CPS = 0.5; // Strudel default cycles-per-second
@@ -9,15 +9,15 @@ export const defaultSettings: ConversionSettings = {
   beatsPerMinute: 120,
   timeSignature: {
     numerator: 4,
-    denominator: 4
+    denominator: 4,
   },
   cyclesPerSecond: DEFAULT_CPS,
   selectedTracks: [],
   noteRange: {
     min: 21, // A0
-    max: 108 // C8
+    max: 108, // C8
   },
-  velocityThreshold: 0.1
+  velocityThreshold: 0.1,
 };
 
 // MIDI file analysis result
@@ -33,100 +33,123 @@ export interface MidiAnalysis {
 export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
         const midi = new Midi(arrayBuffer);
-        
+
         // Extract tempo (first tempo change or default)
-        const tempo = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
-        
+        const tempo =
+          midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
+
         // Extract time signature (first time signature or default)
-        const timeSignature = midi.header.timeSignatures.length > 0 
-          ? { 
-              numerator: midi.header.timeSignatures[0].timeSignature[0],
-              denominator: midi.header.timeSignatures[0].timeSignature[1]
-            }
-          : { numerator: 4, denominator: 4 };
-        
+        const timeSignature =
+          midi.header.timeSignatures.length > 0
+            ? {
+                numerator: midi.header.timeSignatures[0].timeSignature[0],
+                denominator: midi.header.timeSignatures[0].timeSignature[1],
+              }
+            : { numerator: 4, denominator: 4 };
+
         // Extract track information
         const trackInfo = midi.tracks.map((track, index) => ({
           name: track.name || `Track ${index + 1}`,
-          instrument: track.instrument?.name || 'Unknown',
-          noteCount: track.notes.length
+          instrument: track.instrument?.name || "Unknown",
+          noteCount: track.notes.length,
         }));
 
         // Extract key signature events if available
-        const keySignatures: string[] = (midi.header as any)?.keySignatures?.map((ks: any) => {
-          const key = ks?.key ?? ks?.tonic ?? ks?.scale?.tonic;
-          const scale = ks?.scale ?? ks?.mode;
-          const keyStr = typeof key === 'string' ? key.toUpperCase() : (key != null ? String(key) : undefined);
-          const scaleStr = typeof scale === 'string' ? scale.toLowerCase() : (scale != null ? String(scale) : undefined);
-          return [keyStr, scaleStr].filter(Boolean).join(' ');
-        }) || [];
-        
+        const keySignatures: string[] =
+          (midi.header as any)?.keySignatures?.map((ks: any) => {
+            const key = ks?.key ?? ks?.tonic ?? ks?.scale?.tonic;
+            const scale = ks?.scale ?? ks?.mode;
+            const keyStr =
+              typeof key === "string"
+                ? key.toUpperCase()
+                : key != null
+                ? String(key)
+                : undefined;
+            const scaleStr =
+              typeof scale === "string"
+                ? scale.toLowerCase()
+                : scale != null
+                ? String(scale)
+                : undefined;
+            return [keyStr, scaleStr].filter(Boolean).join(" ");
+          }) || [];
+
         // Convert to cycles (Strudel timing): 1.0 = one cycle (WHOLE). Default cps = 0.5 (one cycle = 2s)
         const cyclesPerSecond = DEFAULT_CPS;
         const allNotes: Note[] = [];
-        
-        midi.tracks.forEach(track => {
-          track.notes.forEach(midiNote => {
+
+        midi.tracks.forEach((track) => {
+          track.notes.forEach((midiNote) => {
             const note: Note = {
               name: midiNumberToNoteName(midiNote.midi),
               start: midiNote.time * cyclesPerSecond,
-              release: (midiNote.time + midiNote.duration) * cyclesPerSecond
+              release: (midiNote.time + midiNote.duration) * cyclesPerSecond,
             };
             allNotes.push(note);
           });
         });
-        
+
         allNotes.sort((a, b) => a.start - b.start);
-        
+
         resolve({
           notes: allNotes,
           tempo,
           timeSignature,
           trackInfo,
-          keySignatures
+          keySignatures,
         });
       } catch (error) {
-        reject(new Error(`Failed to analyze MIDI file: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        reject(
+          new Error(
+            `Failed to analyze MIDI file: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          )
+        );
       }
     };
-    
+
     reader.onerror = () => {
-      reject(new Error('Failed to read file'));
+      reject(new Error("Failed to read file"));
     };
-    
+
     reader.readAsArrayBuffer(file);
   });
 }
 
 // Convert MIDI file to Note array (legacy function for backward compatibility)
 export async function convertMidiToNotes(
-  file: File, 
+  file: File,
   settings: ConversionSettings = defaultSettings
 ): Promise<Note[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-        
+
         // Parse MIDI using Tone.js
         const midi = new Midi(arrayBuffer);
-        
+
         // Extract metadata (not used for timing conversion)
-        const _actualTempo = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : settings.beatsPerMinute;
-        const _actualTimeSignature = midi.header.timeSignatures.length > 0 
-          ? midi.header.timeSignatures[0] 
-          : settings.timeSignature;
-        
+        const _actualTempo =
+          midi.header.tempos.length > 0
+            ? midi.header.tempos[0].bpm
+            : settings.beatsPerMinute;
+        const _actualTimeSignature =
+          midi.header.timeSignatures.length > 0
+            ? midi.header.timeSignatures[0]
+            : settings.timeSignature;
+
         // Convert seconds to cycles using cps (default 0.5)
         const cyclesPerSecond = settings.cyclesPerSecond ?? DEFAULT_CPS;
-        
+
         const allNotes: Note[] = [];
 
         // Helper for optional quantization to a fixed cycle grid
@@ -139,7 +162,9 @@ export async function convertMidiToNotes(
         // Helper to snap durations to a strict set of musical units
         const snapDuration = (d: number) => {
           if (!settings.quantizeStrict) return d;
-          const allowed = settings.allowedDurations ?? [2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125];
+          const allowed = settings.allowedDurations ?? [
+            2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125,
+          ];
           let best = allowed[0];
           let bestDiff = Math.abs(d - best);
           for (let i = 1; i < allowed.length; i++) {
@@ -151,53 +176,66 @@ export async function convertMidiToNotes(
           }
           return best;
         };
-        
+
         // Process each track
         midi.tracks.forEach((track, trackIndex) => {
           // Skip track if not selected (empty array means all tracks)
-          if (settings.selectedTracks.length > 0 && !settings.selectedTracks.includes(trackIndex)) {
+          if (
+            settings.selectedTracks.length > 0 &&
+            !settings.selectedTracks.includes(trackIndex)
+          ) {
             return;
           }
-          
-          track.notes.forEach(midiNote => {
+
+          track.notes.forEach((midiNote) => {
             // Filter by note range
-            if (midiNote.midi < settings.noteRange.min || midiNote.midi > settings.noteRange.max) {
+            if (
+              midiNote.midi < settings.noteRange.min ||
+              midiNote.midi > settings.noteRange.max
+            ) {
               return;
             }
-            
+
             // Filter by velocity threshold
             if (midiNote.velocity < settings.velocityThreshold) {
               return;
             }
-            
+
             const startCycles = midiNote.time * cyclesPerSecond;
-            const endCycles = (midiNote.time + midiNote.duration) * cyclesPerSecond;
+            const endCycles =
+              (midiNote.time + midiNote.duration) * cyclesPerSecond;
             const qStart = quantizeCycle(startCycles);
             const qEnd = quantizeCycle(endCycles);
             const snappedDuration = snapDuration(qEnd - qStart);
             const note: Note = {
               name: midiNumberToNoteName(midiNote.midi),
               start: qStart,
-              release: qStart + snappedDuration
+              release: qStart + snappedDuration,
             };
-            
+
             allNotes.push(note);
           });
         });
-        
+
         // Sort notes by start time
         allNotes.sort((a, b) => a.start - b.start);
-        
+
         resolve(allNotes);
       } catch (error) {
-        reject(new Error(`Failed to parse MIDI file: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        reject(
+          new Error(
+            `Failed to parse MIDI file: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          )
+        );
       }
     };
-    
+
     reader.onerror = () => {
-      reject(new Error('Failed to read file'));
+      reject(new Error("Failed to read file"));
     };
-    
+
     reader.readAsArrayBuffer(file);
   });
 }
@@ -218,7 +256,7 @@ export class MidiPlayback {
 
   async initialize() {
     // Ensure audio context is started
-    if (Tone.getContext().state !== 'running') {
+    if (Tone.getContext().state !== "running") {
       await Tone.start();
     }
   }
@@ -233,39 +271,35 @@ export class MidiPlayback {
 
   async play() {
     if (this.isPlaying) return;
-    
+
     await this.initialize();
-    
+
     this.isPlaying = true;
     this.startTime = Tone.now() - this.pausedAt;
-    
+
     // Schedule notes for playback
-    this.notes.forEach(note => {
+    this.notes.forEach((note) => {
       const startTime = this.startTime + note.start;
       const duration = note.release - note.start;
-      
+
       if (startTime >= Tone.now()) {
-        this.synth.triggerAttackRelease(
-          note.name,
-          duration,
-          startTime
-        );
+        this.synth.triggerAttackRelease(note.name, duration, startTime);
       }
     });
-    
+
     // Start time update loop
     this.updateTime();
   }
 
   pause() {
     if (!this.isPlaying) return;
-    
+    //
     this.isPlaying = false;
     this.pausedAt = Tone.now() - this.startTime;
-    
+
     // Stop all scheduled notes
     this.synth.releaseAll();
-    
+
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
     }
@@ -279,19 +313,20 @@ export class MidiPlayback {
 
   private updateTime() {
     if (!this.isPlaying) return;
-    
+
     const currentTime = Tone.now() - this.startTime;
     this.onTimeUpdate?.(currentTime);
-    
+
     // Check if playback should stop
-    const totalDuration = this.notes.length > 0 ? Math.max(...this.notes.map(n => n.release)) : 0;
+    const totalDuration =
+      this.notes.length > 0 ? Math.max(...this.notes.map((n) => n.release)) : 0;
     if (currentTime >= totalDuration) {
       this.isPlaying = false;
       this.pausedAt = 0;
       this.onTimeUpdate?.(0);
       return;
     }
-    
+
     this.animationFrame = requestAnimationFrame(() => this.updateTime());
   }
 
