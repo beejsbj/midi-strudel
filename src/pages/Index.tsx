@@ -109,19 +109,110 @@ const Index = () => {
     }
   };
 
-  // Map track instrument names to sample names (basic heuristic)
+  // Map track instrument names to the closest available sample name using actual loaded sample names
   const mapInstrumentToSample = (name: string | undefined) => {
     const n = (name || '').toLowerCase();
-    if (n.includes('piano')) return 'piano';
-    if (n.includes('kick') || n.includes('bd')) return 'bd';
-    if (n.includes('snare') || n.includes('sd')) return 'sd';
-    if (n.includes('hat') || n.includes('hh')) return 'hh';
-    if (n.includes('bass')) return 'bass';
-    if (n.includes('organ')) return 'organ';
-    if (n.includes('guitar') || n.includes('gtr')) return 'guitar';
-    if (n.includes('string')) return 'strings';
-    if (n.includes('saw') || n.includes('synth')) return 'sawtooth';
-    return 'triangle';
+    const lower = availableSamples.map((s) => s.toLowerCase());
+    const has = (cand: string) => lower.includes(cand.toLowerCase());
+    const firstAvail = (cands: string[]) => cands.find((c) => has(c));
+
+    // DRUMS / PERCUSSION
+    if (/(kick|bd|bass\s*drum)/.test(n)) return firstAvail(['bd','bassdrum1','bassdrum2','mpc1000_bd','rolandtr808_bd','rolandtr909_bd']) || 'bd';
+    if (/(snare|sd)/.test(n)) return firstAvail(['sd','snare_modern','snare_hi','snare_low','rolandtr808_sd','rolandtr909_sd']) || 'sd';
+    if (/(hi[- ]?hat|hh)/.test(n)) return firstAvail(['hh','hihat','rolandtr808_hh','rolandtr909_hh']) || 'hh';
+    if (/(ride|rd)/.test(n)) return firstAvail(['rd','rolandtr808_rd','rolandtr909_rd']) || 'rd';
+    if (/(crash|cymbal|cr)/.test(n)) return firstAvail(['cr','sus_cymbal','rolandtr808_cr','rolandtr909_cr']) || 'cr';
+    if (/(tom)/.test(n)) return firstAvail(['tom_stick','tom_mallet','tom2_stick','tom2_mallet']) || 'tom_stick';
+    if (/(shaker)/.test(n)) return firstAvail(['shaker_large','shaker_small']) || 'shaker_large';
+    if (/(clap)/.test(n)) return firstAvail(['clap','cp','akaimpc60_cp']) || 'clap';
+    if (/(cowbell|cb)/.test(n)) return firstAvail(['cb','cowbell']) || 'cb';
+    if (/(tambourine)/.test(n)) return firstAvail(['tambourine','tambourine2']) || 'tambourine';
+    if (/(woodblock)/.test(n)) return firstAvail(['woodblock']) || 'woodblock';
+    if (/(timpani)/.test(n)) return firstAvail(['timpani','timpani2','timpani_roll','gm_timpani']) || 'timpani';
+
+    // PIANO / KEYS
+    if (/epiano|electric\s*piano|rhodes/.test(n)) return firstAvail(['gm_epiano1','gm_epiano2','fmpiano']) || (has('piano') ? 'piano' : 'gm_piano');
+    if (/clav|clavinet/.test(n)) return firstAvail(['gm_clavinet','clavisynth']) || 'gm_clavinet';
+    if (/harpsichord/.test(n)) return firstAvail(['gm_harpsichord']) || 'gm_harpsichord';
+    if (/celesta/.test(n)) return firstAvail(['gm_celesta']) || 'gm_celesta';
+    if (/glockenspiel/.test(n)) return firstAvail(['gm_glockenspiel','glockenspiel']) || 'gm_glockenspiel';
+    if (/vibraphone/.test(n)) return firstAvail(['gm_vibraphone','vibraphone','vibraphone_soft','vibraphone_bowed']) || 'gm_vibraphone';
+    if (/marimba/.test(n)) return firstAvail(['gm_marimba','marimba']) || 'gm_marimba';
+    if (/xylophone/.test(n)) return firstAvail(['gm_xylophone','xylophone_medium_ff','xylophone_soft_ff']) || 'gm_xylophone';
+    if (/tubular\s*bells/.test(n)) return firstAvail(['gm_tubular_bells','tubularbells','tubularbells2']) || 'gm_tubular_bells';
+    if (/music\s*box/.test(n)) return firstAvail(['gm_music_box']) || 'gm_music_box';
+    if (/piano|grand/.test(n)) return firstAvail(['piano','gm_piano','steinway','kawai','piano1']) || (has('gm_piano') ? 'gm_piano' : 'piano');
+
+    // ORGANS
+    if (/drawbar|rock\s*organ/.test(n)) return firstAvail(['gm_drawbar_organ','organ_8inch','organ_full']) || 'gm_drawbar_organ';
+    if (/church|pipe\s*organ/.test(n)) return firstAvail(['pipeorgan_quiet','pipeorgan_loud','gm_church_organ']) || 'pipeorgan_quiet';
+    if (/percussive\s*organ/.test(n)) return firstAvail(['gm_percussive_organ']) || 'gm_percussive_organ';
+
+    // GUITARS
+    if (/nylon\s*guitar/.test(n)) return firstAvail(['gm_acoustic_guitar_nylon']) || 'gm_acoustic_guitar_nylon';
+    if (/steel\s*guitar/.test(n)) return firstAvail(['gm_acoustic_guitar_steel']) || 'gm_acoustic_guitar_steel';
+    if (/overdriven/.test(n)) return firstAvail(['gm_overdriven_guitar']) || 'gm_overdriven_guitar';
+    if (/distortion/.test(n)) return firstAvail(['gm_distortion_guitar']) || 'gm_distortion_guitar';
+    if (/jazz\s*guitar/.test(n)) return firstAvail(['gm_electric_guitar_jazz']) || 'gm_electric_guitar_jazz';
+    if (/guitar/.test(n)) return firstAvail(['gm_electric_guitar_clean','gm_acoustic_guitar_steel','gm_acoustic_guitar_nylon']) || 'gm_electric_guitar_clean';
+
+    // BASSES
+    if (/fretless\s*bass/.test(n)) return firstAvail(['gm_fretless_bass']) || 'gm_fretless_bass';
+    if (/slap\s*bass/.test(n)) return firstAvail(['gm_slap_bass_1','gm_slap_bass_2']) || 'gm_slap_bass_1';
+    if (/synth\s*bass/.test(n)) return firstAvail(['gm_synth_bass_1','gm_synth_bass_2']) || 'gm_synth_bass_1';
+    if (/bass/.test(n)) return firstAvail(['gm_acoustic_bass','gm_electric_bass_finger','gm_electric_bass_pick']) || 'gm_acoustic_bass';
+
+    // STRINGS & ENSEMBLES
+    if (/violin/.test(n)) return firstAvail(['gm_violin','fiddle']) || 'gm_violin';
+    if (/viola/.test(n)) return firstAvail(['gm_viola']) || 'gm_viola';
+    if (/cello/.test(n)) return firstAvail(['gm_cello']) || 'gm_cello';
+    if (/contrabass|double\s*bass/.test(n)) return firstAvail(['gm_contrabass']) || 'gm_contrabass';
+    if (/pizzicato/.test(n)) return firstAvail(['gm_pizzicato_strings']) || 'gm_pizzicato_strings';
+    if (/tremolo/.test(n)) return firstAvail(['gm_tremolo_strings']) || 'gm_tremolo_strings';
+    if (/string/.test(n)) return firstAvail(['gm_string_ensemble_1','gm_string_ensemble_2','gm_synth_strings_1']) || 'gm_string_ensemble_1';
+    if (/harp/.test(n)) return firstAvail(['harp','gm_orchestral_harp','folkharp']) || 'harp';
+
+    // BRASS & WINDS
+    if (/trumpet/.test(n)) return firstAvail(['gm_trumpet','gm_muted_trumpet']) || 'gm_trumpet';
+    if (/trombone/.test(n)) return firstAvail(['gm_trombone']) || 'gm_trombone';
+    if (/tuba/.test(n)) return firstAvail(['gm_tuba']) || 'gm_tuba';
+    if (/horn/.test(n)) return firstAvail(['gm_french_horn']) || 'gm_french_horn';
+    if (/sax/.test(n)) return firstAvail(['gm_tenor_sax','gm_alto_sax','gm_soprano_sax','gm_baritone_sax']) || 'gm_tenor_sax';
+    if (/clarinet/.test(n)) return firstAvail(['gm_clarinet']) || 'gm_clarinet';
+    if (/oboe/.test(n)) return firstAvail(['gm_oboe']) || 'gm_oboe';
+    if (/bassoon/.test(n)) return firstAvail(['gm_bassoon']) || 'gm_bassoon';
+    if (/flute/.test(n)) return firstAvail(['gm_flute','gm_piccolo','recorder_soprano_sus']) || 'gm_flute';
+    if (/piccolo/.test(n)) return firstAvail(['gm_piccolo']) || 'gm_piccolo';
+    if (/recorder/.test(n)) return firstAvail(['gm_recorder','recorder_soprano_sus']) || 'gm_recorder';
+    if (/pan\s*flute/.test(n)) return firstAvail(['gm_pan_flute']) || 'gm_pan_flute';
+    if (/whistle/.test(n)) return firstAvail(['gm_whistle','trainwhistle']) || 'gm_whistle';
+    if (/ocarina/.test(n)) return firstAvail(['gm_ocarina','ocarina']) || 'gm_ocarina';
+
+    // VOICES / CHOIRS
+    if (/choir/.test(n)) return firstAvail(['gm_choir_aahs','gm_voice_oohs']) || 'gm_choir_aahs';
+
+    // SYNTH LEADS/PADS/FX
+    if (/lead/.test(n)) return firstAvail(['gm_lead_2_sawtooth','gm_lead_1_square','gm_lead_8_bass_lead']) || 'gm_lead_2_sawtooth';
+    if (/pad/.test(n)) return firstAvail(['gm_pad_warm','gm_pad_poly','gm_pad_sweep']) || 'gm_pad_warm';
+    if (/fx/.test(n)) return firstAvail(['gm_fx_atmosphere','gm_fx_echoes','gm_fx_crystal']) || 'gm_fx_atmosphere';
+
+    // ETHNIC / MISC
+    if (/sitar/.test(n)) return firstAvail(['gm_sitar']) || 'gm_sitar';
+    if (/banjo/.test(n)) return firstAvail(['gm_banjo']) || 'gm_banjo';
+    if (/koto/.test(n)) return firstAvail(['gm_koto']) || 'gm_koto';
+    if (/shamisen/.test(n)) return firstAvail(['gm_shamisen']) || 'gm_shamisen';
+    if (/bagpipe/.test(n)) return firstAvail(['gm_bagpipe']) || 'gm_bagpipe';
+    if (/harmonica/.test(n)) return firstAvail(['harmonica','gm_harmonica']) || 'harmonica';
+
+    // ORCHESTRA HIT
+    if (/orchestra\s*hit/.test(n)) return firstAvail(['gm_orchestra_hit']) || 'gm_orchestra_hit';
+
+    // Fallbacks
+    if (has('triangle')) return 'triangle';
+    if (has('sine')) return 'sine';
+    if (has('sawtooth')) return 'sawtooth';
+    if (has('square')) return 'square';
+    return availableSamples[0] || 'triangle';
   };
 
   // Regenerate multi-stream code based on current state
