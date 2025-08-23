@@ -20,6 +20,7 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSam
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const editorRef = useRef<any>(null);
+  const editorInstanceRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -29,6 +30,7 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSam
       ? `note(\`${bracketNotation}\`).s("triangle")`
       : 'note("c d e f").s("triangle")');
 
+  // Initialize Strudel editor once
   useEffect(() => {
     let isMounted = true;
     const initStrudel = async () => {
@@ -87,7 +89,6 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSam
             return [] as string[];
           })();
           if (onSamplesChanged) onSamplesChanged(names);
-          console.log('[Strudel Samples]', names);
         } catch (e) {
           console.warn('Failed to read soundMap', e);
         }
@@ -115,6 +116,9 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSam
             return;
           },
         } as any);
+
+        // Keep instance for future code updates
+        editorInstanceRef.current = editor;
 
         // Expose evaluate/stop using the editor API
         editorRef.current = {
@@ -152,7 +156,18 @@ export function StrudelPlayer({ bracketNotation, codeOverride, statistics, onSam
         editorRef.current.destroy();
       }
     };
-  }, [strudelCode]);
+  }, []);
+
+  // Update editor code when strudelCode changes without recreating the editor
+  useEffect(() => {
+    if (!isLoaded) return;
+    const inst = editorInstanceRef.current;
+    try {
+      if (inst && typeof inst.setCode === 'function') {
+        inst.setCode(strudelCode);
+      }
+    } catch {}
+  }, [strudelCode, isLoaded]);
 
   const handlePlay = () => {
     if (editorRef.current?.evaluate) {

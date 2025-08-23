@@ -45,8 +45,6 @@ const Index = () => {
       const stats = calculateStatistics(convertedNotes, notation);
 
       // Log analysis and initial conversion
-      console.log('[MIDI Analysis]', res);
-      console.log('[Converted Notes]', { cps: currentCps, notes: convertedNotes, stats });
       
       setNotes(convertedNotes);
       setBracketNotation(notation);
@@ -88,8 +86,6 @@ const Index = () => {
       const notation = generateBracketNotation(filteredNotes);
       const stats = calculateStatistics(filteredNotes, notation);
 
-      console.log('[Track Toggle] selectedTracks', newSelected);
-      console.log('[Converted Notes]', { cps: currentCps, notes: filteredNotes, stats });
 
       setNotes(filteredNotes);
       setBracketNotation(notation);
@@ -238,7 +234,6 @@ const Index = () => {
         lines.push(`$: note(\`${wrapped}\`).s("${sample}")`);
       }
       const code = lines.join("\n\n");
-      console.log('[Multi-Stream Code] perInstrument', code);
       setCodeOverride(code);
     } else {
       // Greedy concurrency streams on current notes
@@ -254,7 +249,6 @@ const Index = () => {
         lines.push(`$: note(\`${wrapped}\`).s("triangle")`);
       });
       const code = lines.join("\n\n");
-      console.log('[Multi-Stream Code] concurrency', code);
       setCodeOverride(code);
     }
   };
@@ -344,8 +338,6 @@ const Index = () => {
                         const notation = generateBracketNotation(filteredNotes);
                         const stats = calculateStatistics(filteredNotes, notation);
 
-                        console.log('[CPS Change]', cps);
-                        console.log('[Converted Notes]', { cps, notes: filteredNotes, stats });
 
                         setNotes(filteredNotes);
                         setBracketNotation(notation);
@@ -377,8 +369,6 @@ const Index = () => {
                           const notation = generateBracketNotation(rawNotes);
                           const stats = calculateStatistics(rawNotes, notation);
 
-                          console.log('[Timing Mode] Raw cps=1');
-                          console.log('[Converted Notes]', { cps: 1, notes: rawNotes, stats });
 
                           setNotes(rawNotes);
                           setBracketNotation(notation);
@@ -405,8 +395,6 @@ const Index = () => {
                           const notation = generateBracketNotation(normNotes);
                           const stats = calculateStatistics(normNotes, notation);
 
-                          console.log('[Timing Mode] Normalize cps=0.5');
-                          console.log('[Converted Notes]', { cps: 0.5, notes: normNotes, stats });
 
                           setNotes(normNotes);
                           setBracketNotation(notation);
@@ -499,7 +487,7 @@ const Index = () => {
               bracketNotation={bracketNotation}
               codeOverride={codeOverride}
               statistics={statistics}
-              onSamplesChanged={(names)=> { console.log('[Available Samples]', names); setAvailableSamples(names); }}
+              onSamplesChanged={(names)=> { setAvailableSamples(names); }}
             />
           </section>
         </div>
