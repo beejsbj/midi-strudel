@@ -39,7 +39,7 @@ function formatDuration(duration: number): string {
 }
 
 // Build a simple sequential bracket for a monophonic stream of notes (cycles)
-export function buildSequentialBracket(notes: Note[]): string {
+export function buildSequentialBracket(notes: Note[], lineLength: number = 8): string {
   if (!notes || notes.length === 0) return "";
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   const parts: string[] = [];
@@ -54,7 +54,7 @@ export function buildSequentialBracket(notes: Note[]): string {
     lastEnd = end;
   }
   const notation = parts.join(" ");
-  return formatBracketNotation(notation);
+  return formatBracketNotation(notation, lineLength);
 }
 
 // Wrap a sequential string in angle brackets for Strudel

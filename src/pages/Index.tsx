@@ -43,6 +43,7 @@ const Index = () => {
   const [outMode, setOutMode] = useState<"single" | "multi">("single");
   const [currentCps, setCurrentCps] = useState<number>(0.5);
   const [availableSamples, setAvailableSamples] = useState<string[]>([]);
+  const [lineLength, setLineLength] = useState<number>(8);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -58,7 +59,7 @@ const Index = () => {
 
       // Use analyzed notes initially (cycles)
       const convertedNotes = res.notes;
-      const notation = generateFormattedBracketNotation(convertedNotes);
+      const notation = generateFormattedBracketNotation(convertedNotes, lineLength);
       const stats = calculateStatistics(convertedNotes, notation);
 
       // Log analysis and initial conversion
@@ -105,7 +106,7 @@ const Index = () => {
         cyclesPerSecond: currentCps,
         selectedTracks: newSelected,
       });
-      const notation = generateFormattedBracketNotation(filteredNotes);
+      const notation = generateFormattedBracketNotation(filteredNotes, lineLength);
       const stats = calculateStatistics(filteredNotes, notation);
 
       setNotes(filteredNotes);
@@ -417,7 +418,7 @@ const Index = () => {
           cyclesPerSecond: currentCps,
           selectedTracks: [idx],
         });
-        const seq = buildSequentialBracket(perTrackNotes);
+        const seq = buildSequentialBracket(perTrackNotes, lineLength);
         const wrapped = wrapInAngles(seq);
         const instrument = analysis.trackInfo[idx]?.instrument;
         // Try to map to a sample that actually exists
@@ -455,7 +456,7 @@ const Index = () => {
       Array.from(byStream.keys())
         .sort((a, b) => a - b)
         .forEach((k) => {
-          const seq = buildSequentialBracket(byStream.get(k) || []);
+          const seq = buildSequentialBracket(byStream.get(k) || [], lineLength);
           const wrapped = wrapInAngles(seq);
           lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
         });
@@ -587,7 +588,7 @@ const Index = () => {
                           }
                         );
                         const notation =
-                          generateFormattedBracketNotation(filteredNotes);
+                          generateFormattedBracketNotation(filteredNotes, lineLength);
                         const stats = calculateStatistics(
                           filteredNotes,
                           notation
@@ -607,6 +608,39 @@ const Index = () => {
                   />
                   <div className="text-xs text-muted-foreground">
                     Default cps is 0.5 (1 cycle = 2s)
+                  </div>
+                </div>
+
+                {/* Line Length Slider */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">
+                    Notes per line ({lineLength})
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={lineLength}
+                    onChange={async (e) => {
+                      const newLineLength = parseInt(e.target.value);
+                      setLineLength(newLineLength);
+                      if (!notes.length) return;
+                      setIsProcessing(true);
+                      try {
+                        const notation = generateFormattedBracketNotation(notes, newLineLength);
+                        setBracketNotation(notation);
+                        
+                        if (outMode === "multi") {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Control how many notes appear per line in bracket notation
                   </div>
                 </div>
 
@@ -634,7 +668,7 @@ const Index = () => {
                               }
                             );
                             const notation =
-                              generateFormattedBracketNotation(rawNotes);
+                              generateFormattedBracketNotation(rawNotes, lineLength);
                             const stats = calculateStatistics(
                               rawNotes,
                               notation
@@ -676,7 +710,7 @@ const Index = () => {
                               }
                             );
                             const notation =
-                              generateFormattedBracketNotation(normNotes);
+                              generateFormattedBracketNotation(normNotes, lineLength);
                             const stats = calculateStatistics(
                               normNotes,
                               notation

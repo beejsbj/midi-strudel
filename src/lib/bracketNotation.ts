@@ -110,7 +110,7 @@ export function generateBracketNotation(notes: Note[]): string {
 }
 
 // Format bracket notation with line breaks
-export function formatBracketNotation(bracketNotation: string): string {
+export function formatBracketNotation(bracketNotation: string, lineLength: number = 8): string {
   if (!bracketNotation.trim()) return '';
   
   const parts = bracketNotation.split(' ').filter(part => part.trim());
@@ -128,8 +128,8 @@ export function formatBracketNotation(bracketNotation: string): string {
     elementCount++;
     if (isBracket) bracketCount++;
     
-    // Break line if we have 8 elements OR 2 brackets
-    const shouldBreak = elementCount >= 8 || bracketCount >= 2;
+    // Break line if we have reached lineLength elements OR 2 brackets
+    const shouldBreak = elementCount >= lineLength || bracketCount >= 2;
     
     if (shouldBreak) {
       lines.push(currentLine.join(' '));
@@ -148,9 +148,9 @@ export function formatBracketNotation(bracketNotation: string): string {
 }
 
 // Main function to generate formatted bracket notation
-export function generateFormattedBracketNotation(notes: Note[]): string {
+export function generateFormattedBracketNotation(notes: Note[], lineLength: number = 8): string {
   const notation = generateBracketNotation(notes);
-  return formatBracketNotation(notation);
+  return formatBracketNotation(notation, lineLength);
 }
 
 // Calculate statistics for a set of notes
