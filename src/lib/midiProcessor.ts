@@ -2,6 +2,7 @@ import * as Tone from "tone";
 import { Midi } from "@tonejs/midi";
 import { Note, MidiNote, ConversionSettings } from "@/types/music";
 import { midiNumberToNoteName } from "./bracketNotation";
+import { calculateKeySignature, KeySignature, formatKeySignature } from "./musicTheory";
 
 // Default conversion settings
 export const DEFAULT_CPS = 0.5; // Strudel default cycles-per-second
@@ -27,6 +28,8 @@ export interface MidiAnalysis {
   timeSignature: { numerator: number; denominator: number };
   trackInfo: Array<{ name: string; instrument: string; noteCount: number }>;
   keySignatures?: string[]; // extracted key signatures if present in MIDI header
+  calculatedKeySignature?: KeySignature; // calculated key signature from note analysis
+  effectiveKeySignature?: string; // the key signature to use (either from MIDI or calculated)
 }
 
 // Analyze MIDI file and extract all information
@@ -96,12 +99,25 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
 
         allNotes.sort((a, b) => a.start - b.start);
 
+        // Calculate key signature if not present in MIDI or if we want to double-check
+        const calculatedKeySignature = calculateKeySignature(allNotes);
+        
+        // Determine effective key signature (prefer MIDI metadata, fallback to calculated)
+        let effectiveKeySignature: string | undefined;
+        if (keySignatures && keySignatures.length > 0) {
+          effectiveKeySignature = keySignatures[0];
+        } else if (calculatedKeySignature) {
+          effectiveKeySignature = formatKeySignature(calculatedKeySignature);
+        }
+
         resolve({
           notes: allNotes,
           tempo,
           timeSignature,
           trackInfo,
           keySignatures,
+          calculatedKeySignature,
+          effectiveKeySignature,
         });
       } catch (error) {
         reject(

@@ -1,5 +1,6 @@
 import { Note, WHOLE } from "@/types/music";
-import { formatBracketNotation } from "./bracketNotation";
+import { formatBracketNotation, generateFormattedBracketNotation } from "./bracketNotation";
+import { KeySignature } from "./musicTheory";
 
 export type AssignedNote = Note & { stream: number };
 
@@ -39,22 +40,11 @@ function formatDuration(duration: number): string {
 }
 
 // Build a simple sequential bracket for a monophonic stream of notes (cycles)
-export function buildSequentialBracket(notes: Note[], lineLength: number = 8): string {
+export function buildSequentialBracket(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false): string {
   if (!notes || notes.length === 0) return "";
-  const sorted = [...notes].sort((a, b) => a.start - b.start);
-  const parts: string[] = [];
-  let lastEnd = 0;
-  for (const n of sorted) {
-    const start = n.start;
-    const end = n.release;
-    const gap = start - lastEnd;
-    if (gap > 0) parts.push(`~${formatDuration(gap)}`);
-    const dur = end - start;
-    parts.push(`${n.name}${formatDuration(dur)}`);
-    lastEnd = end;
-  }
-  const notation = parts.join(" ");
-  return formatBracketNotation(notation, lineLength);
+  
+  // Use the new unified function that handles both regular and scale modes
+  return generateFormattedBracketNotation(notes, lineLength, keySignature, useScaleMode);
 }
 
 // Wrap a sequential string in angle brackets for Strudel
