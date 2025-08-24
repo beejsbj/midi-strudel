@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Play, Pause, Square, Copy, Download, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { generateStrudelCode } from "@/lib/bracketNotation";
+import type { KeySignature } from "@/lib/musicTheory";
 
 interface StrudelPlayerProps {
   bracketNotation: string;
@@ -14,6 +16,8 @@ interface StrudelPlayerProps {
     totalDuration: number;
   };
   onSamplesChanged?: (names: string[]) => void;
+  keySignature?: KeySignature;
+  useScaleMode?: boolean;
 }
 
 // Minimal type surface for the Strudel editor we use
@@ -44,15 +48,19 @@ export function StrudelPlayer({
   codeOverride,
   statistics, // eslint-disable-line @typescript-eslint/no-unused-vars
   onSamplesChanged,
+  keySignature,
+  useScaleMode = false,
 }: StrudelPlayerProps) {
   const { toast } = useToast();
 
   // Derived initial code
   const strudelCode = useMemo(() => {
     if (codeOverride && codeOverride.trim().length > 0) return codeOverride;
-    if (bracketNotation) return `note(\` <${bracketNotation}>\`).s("triangle")`;
+    if (bracketNotation) {
+      return generateStrudelCode(bracketNotation, keySignature, useScaleMode);
+    }
     return 'note("<c d e f>").s("triangle")';
-  }, [bracketNotation, codeOverride]);
+  }, [bracketNotation, codeOverride, keySignature, useScaleMode]);
 
   // Component state
   type Status = "idle" | "loading" | "playing" | "stopped";

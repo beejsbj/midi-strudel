@@ -44,6 +44,7 @@ const Index = () => {
   const [currentCps, setCurrentCps] = useState<number>(0.5);
   const [availableSamples, setAvailableSamples] = useState<string[]>([]);
   const [lineLength, setLineLength] = useState<number>(8);
+  const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -59,7 +60,7 @@ const Index = () => {
 
       // Use analyzed notes initially (cycles)
       const convertedNotes = res.notes;
-      const notation = generateFormattedBracketNotation(convertedNotes, lineLength);
+      const notation = generateFormattedBracketNotation(convertedNotes, lineLength, res.calculatedKeySignature, useScaleMode);
       const stats = calculateStatistics(convertedNotes, notation);
 
       // Log analysis and initial conversion
@@ -106,7 +107,7 @@ const Index = () => {
         cyclesPerSecond: currentCps,
         selectedTracks: newSelected,
       });
-      const notation = generateFormattedBracketNotation(filteredNotes, lineLength);
+      const notation = generateFormattedBracketNotation(filteredNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
       const stats = calculateStatistics(filteredNotes, notation);
 
       setNotes(filteredNotes);
@@ -418,7 +419,7 @@ const Index = () => {
           cyclesPerSecond: currentCps,
           selectedTracks: [idx],
         });
-        const seq = buildSequentialBracket(perTrackNotes, lineLength);
+        const seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
         const wrapped = wrapInAngles(seq);
         const instrument = analysis.trackInfo[idx]?.instrument;
         // Try to map to a sample that actually exists
@@ -456,7 +457,7 @@ const Index = () => {
       Array.from(byStream.keys())
         .sort((a, b) => a - b)
         .forEach((k) => {
-          const seq = buildSequentialBracket(byStream.get(k) || [], lineLength);
+          const seq = buildSequentialBracket(byStream.get(k) || [], lineLength, analysis.calculatedKeySignature, useScaleMode);
           const wrapped = wrapInAngles(seq);
           lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
         });
@@ -500,11 +501,10 @@ const Index = () => {
             </h2>
             <div className="max-w-2xl mx-auto space-y-4 text-left bg-card p-6 rounded-lg">
               <div>
-                <h3 className="font-medium mb-2">Examples:</h3>
+                <h3 className="font-medium mb-2">Raw Notes Mode:</h3>
                 <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
                   <div>
-                    <span className="text-accent">Single notes:</span> C4 D4
-                    E4@0.25
+                    <span className="text-accent">Single notes:</span> C4 D4 E4@0.25
                   </div>
                   <div>
                     <span className="text-accent">Chord:</span> [C4, E4, G4]@1
@@ -513,8 +513,24 @@ const Index = () => {
                     <span className="text-accent">With rests:</span> C4 ~@0.5 D4
                   </div>
                   <div>
-                    <span className="text-accent">Complex overlap:</span> [C4@2
-                    ~@1, ~@0.5 E4@1.5]@3
+                    <span className="text-accent">Complex overlap:</span> [C4@2 ~@1, ~@0.5 E4@1.5]@3
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-medium mb-2">Scale Degrees Mode (when key detected):</h3>
+                <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
+                  <div>
+                    <span className="text-accent">Scale degrees:</span> 0 1 2@0.25 (C major: C D E)
+                  </div>
+                  <div>
+                    <span className="text-accent">Chord:</span> [0, 2, 4]@1 (C major triad)
+                  </div>
+                  <div>
+                    <span className="text-accent">Octaves:</span> 0 7 -7 (C4, C5, C3)
+                  </div>
+                  <div>
+                    <span className="text-accent">Strudel syntax:</span> {`n(\`<0 1 2>\`).scale("C4:major")`}
                   </div>
                 </div>
               </div>
@@ -554,13 +570,58 @@ const Index = () => {
                       Key Signature
                     </div>
                     <div className="text-lg font-semibold">
-                      {analysis.keySignatures &&
-                      analysis.keySignatures.length > 0
-                        ? analysis.keySignatures[0]
-                        : "Unavailable"}
+                      {analysis.effectiveKeySignature || "Unavailable"}
+                      {analysis.calculatedKeySignature && !analysis.keySignatures?.length && (
+                        <span className="text-xs text-muted-foreground block">
+                          (Calculated: {Math.round(analysis.calculatedKeySignature.confidence * 100)}% confidence)
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* Scale Mode Toggle - Only show if key signature is available */}
+                {analysis.effectiveKeySignature && (
+                  <div className="space-y-2 p-3 border rounded bg-muted/50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium">Notation Mode</div>
+                        <div className="text-xs text-muted-foreground">
+                          Scale mode uses degrees (0, 1, 2...) instead of note names
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs">Raw Notes</label>
+                        <input
+                          type="checkbox"
+                          checked={useScaleMode}
+                          onChange={async (e) => {
+                            setUseScaleMode(e.target.checked);
+                            if (!notes.length) return;
+                            setIsProcessing(true);
+                            try {
+                              const notation = generateFormattedBracketNotation(
+                                notes, 
+                                lineLength, 
+                                analysis.calculatedKeySignature, 
+                                e.target.checked
+                              );
+                              setBracketNotation(notation);
+                              
+                              if (outMode === "multi") {
+                                await regenerateMultiStream(useInstrumentSamples);
+                              }
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }}
+                          className="toggle"
+                        />
+                        <label className="text-xs">Scale Degrees</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* CPS Slider */}
                 <div className="space-y-2">
@@ -588,7 +649,7 @@ const Index = () => {
                           }
                         );
                         const notation =
-                          generateFormattedBracketNotation(filteredNotes, lineLength);
+                          generateFormattedBracketNotation(filteredNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
                         const stats = calculateStatistics(
                           filteredNotes,
                           notation
@@ -628,7 +689,7 @@ const Index = () => {
                       if (!notes.length) return;
                       setIsProcessing(true);
                       try {
-                        const notation = generateFormattedBracketNotation(notes, newLineLength);
+                        const notation = generateFormattedBracketNotation(notes, newLineLength, analysis?.calculatedKeySignature, useScaleMode);
                         setBracketNotation(notation);
                         
                         if (outMode === "multi") {
@@ -668,7 +729,7 @@ const Index = () => {
                               }
                             );
                             const notation =
-                              generateFormattedBracketNotation(rawNotes, lineLength);
+                              generateFormattedBracketNotation(rawNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
                             const stats = calculateStatistics(
                               rawNotes,
                               notation
@@ -710,7 +771,7 @@ const Index = () => {
                               }
                             );
                             const notation =
-                              generateFormattedBracketNotation(normNotes, lineLength);
+                              generateFormattedBracketNotation(normNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
                             const stats = calculateStatistics(
                               normNotes,
                               notation
@@ -846,6 +907,8 @@ const Index = () => {
               bracketNotation={bracketNotation}
               codeOverride={codeOverride}
               statistics={statistics}
+              keySignature={analysis?.calculatedKeySignature}
+              useScaleMode={useScaleMode}
               onSamplesChanged={(names) => {
                 setAvailableSamples(names);
               }}
