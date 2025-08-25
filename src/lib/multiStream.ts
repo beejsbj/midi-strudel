@@ -1,5 +1,5 @@
 import { Note, WHOLE } from "@/types/music";
-import { formatBracketNotation, generateFormattedBracketNotation } from "./bracketNotation";
+import { formatBracketNotation, generateFormattedBracketNotation, extractFormattedVelocityPattern, generateStrudelCode } from "./bracketNotation";
 import { KeySignature } from "./musicTheory";
 
 export type AssignedNote = Note & { stream: number };
@@ -45,6 +45,22 @@ export function buildSequentialBracket(notes: Note[], lineLength: number = 8, ke
   
   // Use the new unified function that handles both regular and scale modes
   return generateFormattedBracketNotation(notes, lineLength, keySignature, useScaleMode);
+}
+
+// Build velocity pattern for a monophonic stream of notes (cycles)
+export function buildSequentialVelocityPattern(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false): string {
+  if (!notes || notes.length === 0) return "";
+  
+  // Use the new unified function that handles both regular and scale modes
+  return extractFormattedVelocityPattern(notes, lineLength, keySignature, useScaleMode);
+}
+
+// Build Strudel code for a stream with optional velocity
+export function buildStrudelCode(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false, includeVelocity: boolean = false, sound: string = "triangle"): string {
+  const bracketNotation = buildSequentialBracket(notes, lineLength, keySignature, useScaleMode);
+  const velocityPattern = includeVelocity ? buildSequentialVelocityPattern(notes, lineLength, keySignature, useScaleMode) : undefined;
+  
+  return generateStrudelCode(bracketNotation, keySignature, useScaleMode, sound, velocityPattern, includeVelocity);
 }
 
 // Wrap a sequential string in angle brackets for Strudel

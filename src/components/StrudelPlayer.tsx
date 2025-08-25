@@ -4,8 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Play, Pause, Square, Copy, Download, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { generateStrudelCode } from "@/lib/bracketNotation";
+import {
+  generateStrudelCode,
+  extractFormattedVelocityPattern,
+} from "@/lib/bracketNotation";
 import type { KeySignature } from "@/lib/musicTheory";
+import type { Note } from "@/types/music";
 
 interface StrudelPlayerProps {
   bracketNotation: string;
@@ -18,6 +22,9 @@ interface StrudelPlayerProps {
   onSamplesChanged?: (names: string[]) => void;
   keySignature?: KeySignature;
   useScaleMode?: boolean;
+  notes?: Note[]; // Optional notes for velocity extraction
+  includeVelocity?: boolean; // Whether to include velocity in the code
+  lineLength?: number; // Line length for velocity pattern formatting
 }
 
 // Minimal type surface for the Strudel editor we use
@@ -50,6 +57,9 @@ export function StrudelPlayer({
   onSamplesChanged,
   keySignature,
   useScaleMode = false,
+  notes,
+  includeVelocity = false,
+  lineLength = 8,
 }: StrudelPlayerProps) {
   const { toast } = useToast();
 
@@ -57,16 +67,40 @@ export function StrudelPlayer({
   const strudelCode = useMemo(() => {
     if (codeOverride && codeOverride.trim().length > 0) return codeOverride;
     if (bracketNotation) {
-      return generateStrudelCode(bracketNotation, keySignature, useScaleMode);
+      let velocityPattern: string | undefined;
+      if (includeVelocity && notes && notes.length > 0) {
+        velocityPattern = extractFormattedVelocityPattern(
+          notes,
+          lineLength,
+          keySignature,
+          useScaleMode
+        );
+      }
+      return generateStrudelCode(
+        bracketNotation,
+        keySignature,
+        useScaleMode,
+        "triangle",
+        velocityPattern,
+        includeVelocity
+      );
     }
     return 'note("<c d e f>").s("triangle")';
-  }, [bracketNotation, codeOverride, keySignature, useScaleMode]);
+  }, [
+    bracketNotation,
+    codeOverride,
+    keySignature,
+    useScaleMode,
+    notes,
+    includeVelocity,
+    lineLength,
+  ]);
 
   // Component state
   type Status = "idle" | "loading" | "playing" | "stopped";
   const [status, setStatus] = useState<Status>("idle");
   const isPlaying = status === "playing";
-  const [editorReady, setEditorReady] = useState(false);
+  const [editorReady, setEditorReady] = useState(true);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);

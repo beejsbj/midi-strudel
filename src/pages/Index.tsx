@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { MidiUpload } from "@/components/MidiUpload";
 import { StrudelPlayer } from "@/components/StrudelPlayer";
+import { GlobalDragZone } from "@/components/GlobalDragZone";
+import { HeaderUploadButton } from "@/components/HeaderUploadButton";
 import { Note } from "@/types/music";
 import {
   analyzeMidiFile,
@@ -12,16 +13,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   generateFormattedBracketNotation,
   calculateStatistics,
+  extractFormattedVelocityPattern,
+  generateStrudelCode,
 } from "@/lib/bracketNotation";
 import {
   assignToStreams,
   buildSequentialBracket,
+  buildStrudelCode,
   wrapInAngles,
 } from "@/lib/multiStream";
 import { useToast } from "@/hooks/use-toast";
 import { Music } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const Index = () => {
@@ -45,6 +48,7 @@ const Index = () => {
   const [availableSamples, setAvailableSamples] = useState<string[]>([]);
   const [lineLength, setLineLength] = useState<number>(8);
   const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
+  const [includeVelocity, setIncludeVelocity] = useState<boolean>(false);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -442,7 +446,20 @@ const Index = () => {
           sample =
             tryNames.find((n) => lower.includes(n.toLowerCase())) || sample;
         }
-        lines.push(`$: note(\`${wrapped}\`).sound("${sample}")`);
+        // Generate code with velocity if enabled
+        if (includeVelocity) {
+          const strudelCode = buildStrudelCode(
+            perTrackNotes,
+            lineLength,
+            analysis.calculatedKeySignature,
+            useScaleMode,
+            includeVelocity,
+            sample
+          );
+          lines.push(`$: ${strudelCode}`);
+        } else {
+          lines.push(`$: note(\`${wrapped}\`).sound("${sample}")`);
+        }
       }
       const code = lines.join("\n\n");
       setCodeOverride(code);
@@ -457,9 +474,22 @@ const Index = () => {
       Array.from(byStream.keys())
         .sort((a, b) => a - b)
         .forEach((k) => {
-          const seq = buildSequentialBracket(byStream.get(k) || [], lineLength, analysis.calculatedKeySignature, useScaleMode);
-          const wrapped = wrapInAngles(seq);
-          lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
+          const streamNotes = byStream.get(k) || [];
+          if (includeVelocity) {
+            const strudelCode = buildStrudelCode(
+              streamNotes,
+              lineLength,
+              analysis.calculatedKeySignature,
+              useScaleMode,
+              includeVelocity,
+              "triangle"
+            );
+            lines.push(`$: ${strudelCode}`);
+          } else {
+            const seq = buildSequentialBracket(streamNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+            const wrapped = wrapInAngles(seq);
+            lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
+          }
         });
       const code = lines.join("\n\n");
       setCodeOverride(code);
@@ -467,31 +497,35 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg gradient-musical">
-              <Music className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">MIDI to Bracket Notation</h1>
-              <p className="text-muted-foreground">
-                Convert MIDI files to custom bracket notation for musical timing
-              </p>
+    <GlobalDragZone onFileUpload={handleFileUpload} isProcessing={isProcessing}>
+      <div className="min-h-screen bg-gradient-subtle">
+        {/* Header */}
+        <header className="border-b bg-card/50 backdrop-blur">
+          <div className="container mx-auto px-4 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg gradient-musical">
+                  <Music className="h-6 w-6 text-primary-foreground" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold">MIDI to Bracket Notation</h1>
+                  <p className="text-muted-foreground">
+                    Convert MIDI files to custom bracket notation for musical timing
+                  </p>
+                </div>
+              </div>
+              
+              {/* Header Upload Button */}
+              <HeaderUploadButton
+                onFileUpload={handleFileUpload}
+                isProcessing={isProcessing}
+              />
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 space-y-8">
-        {/* Upload Section */}
-        <MidiUpload
-          onFileUpload={handleFileUpload}
-          isProcessing={isProcessing}
-        />
+        {/* Main Content */}
+        <main className="container mx-auto px-4 py-8 space-y-8">
 
         {/* Demo Example */}
         {notes.length === 0 && !isProcessing && (
@@ -622,6 +656,81 @@ const Index = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Velocity Toggle - Show if notes have velocity data */}
+                {notes.some(note => note.velocity !== undefined) && (
+                  <div className="space-y-2 p-3 border rounded bg-muted/50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium">Include Velocity</div>
+                        <div className="text-xs text-muted-foreground">
+                          Add velocity patterns to the Strudel code (0.0-1.0 values)
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs">Off</label>
+                        <input
+                          type="checkbox"
+                          checked={includeVelocity}
+                          onChange={async (e) => {
+                            setIncludeVelocity(e.target.checked);
+                            if (outMode === "multi") {
+                              await regenerateMultiStream(useInstrumentSamples);
+                            }
+                          }}
+                          className="toggle"
+                        />
+                        <label className="text-xs">On</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Output mode */}
+                <div className="space-y-2 p-3 border rounded bg-muted/50">
+                  <div className="text-sm font-medium">Output mode</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="outmode"
+                        checked={outMode === "single"}
+                        onChange={() => {
+                          setOutMode("single");
+                          setCodeOverride("");
+                        }}
+                      />
+                      <span className="text-sm">Single stream (polyphonic)</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="outmode"
+                        checked={outMode === "multi"}
+                        onChange={async () => {
+                          setOutMode("multi");
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }}
+                      />
+                      <span className="text-sm">Multi stream (monophonic)</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={useInstrumentSamples}
+                        onChange={async (e) => {
+                          setUseInstrumentSamples(e.currentTarget.checked);
+                          if (outMode === "multi") {
+                            await regenerateMultiStream(e.currentTarget.checked);
+                          }
+                        }}
+                      />
+                      <span className="text-sm">
+                        Use instrument samples (per stream)
+                      </span>
+                    </label>
+                  </div>
+                </div>
 
                 {/* CPS Slider */}
                 <div className="space-y-2">
@@ -857,51 +966,6 @@ const Index = () => {
           </aside>
           {/* Main: Strudel Player + options */}
           <section className="lg:col-span-2 space-y-4">
-            <Card className="p-4 flex items-center justify-between">
-              <div className="text-sm">Output mode</div>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="outmode"
-                    defaultChecked
-                    onChange={() => {
-                      setOutMode("single");
-                      setCodeOverride("");
-                    }}
-                  />
-                  <span className="text-sm">Single stream (polyphonic)</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="outmode"
-                    onChange={async () => {
-                      setOutMode("multi");
-                      await regenerateMultiStream(useInstrumentSamples);
-                    }}
-                  />
-                  <span className="text-sm">Multi stream (monophonic)</span>
-                </label>
-
-                {/* Instrument mapping toggle */}
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={useInstrumentSamples}
-                    onChange={async (e) => {
-                      setUseInstrumentSamples(e.currentTarget.checked);
-                      if (outMode === "multi") {
-                        await regenerateMultiStream(e.currentTarget.checked);
-                      }
-                    }}
-                  />
-                  <span className="text-sm">
-                    Use instrument samples (per stream)
-                  </span>
-                </label>
-              </div>
-            </Card>
 
             <StrudelPlayer
               bracketNotation={bracketNotation}
@@ -909,14 +973,18 @@ const Index = () => {
               statistics={statistics}
               keySignature={analysis?.calculatedKeySignature}
               useScaleMode={useScaleMode}
+              notes={notes}
+              includeVelocity={includeVelocity}
+              lineLength={lineLength}
               onSamplesChanged={(names) => {
                 setAvailableSamples(names);
               }}
             />
           </section>
         </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </GlobalDragZone>
   );
 };
 

@@ -2,7 +2,11 @@ import * as Tone from "tone";
 import { Midi } from "@tonejs/midi";
 import { Note, MidiNote, ConversionSettings } from "@/types/music";
 import { midiNumberToNoteName } from "./bracketNotation";
-import { calculateKeySignature, KeySignature, formatKeySignature } from "./musicTheory";
+import {
+  calculateKeySignature,
+  KeySignature,
+  formatKeySignature,
+} from "./musicTheory";
 
 // Default conversion settings
 export const DEFAULT_CPS = 0.5; // Strudel default cycles-per-second
@@ -41,6 +45,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
         const midi = new Midi(arrayBuffer);
+        console.log("midi", midi);
 
         // Extract tempo (first tempo change or default)
         const tempo =
@@ -92,6 +97,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
               name: midiNumberToNoteName(midiNote.midi),
               start: midiNote.time * cyclesPerSecond,
               release: (midiNote.time + midiNote.duration) * cyclesPerSecond,
+              velocity: midiNote.velocity, // Preserve velocity from MIDI
             };
             allNotes.push(note);
           });
@@ -101,7 +107,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
 
         // Calculate key signature if not present in MIDI or if we want to double-check
         const calculatedKeySignature = calculateKeySignature(allNotes);
-        
+
         // Determine effective key signature (prefer MIDI metadata, fallback to calculated)
         let effectiveKeySignature: string | undefined;
         if (keySignatures && keySignatures.length > 0) {
@@ -227,6 +233,7 @@ export async function convertMidiToNotes(
               name: midiNumberToNoteName(midiNote.midi),
               start: qStart,
               release: qStart + snappedDuration,
+              velocity: midiNote.velocity, // Preserve velocity from MIDI
             };
 
             allNotes.push(note);
