@@ -15,7 +15,9 @@ import {
   calculateStatistics,
   extractFormattedVelocityPattern,
   generateStrudelCode,
+  generateDrumBracketNotation,
 } from "@/lib/bracketNotation";
+import { getDrumBank } from "@/lib/drumMapping";
 import {
   assignToStreams,
   buildSequentialBracket,
@@ -25,7 +27,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Music } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const Index = () => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -417,48 +421,81 @@ const Index = () => {
           ? selectedTracks
           : analysis.trackInfo.map((_, i) => i);
       const lines: string[] = [];
+      let drumTrackCount = 0;
+      
       for (const idx of tracks) {
+        const trackInfo = analysis.trackInfo[idx];
         const perTrackNotes = await convertMidiToNotes(uploadedFile, {
           ...defaultSettings,
           cyclesPerSecond: currentCps,
           selectedTracks: [idx],
         });
-        const seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
-        const wrapped = wrapInAngles(seq);
-        const instrument = analysis.trackInfo[idx]?.instrument;
-        // Try to map to a sample that actually exists
-        let sample = mapInstrumentToSample(instrument);
-        if (availableSamples.length > 0) {
-          const lower = availableSamples.map((s) => s.toLowerCase());
-          const tryNames = [
-            sample,
-            "bd",
-            "sd",
-            "hh",
-            "piano",
-            "bass",
-            "organ",
-            "guitar",
-            "strings",
-            "sawtooth",
-            "triangle",
-          ];
-          sample =
-            tryNames.find((n) => lower.includes(n.toLowerCase())) || sample;
-        }
-        // Generate code with velocity if enabled
-        if (includeVelocity) {
-          const strudelCode = buildStrudelCode(
-            perTrackNotes,
-            lineLength,
-            analysis.calculatedKeySignature,
-            useScaleMode,
-            includeVelocity,
-            sample
+        
+        if (trackInfo?.isPercussion) {
+          // Handle percussion track
+          const drumNotation = generateDrumBracketNotation(perTrackNotes);
+          const wrapped = wrapInAngles(drumNotation);
+          const drumBank = getDrumBank(
+            trackInfo.name || trackInfo.instrument || '', 
+            drumTrackCount
           );
-          lines.push(`$: ${strudelCode}`);
+          
+          let drumCode = `s(\`${wrapped}\`)`;
+          if (drumBank) {
+            drumCode += `.bank("${drumBank}")`;
+          }
+          
+          // Add velocity if enabled
+          if (includeVelocity) {
+            const velocityPattern = extractFormattedVelocityPattern(
+              perTrackNotes, lineLength, undefined, false
+            );
+            if (velocityPattern && velocityPattern.trim()) {
+              drumCode += `.velocity(\`<${velocityPattern}>\`)`;
+            }
+          }
+          
+          lines.push(`$: ${drumCode}`);
+          drumTrackCount++;
         } else {
-          lines.push(`$: note(\`${wrapped}\`).sound("${sample}")`);
+          // Handle pitched instrument track (existing logic)
+          const seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+          const wrapped = wrapInAngles(seq);
+          const instrument = trackInfo?.instrument;
+          // Try to map to a sample that actually exists
+          let sample = mapInstrumentToSample(instrument);
+          if (availableSamples.length > 0) {
+            const lower = availableSamples.map((s) => s.toLowerCase());
+            const tryNames = [
+              sample,
+              "bd",
+              "sd",
+              "hh",
+              "piano",
+              "bass",
+              "organ",
+              "guitar",
+              "strings",
+              "sawtooth",
+              "triangle",
+            ];
+            sample =
+              tryNames.find((n) => lower.includes(n.toLowerCase())) || sample;
+          }
+          // Generate code with velocity if enabled
+          if (includeVelocity) {
+            const strudelCode = buildStrudelCode(
+              perTrackNotes,
+              lineLength,
+              analysis.calculatedKeySignature,
+              useScaleMode,
+              includeVelocity,
+              sample
+            );
+            lines.push(`$: ${strudelCode}`);
+          } else {
+            lines.push(`$: note(\`${wrapped}\`).sound("${sample}")`);
+          }
         }
       }
       const code = lines.join("\n\n");
@@ -614,122 +651,129 @@ const Index = () => {
                   </div>
                 </div>
 
-                {/* Scale Mode Toggle - Only show if key signature is available */}
+                {/* Notation Mode - Only show if key signature is available */}
                 {analysis.effectiveKeySignature && (
-                  <div className="space-y-2 p-3 border rounded bg-muted/50">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium">Notation Mode</div>
-                        <div className="text-xs text-muted-foreground">
-                          Scale mode uses degrees (0, 1, 2...) instead of note names
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs">Raw Notes</label>
-                        <input
-                          type="checkbox"
-                          checked={useScaleMode}
-                          onChange={async (e) => {
-                            setUseScaleMode(e.target.checked);
-                            if (!notes.length) return;
-                            setIsProcessing(true);
-                            try {
-                              const notation = generateFormattedBracketNotation(
-                                notes, 
-                                lineLength, 
-                                analysis.calculatedKeySignature, 
-                                e.target.checked
-                              );
-                              setBracketNotation(notation);
-                              
-                              if (outMode === "multi") {
-                                await regenerateMultiStream(useInstrumentSamples);
-                              }
-                            } finally {
-                              setIsProcessing(false);
-                            }
-                          }}
-                          className="toggle"
-                        />
-                        <label className="text-xs">Scale Degrees</label>
-                      </div>
+                  <div className="space-y-3 p-4 border rounded">
+                    <div>
+                      <Label className="text-sm font-medium">Notation Mode</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Choose between note names (C4, D4) or scale degrees (0, 1, 2)
+                      </p>
                     </div>
-                  </div>
-                )}
-
-                {/* Velocity Toggle - Show if notes have velocity data */}
-                {notes.some(note => note.velocity !== undefined) && (
-                  <div className="space-y-2 p-3 border rounded bg-muted/50">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium">Include Velocity</div>
-                        <div className="text-xs text-muted-foreground">
-                          Add velocity patterns to the Strudel code (0.0-1.0 values)
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs">Off</label>
-                        <input
-                          type="checkbox"
-                          checked={includeVelocity}
-                          onChange={async (e) => {
-                            setIncludeVelocity(e.target.checked);
+                    <ToggleGroup 
+                      type="single" 
+                      value={useScaleMode ? "scale" : "notes"}
+                      onValueChange={async (value) => {
+                        if (value) {
+                          const newUseScaleMode = value === "scale";
+                          setUseScaleMode(newUseScaleMode);
+                          if (!notes.length) return;
+                          setIsProcessing(true);
+                          try {
+                            const notation = generateFormattedBracketNotation(
+                              notes, 
+                              lineLength, 
+                              analysis.calculatedKeySignature, 
+                              newUseScaleMode
+                            );
+                            setBracketNotation(notation);
+                            
                             if (outMode === "multi") {
                               await regenerateMultiStream(useInstrumentSamples);
                             }
-                          }}
-                          className="toggle"
-                        />
-                        <label className="text-xs">On</label>
+                          } finally {
+                            setIsProcessing(false);
+                          }
+                        }
+                      }}
+                      className="grid grid-cols-2 w-full"
+                    >
+                      <ToggleGroupItem value="notes" className="text-xs">
+                        Raw Notes
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="scale" className="text-xs">
+                        Scale Degrees  
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                )}
+
+                {/* Velocity Switch - Show if notes have velocity data */}
+                {notes.some(note => note.velocity !== undefined) && (
+                  <div className="space-y-3 p-4 border rounded">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Include Velocity</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Add velocity patterns to the Strudel code (0.0-1.0 values)
+                        </p>
                       </div>
+                      <Switch
+                        id="include-velocity"
+                        checked={includeVelocity}
+                        onCheckedChange={async (checked) => {
+                          setIncludeVelocity(checked);
+                          if (outMode === "multi") {
+                            await regenerateMultiStream(useInstrumentSamples);
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 )}
 
-                {/* Output mode */}
-                <div className="space-y-2 p-3 border rounded bg-muted/50">
-                  <div className="text-sm font-medium">Output mode</div>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="outmode"
-                        checked={outMode === "single"}
-                        onChange={() => {
-                          setOutMode("single");
-                          setCodeOverride("");
-                        }}
-                      />
-                      <span className="text-sm">Single stream (polyphonic)</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="outmode"
-                        checked={outMode === "multi"}
-                        onChange={async () => {
-                          setOutMode("multi");
-                          await regenerateMultiStream(useInstrumentSamples);
-                        }}
-                      />
-                      <span className="text-sm">Multi stream (monophonic)</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={useInstrumentSamples}
-                        onChange={async (e) => {
-                          setUseInstrumentSamples(e.currentTarget.checked);
-                          if (outMode === "multi") {
-                            await regenerateMultiStream(e.currentTarget.checked);
-                          }
-                        }}
-                      />
-                      <span className="text-sm">
-                        Use instrument samples (per stream)
-                      </span>
-                    </label>
+                {/* Output Mode */}
+                <div className="space-y-3 p-4 border rounded">
+                  <div>
+                    <Label className="text-sm font-medium">Output Mode</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Choose between single polyphonic stream or multiple monophonic streams
+                    </p>
                   </div>
+                  <ToggleGroup 
+                    type="single" 
+                    value={outMode}
+                    onValueChange={async (value: "single" | "multi") => {
+                      if (value) {
+                        setOutMode(value);
+                        if (value === "single") {
+                          setCodeOverride("");
+                        } else {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }
+                      }
+                    }}
+                    className="grid grid-cols-2 w-full"
+                  >
+                    <ToggleGroupItem value="single" className="text-xs">
+                      Single Stream
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="multi" className="text-xs">
+                      Multi Stream
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  
+                  {/* Instrument Samples Switch - Only show when multi-stream is selected */}
+                  {outMode === "multi" && (
+                    <div className="mt-4 pt-3 border-t">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <Label className="text-sm font-medium">Use Instrument Samples</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Map each track to its detected instrument sound (including drums)
+                          </p>
+                        </div>
+                        <Switch
+                          id="instrument-samples"
+                          checked={useInstrumentSamples}
+                          onCheckedChange={async (checked) => {
+                            setUseInstrumentSamples(checked);
+                            await regenerateMultiStream(checked);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* CPS Slider */}
@@ -814,124 +858,91 @@ const Index = () => {
                   </div>
                 </div>
 
-                {/* Timing Mode Radio */}
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Timing mode</div>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="timingMode"
-                        defaultChecked
-                        onChange={async () => {
-                          // Raw: cyclesPerSecond = 1
-                          if (!uploadedFile) return;
-                          setIsProcessing(true);
-                          try {
-                            setCurrentCps(1);
-                            const rawNotes = await convertMidiToNotes(
-                              uploadedFile,
-                              {
-                                ...defaultSettings,
-                                cyclesPerSecond: 1,
-                                selectedTracks,
-                              }
-                            );
-                            const notation =
-                              generateFormattedBracketNotation(rawNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
-                            const stats = calculateStatistics(
-                              rawNotes,
-                              notation
-                            );
-
-                            setNotes(rawNotes);
-                            setBracketNotation(notation);
-                            setStatistics(stats);
-
-                            if (outMode === "multi") {
-                              await regenerateMultiStream(useInstrumentSamples);
-                            }
-                          } finally {
-                            setIsProcessing(false);
-                          }
-                        }}
-                      />
-                      <span className="text-sm">
-                        Raw (seconds → cycles directly, cps = 1)
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="timingMode"
-                        onChange={async () => {
-                          // Normalize to Strudel default: cps = 0.5
-                          if (!uploadedFile) return;
-                          setIsProcessing(true);
-                          try {
-                            setCurrentCps(0.5);
-                            const normNotes = await convertMidiToNotes(
-                              uploadedFile,
-                              {
-                                ...defaultSettings,
-                                cyclesPerSecond: 0.5,
-                                selectedTracks,
-                              }
-                            );
-                            const notation =
-                              generateFormattedBracketNotation(normNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
-                            const stats = calculateStatistics(
-                              normNotes,
-                              notation
-                            );
-
-                            setNotes(normNotes);
-                            setBracketNotation(notation);
-                            setStatistics(stats);
-
-                            if (outMode === "multi") {
-                              await regenerateMultiStream(useInstrumentSamples);
-                            }
-                          } finally {
-                            setIsProcessing(false);
-                          }
-                        }}
-                      />
-                      <span className="text-sm">
-                        Normalize to Strudel default (cps = 0.5)
-                      </span>
-                    </label>
-
-                    {/* Removed quantize mode per feedback */}
+                {/* Timing Mode */}
+                <div className="space-y-3 p-4 border rounded">
+                  <div>
+                    <Label className="text-sm font-medium">Timing Mode</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Choose between raw seconds or normalized Strudel timing
+                    </p>
                   </div>
+                  <ToggleGroup 
+                    type="single" 
+                    value={currentCps === 1 ? "raw" : "normalized"}
+                    onValueChange={async (value) => {
+                      if (!value || !uploadedFile) return;
+                      setIsProcessing(true);
+                      try {
+                        const newCps = value === "raw" ? 1 : 0.5;
+                        setCurrentCps(newCps);
+                        const newNotes = await convertMidiToNotes(
+                          uploadedFile,
+                          {
+                            ...defaultSettings,
+                            cyclesPerSecond: newCps,
+                            selectedTracks,
+                          }
+                        );
+                        const notation = generateFormattedBracketNotation(
+                          newNotes, 
+                          lineLength, 
+                          analysis?.calculatedKeySignature, 
+                          useScaleMode
+                        );
+                        const stats = calculateStatistics(newNotes, notation);
+
+                        setNotes(newNotes);
+                        setBracketNotation(notation);
+                        setStatistics(stats);
+
+                        if (outMode === "multi") {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                    className="grid grid-cols-2 w-full"
+                  >
+                    <ToggleGroupItem value="raw" className="text-xs">
+                      Raw (cps = 1)
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="normalized" className="text-xs">
+                      Normalized (cps = 0.5)
+                    </ToggleGroupItem>
+                  </ToggleGroup>
                 </div>
 
                 {/* Instruments / Tracks */}
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">
-                    Instruments / Tracks
+                <div className="space-y-3 p-4 border rounded">
+                  <div>
+                    <Label className="text-sm font-medium">Track Selection</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enable or disable individual tracks for processing
+                    </p>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {analysis.trackInfo.map((t, idx) => (
-                      <label
+                      <div
                         key={idx}
-                        className="flex items-center gap-3 p-3 border rounded"
+                        className="flex items-center justify-between p-3 border rounded"
                       >
-                        <Checkbox
-                          checked={selectedTracks.includes(idx)}
-                          onCheckedChange={() => toggleTrack(idx)}
-                          aria-label={`Select track ${idx + 1}`}
-                        />
-                        <div className="flex-1">
+                        <div className="flex-1 mr-3">
                           <div className="font-medium">
                             Track {idx + 1}: {t.name || "Untitled"}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             Instrument: {t.instrument} • Notes: {t.noteCount}
+                            {t.isPercussion && " • Percussion"}
                           </div>
                         </div>
-                      </label>
+                        <Switch
+                          id={`track-${idx}`}
+                          checked={selectedTracks.includes(idx)}
+                          onCheckedChange={() => toggleTrack(idx)}
+                          aria-label={`Toggle track ${idx + 1}`}
+                        />
+                      </div>
                     ))}
                   </div>
                 </div>

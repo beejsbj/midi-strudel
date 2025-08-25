@@ -30,7 +30,13 @@ export interface MidiAnalysis {
   notes: Note[];
   tempo: number;
   timeSignature: { numerator: number; denominator: number };
-  trackInfo: Array<{ name: string; instrument: string; noteCount: number }>;
+  trackInfo: Array<{ 
+    name: string; 
+    instrument: string; 
+    noteCount: number;
+    isPercussion?: boolean;  // Whether this track is percussion
+    channel?: number;        // MIDI channel number
+  }>;
   keySignatures?: string[]; // extracted key signatures if present in MIDI header
   calculatedKeySignature?: KeySignature; // calculated key signature from note analysis
   effectiveKeySignature?: string; // the key signature to use (either from MIDI or calculated)
@@ -65,6 +71,8 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
           name: track.name || `Track ${index + 1}`,
           instrument: track.instrument?.name || "Unknown",
           noteCount: track.notes.length,
+          isPercussion: track.instrument?.percussion || track.channel === 9,
+          channel: track.channel,
         }));
 
         // Extract key signature events if available
@@ -98,6 +106,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
               start: midiNote.time * cyclesPerSecond,
               release: (midiNote.time + midiNote.duration) * cyclesPerSecond,
               velocity: midiNote.velocity, // Preserve velocity from MIDI
+              midiNumber: midiNote.midi, // Preserve MIDI number for drum mapping
             };
             allNotes.push(note);
           });
@@ -234,6 +243,7 @@ export async function convertMidiToNotes(
               start: qStart,
               release: qStart + snappedDuration,
               velocity: midiNote.velocity, // Preserve velocity from MIDI
+              midiNumber: midiNote.midi, // Preserve MIDI number for drum mapping
             };
 
             allNotes.push(note);

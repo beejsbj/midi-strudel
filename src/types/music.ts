@@ -12,6 +12,7 @@ export interface Note {
   start: number;   // Start time in cycles (Strudel units)
   release: number; // Release time in cycles (Strudel units)
   velocity?: number; // Optional velocity (0-1) from MIDI
+  midiNumber?: number; // Optional MIDI note number (0-127) for drum mapping
 }
 
 // MIDI Note interface for conversion

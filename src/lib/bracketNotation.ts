@@ -1,5 +1,6 @@
 import { Note, WHOLE, HALF, QUARTER, EIGHTH, SIXTEENTH, THIRTY_SECOND } from '@/types/music';
 import { KeySignature, noteToScaleDegree, formatScaleForStrudel } from './musicTheory';
+import { midiToDrumToken } from './drumMapping';
 
 // Convert MIDI number to note name
 export function midiNumberToNoteName(midi: number): string {
@@ -126,6 +127,43 @@ export function generateBracketNotation(notes: Note[]): string {
   return parts.join(' ');
 }
 
+// Generate drum bracket notation using MIDI numbers to map to drum tokens
+export function generateDrumBracketNotation(notes: Note[]): string {
+  if (notes.length === 0) return '';
+  
+  const groups = groupOverlappingNotes(notes);
+  const sortedGroups = groups.sort((a, b) => 
+    Math.min(...a.map(n => n.start)) - Math.min(...b.map(n => n.start))
+  );
+  
+  const parts: string[] = [];
+  let lastEnd = 0;
+  
+  for (const group of sortedGroups) {
+    const groupStart = Math.min(...group.map(n => n.start));
+    const groupEnd = Math.max(...group.map(n => n.release));
+    
+    // Convert notes to drum tokens using midiNumber
+    const drumGroup = group.map(note => ({
+      ...note,
+      name: note.midiNumber ? midiToDrumToken(note.midiNumber) : note.name
+    }));
+    
+    const groupStr = generateGroupNotation(drumGroup);
+    if (!groupStr || !groupStr.trim()) continue;
+    
+    const restDuration = groupStart - lastEnd;
+    if (!isZeroishDuration(restDuration)) {
+      parts.push(`~${formatDuration(restDuration)}`);
+    }
+    
+    parts.push(groupStr);
+    lastEnd = groupEnd;
+  }
+  
+  return parts.join(' ');
+}
+
 // Format bracket notation with line breaks
 export function formatBracketNotation(bracketNotation: string, lineLength: number = 8): string {
   if (!bracketNotation.trim()) return '';
@@ -162,6 +200,13 @@ export function formatBracketNotation(bracketNotation: string, lineLength: numbe
   }
   
   return lines.join('\n');
+}
+
+// Format drum bracket notation with line breaks (same logic as regular bracket notation)
+export function formatDrumBracketNotation(bracketNotation: string, lineLength: number = 8): string {
+  // Use the same formatting logic as formatBracketNotation
+  // since drum tokens follow the same structure as note names
+  return formatBracketNotation(bracketNotation, lineLength);
 }
 
 // Convert notes to scale degree representation
