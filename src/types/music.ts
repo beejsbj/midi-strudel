@@ -11,6 +11,7 @@ export interface Note {
   name: string;    // e.g., "C4", "Eb3", "F#5"
   start: number;   // Start time in cycles (Strudel units)
   release: number; // Release time in cycles (Strudel units)
+  velocity?: number; // Optional velocity (0-1) from MIDI
 }
 
 // MIDI Note interface for conversion

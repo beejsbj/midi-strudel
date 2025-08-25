@@ -22,6 +22,7 @@ export interface KeySignature {
   key: string; // e.g., "C", "G", "F#"
   mode: 'major' | 'minor';
   confidence: number; // 0-1, how confident we are in this detection
+  rootOctave?: number; // The most common octave for the root note
 }
 
 /**
@@ -38,6 +39,40 @@ function getNoteName(fullNoteName: string): string {
 function getPitchClass(noteName: string): number {
   const noteOnly = getNoteName(noteName);
   return NOTE_TO_MIDI[noteOnly] ?? 0;
+}
+
+/**
+ * Calculate the most common octave for a given pitch class in the note set
+ */
+function calculateRootOctave(notes: Note[], rootPitchClass: number): number {
+  const rootNotes = notes.filter(note => getPitchClass(note.name) === rootPitchClass);
+  
+  if (rootNotes.length === 0) {
+    // Fallback: find the median octave of all notes
+    const allOctaves = notes.map(note => parseInt(note.name.match(/\d+$/)?.[0] || '4', 10));
+    allOctaves.sort((a, b) => a - b);
+    return allOctaves[Math.floor(allOctaves.length / 2)] || 4;
+  }
+  
+  // Count occurrences of each octave for the root note
+  const octaveCounts: { [octave: number]: number } = {};
+  rootNotes.forEach(note => {
+    const octave = parseInt(note.name.match(/\d+$/)?.[0] || '4', 10);
+    const duration = note.release - note.start;
+    octaveCounts[octave] = (octaveCounts[octave] || 0) + duration;
+  });
+  
+  // Find the octave with the highest weighted count
+  let bestOctave = 4;
+  let bestWeight = 0;
+  for (const [octave, weight] of Object.entries(octaveCounts)) {
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      bestOctave = parseInt(octave);
+    }
+  }
+  
+  return bestOctave;
 }
 
 /**
@@ -100,10 +135,15 @@ export function calculateKeySignature(notes: Note[]): KeySignature | null {
     return null;
   }
 
+  // Calculate the most appropriate root octave from the actual notes
+  const rootPitchClass = getPitchClass(bestKey);
+  const rootOctave = calculateRootOctave(notes, rootPitchClass);
+
   return {
     key: bestKey,
     mode: bestMode,
-    confidence
+    confidence,
+    rootOctave // Add the calculated root octave
   };
 }
 
@@ -173,8 +213,8 @@ export function noteToScaleDegree(noteName: string, keySignature: KeySignature):
     }
   }
   
-  // Calculate octave offset based on the actual note octave and root octave
-  const rootOctave = 4; // Assume C4 as default root octave
+  // Calculate octave offset based on the actual note octave and calculated root octave
+  const rootOctave = keySignature.rootOctave ?? 4; // Use calculated root octave, fallback to 4
   let octaveOffset = octave - rootOctave;
   
   // Adjust for scale degree position within octave
@@ -200,7 +240,8 @@ export function formatKeySignature(keySignature: KeySignature): string {
  * Format key signature for Strudel scale function
  */
 export function formatScaleForStrudel(keySignature: KeySignature): string {
-  const rootNote = `${keySignature.key}4`; // Default to octave 4
+  const rootOctave = keySignature.rootOctave ?? 4; // Use calculated root octave, fallback to 4
+  const rootNote = `${keySignature.key}${rootOctave}`;
   const scaleType = keySignature.mode === 'major' ? 'major' : 'minor';
   return `${rootNote}:${scaleType}`;
 }

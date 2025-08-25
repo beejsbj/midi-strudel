@@ -23,6 +23,13 @@ function formatDuration(duration: number): string {
   return `@${rounded}`;
 }
 
+// Treat durations that are effectively zero (<= 0 or round to 0 at 4dp) as zero
+function isZeroishDuration(duration: number): boolean {
+  if (duration <= 0) return true;
+  const rounded = Math.round(duration * 10000) / 10000;
+  return rounded === 0;
+}
+
 // Check if notes overlap (at least 1 unit simultaneous)
 function notesOverlap(note1: Note, note2: Note): boolean {
   return Math.max(note1.start, note2.start) < Math.min(note1.release, note2.release);
@@ -57,6 +64,7 @@ function generateGroupNotation(group: Note[]): string {
   if (group.length === 1) {
     const note = group[0];
     const duration = note.release - note.start;
+    if (isZeroishDuration(duration)) return '';
     return `${note.name}${formatDuration(duration)}`;
   }
   
@@ -64,22 +72,25 @@ function generateGroupNotation(group: Note[]): string {
   const earliestStart = Math.min(...group.map(n => n.start));
   const latestRelease = Math.max(...group.map(n => n.release));
   const bracketLength = latestRelease - earliestStart;
+  if (isZeroishDuration(bracketLength)) return '';
   
   const entries: string[] = [];
   
   for (const note of group) {
     const offset = note.start - earliestStart;
     const duration = note.release - note.start;
+    if (isZeroishDuration(duration)) continue;
     const pad = bracketLength - offset - duration;
     
     let entry = '';
-    if (offset > 0) entry += `~${formatDuration(offset)} `;
+    if (!isZeroishDuration(offset)) entry += `~${formatDuration(offset)} `;
     entry += `${note.name}${formatDuration(duration)}`;
-    if (pad > 0) entry += ` ~${formatDuration(pad)}`;
+    if (!isZeroishDuration(pad)) entry += ` ~${formatDuration(pad)}`;
     
     entries.push(entry);
   }
   
+  if (entries.length === 0) return '';
   return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
 }
 
@@ -96,14 +107,19 @@ export function generateBracketNotation(notes: Note[]): string {
   for (const group of sortedGroups) {
     const groupStart = Math.min(...group.map(n => n.start));
     const groupEnd = Math.max(...group.map(n => n.release));
+
+    const groupStr = generateGroupNotation(group);
+    if (!groupStr || !groupStr.trim()) {
+      continue;
+    }
     
-    // Add rest if there's a gap
-    if (groupStart > lastEnd) {
-      const restDuration = groupStart - lastEnd;
+    // Add rest if there's a gap before this non-empty group
+    const restDuration = groupStart - lastEnd;
+    if (!isZeroishDuration(restDuration)) {
       parts.push(`~${formatDuration(restDuration)}`);
     }
     
-    parts.push(generateGroupNotation(group));
+    parts.push(groupStr);
     lastEnd = groupEnd;
   }
   
@@ -174,14 +190,19 @@ function generateScaleDegreeNotation(scaleDegrees: Array<{ degree: number; start
   for (const group of sortedGroups) {
     const groupStart = Math.min(...group.map(n => n.start));
     const groupEnd = Math.max(...group.map(n => n.release));
+
+    const groupStr = generateScaleDegreeGroupNotation(group);
+    if (!groupStr || !groupStr.trim()) {
+      continue;
+    }
     
     // Add rest if there's a gap
-    if (groupStart > lastEnd) {
-      const restDuration = groupStart - lastEnd;
+    const restDuration = groupStart - lastEnd;
+    if (!isZeroishDuration(restDuration)) {
       parts.push(`~${formatDuration(restDuration)}`);
     }
     
-    parts.push(generateScaleDegreeGroupNotation(group));
+    parts.push(groupStr);
     lastEnd = groupEnd;
   }
   
@@ -222,6 +243,7 @@ function generateScaleDegreeGroupNotation(group: Array<{ degree: number; start: 
   if (group.length === 1) {
     const degree = group[0];
     const duration = degree.release - degree.start;
+    if (isZeroishDuration(duration)) return '';
     return `${degree.degree}${formatDuration(duration)}`;
   }
   
@@ -229,22 +251,25 @@ function generateScaleDegreeGroupNotation(group: Array<{ degree: number; start: 
   const earliestStart = Math.min(...group.map(n => n.start));
   const latestRelease = Math.max(...group.map(n => n.release));
   const bracketLength = latestRelease - earliestStart;
+  if (isZeroishDuration(bracketLength)) return '';
   
   const entries: string[] = [];
   
   for (const degree of group) {
     const offset = degree.start - earliestStart;
     const duration = degree.release - degree.start;
+    if (isZeroishDuration(duration)) continue;
     const pad = bracketLength - offset - duration;
     
     let entry = '';
-    if (offset > 0) entry += `~${formatDuration(offset)} `;
+    if (!isZeroishDuration(offset)) entry += `~${formatDuration(offset)} `;
     entry += `${degree.degree}${formatDuration(duration)}`;
-    if (pad > 0) entry += ` ~${formatDuration(pad)}`;
+    if (!isZeroishDuration(pad)) entry += ` ~${formatDuration(pad)}`;
     
     entries.push(entry);
   }
   
+  if (entries.length === 0) return '';
   return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
 }
 
@@ -261,13 +286,239 @@ export function generateFormattedBracketNotation(notes: Note[], lineLength: numb
 }
 
 // Generate Strudel code with appropriate syntax
-export function generateStrudelCode(bracketNotation: string, keySignature?: KeySignature, useScaleMode: boolean = false, sound: string = "triangle"): string {
+export function generateStrudelCode(
+  bracketNotation: string, 
+  keySignature?: KeySignature, 
+  useScaleMode: boolean = false, 
+  sound: string = "triangle",
+  velocityPattern?: string,
+  includeVelocity: boolean = false
+): string {
+  let baseCode: string;
+  
   if (useScaleMode && keySignature) {
     const scaleString = formatScaleForStrudel(keySignature);
-    return `n(\`<${bracketNotation}>\`).scale("${scaleString}").sound("${sound}")`;
+    baseCode = `n(\`<${bracketNotation}>\`).scale("${scaleString}").sound("${sound}")`;
   } else {
-    return `note(\`<${bracketNotation}>\`).sound("${sound}")`;
+    baseCode = `note(\`<${bracketNotation}>\`).sound("${sound}")`;
   }
+  
+  // Add velocity if requested and available
+  if (includeVelocity && velocityPattern && velocityPattern.trim()) {
+    baseCode += `.velocity(\`<${velocityPattern}>\`)`;
+  }
+  
+  return baseCode;
+}
+
+/**
+ * Extract velocity pattern from notes that matches the note structure
+ */
+export function extractVelocityPattern(notes: Note[]): string {
+  if (notes.length === 0) return '';
+  
+  const groups = groupOverlappingNotes(notes);
+  const sortedGroups = groups.sort((a, b) => Math.min(...a.map(n => n.start)) - Math.min(...b.map(n => n.start)));
+  
+  const parts: string[] = [];
+  let lastEnd = 0;
+  
+  for (const group of sortedGroups) {
+    const groupStart = Math.min(...group.map(n => n.start));
+    const groupEnd = Math.max(...group.map(n => n.release));
+
+    const groupStr = generateVelocityGroupNotation(group);
+    if (!groupStr || !groupStr.trim()) {
+      continue;
+    }
+    
+    // Add rest if there's a gap
+    const restDuration = groupStart - lastEnd;
+    if (!isZeroishDuration(restDuration)) {
+      parts.push(`~${formatDuration(restDuration)}`);
+    }
+    
+    parts.push(groupStr);
+    lastEnd = groupEnd;
+  }
+  
+  return parts.join(' ');
+}
+
+/**
+ * Generate velocity notation for a group of notes
+ */
+function generateVelocityGroupNotation(group: Note[]): string {
+  if (group.length === 1) {
+    const note = group[0];
+    const duration = note.release - note.start;
+    if (isZeroishDuration(duration)) return '';
+    const velocity = note.velocity ?? 0.7; // Default velocity if not specified
+    return `${velocity.toFixed(2)}${formatDuration(duration)}`;
+  }
+  
+  // Multiple overlapping notes - create bracket notation for velocities
+  const earliestStart = Math.min(...group.map(n => n.start));
+  const latestRelease = Math.max(...group.map(n => n.release));
+  const bracketLength = latestRelease - earliestStart;
+  if (isZeroishDuration(bracketLength)) return '';
+  
+  const entries: string[] = [];
+  
+  for (const note of group) {
+    const offset = note.start - earliestStart;
+    const duration = note.release - note.start;
+    if (isZeroishDuration(duration)) continue;
+    const pad = bracketLength - offset - duration;
+    const velocity = note.velocity ?? 0.7;
+    
+    let entry = '';
+    if (!isZeroishDuration(offset)) entry += `~${formatDuration(offset)} `;
+    entry += `${velocity.toFixed(2)}${formatDuration(duration)}`;
+    if (!isZeroishDuration(pad)) entry += ` ~${formatDuration(pad)}`;
+    
+    entries.push(entry);
+  }
+  
+  if (entries.length === 0) return '';
+  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+}
+
+/**
+ * Extract velocity pattern that matches note structure, handling both regular and scale degree modes
+ */
+export function extractFormattedVelocityPattern(
+  notes: Note[], 
+  lineLength: number = 8, 
+  keySignature?: KeySignature, 
+  useScaleMode: boolean = false
+): string {
+  if (useScaleMode && keySignature) {
+    const scaleDegrees = convertNotesToScaleDegrees(notes, keySignature);
+    const velocityPattern = extractScaleDegreeVelocityPattern(scaleDegrees, notes);
+    return formatVelocityPattern(velocityPattern, lineLength);
+  } else {
+    const velocityPattern = extractVelocityPattern(notes);
+    return formatVelocityPattern(velocityPattern, lineLength);
+  }
+}
+
+/**
+ * Extract velocity pattern for scale degrees
+ */
+function extractScaleDegreeVelocityPattern(scaleDegrees: Array<{ degree: number; start: number; release: number }>, notes: Note[]): string {
+  if (scaleDegrees.length === 0) return '';
+  
+  // Group overlapping scale degrees (similar logic to note grouping)
+  const groups = groupOverlappingScaleDegrees(scaleDegrees);
+  const sortedGroups = groups.sort((a, b) => Math.min(...a.map(n => n.start)) - Math.min(...b.map(n => n.start)));
+  
+  const parts: string[] = [];
+  let lastEnd = 0;
+  
+  for (const group of sortedGroups) {
+    const groupStart = Math.min(...group.map(n => n.start));
+    const groupEnd = Math.max(...group.map(n => n.release));
+
+    const groupStr = generateScaleDegreeVelocityGroupNotation(group, notes);
+    if (!groupStr || !groupStr.trim()) {
+      continue;
+    }
+    
+    // Add rest if there's a gap
+    const restDuration = groupStart - lastEnd;
+    if (!isZeroishDuration(restDuration)) {
+      parts.push(`~${formatDuration(restDuration)}`);
+    }
+    
+    parts.push(groupStr);
+    lastEnd = groupEnd;
+  }
+  
+  return parts.join(' ');
+}
+
+/**
+ * Generate velocity notation for a group of scale degrees
+ */
+function generateScaleDegreeVelocityGroupNotation(group: Array<{ degree: number; start: number; release: number }>, notes: Note[]): string {
+  if (group.length === 1) {
+    const degree = group[0];
+    const duration = degree.release - degree.start;
+    if (isZeroishDuration(duration)) return '';
+    // Find the corresponding note to get its velocity
+    const correspondingNote = notes.find(n => Math.abs(n.start - degree.start) < 0.001 && Math.abs(n.release - degree.release) < 0.001);
+    const velocity = correspondingNote?.velocity ?? 0.7;
+    return `${velocity.toFixed(2)}${formatDuration(duration)}`;
+  }
+  
+  // Multiple overlapping scale degrees - create bracket notation for velocities
+  const earliestStart = Math.min(...group.map(n => n.start));
+  const latestRelease = Math.max(...group.map(n => n.release));
+  const bracketLength = latestRelease - earliestStart;
+  if (isZeroishDuration(bracketLength)) return '';
+  
+  const entries: string[] = [];
+  
+  for (const degree of group) {
+    const offset = degree.start - earliestStart;
+    const duration = degree.release - degree.start;
+    if (isZeroishDuration(duration)) continue;
+    const pad = bracketLength - offset - duration;
+    // Find the corresponding note to get its velocity
+    const correspondingNote = notes.find(n => Math.abs(n.start - degree.start) < 0.001 && Math.abs(n.release - degree.release) < 0.001);
+    const velocity = correspondingNote?.velocity ?? 0.7;
+    
+    let entry = '';
+    if (!isZeroishDuration(offset)) entry += `~${formatDuration(offset)} `;
+    entry += `${velocity.toFixed(2)}${formatDuration(duration)}`;
+    if (!isZeroishDuration(pad)) entry += ` ~${formatDuration(pad)}`;
+    
+    entries.push(entry);
+  }
+  
+  if (entries.length === 0) return '';
+  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+}
+
+/**
+ * Format velocity pattern with line breaks
+ */
+export function formatVelocityPattern(velocityPattern: string, lineLength: number = 8): string {
+  if (!velocityPattern.trim()) return '';
+  
+  const parts = velocityPattern.split(' ').filter(part => part.trim());
+  if (parts.length === 0) return '';
+  
+  const lines: string[] = [];
+  let currentLine: string[] = [];
+  let elementCount = 0;
+  let bracketCount = 0;
+  
+  for (const part of parts) {
+    const isBracket = part.startsWith('[');
+    
+    currentLine.push(part);
+    elementCount++;
+    if (isBracket) bracketCount++;
+    
+    // Break line if we have reached lineLength elements OR 2 brackets
+    const shouldBreak = elementCount >= lineLength || bracketCount >= 2;
+    
+    if (shouldBreak) {
+      lines.push(currentLine.join(' '));
+      currentLine = [];
+      elementCount = 0;
+      bracketCount = 0;
+    }
+  }
+  
+  // Add any remaining elements
+  if (currentLine.length > 0) {
+    lines.push(currentLine.join(' '));
+  }
+  
+  return lines.join('\n');
 }
 
 // Calculate statistics for a set of notes
