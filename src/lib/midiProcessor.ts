@@ -25,21 +25,35 @@ export const defaultSettings: ConversionSettings = {
   velocityThreshold: 0.1,
 };
 
+// Calculate cycles per second based on BPM and time signature
+// One cycle = one bar/measure, so CPS = bars per second
+export function calculateCPS(
+  bpm: number,
+  timeSignature: { numerator: number; denominator: number }
+): number {
+  // bpm = beats per minute
+  // timeSignature.numerator = beats per bar
+  // bars per minute = bpm / timeSignature.numerator
+  // bars per second (CPS) = bars per minute / 60
+  return bpm / 60 / timeSignature.numerator;
+}
+
 // MIDI file analysis result
 export interface MidiAnalysis {
   notes: Note[];
   tempo: number;
   timeSignature: { numerator: number; denominator: number };
-  trackInfo: Array<{ 
-    name: string; 
-    instrument: string; 
+  trackInfo: Array<{
+    name: string;
+    instrument: string;
     noteCount: number;
-    isPercussion?: boolean;  // Whether this track is percussion
-    channel?: number;        // MIDI channel number
+    isPercussion?: boolean; // Whether this track is percussion
+    channel?: number; // MIDI channel number
   }>;
   keySignatures?: string[]; // extracted key signatures if present in MIDI header
   calculatedKeySignature?: KeySignature; // calculated key signature from note analysis
   effectiveKeySignature?: string; // the key signature to use (either from MIDI or calculated)
+  cyclesPerSecond?: number; // calculated CPS based on tempo and time signature
 }
 
 // Analyze MIDI file and extract all information
@@ -95,8 +109,9 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
             return [keyStr, scaleStr].filter(Boolean).join(" ");
           }) || [];
 
-        // Convert to cycles (Strudel timing): 1.0 = one cycle (WHOLE). Default cps = 0.5 (one cycle = 2s)
-        const cyclesPerSecond = DEFAULT_CPS;
+        // Calculate CPS based on tempo and time signature
+        // One cycle = one bar, so notes at @1.7778 will be one bar duration
+        const cyclesPerSecond = calculateCPS(tempo, timeSignature);
         const allNotes: Note[] = [];
 
         midi.tracks.forEach((track) => {
@@ -113,6 +128,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
         });
 
         allNotes.sort((a, b) => a.start - b.start);
+        console.log("Sorted Notes:", allNotes);
 
         // Calculate key signature if not present in MIDI or if we want to double-check
         const calculatedKeySignature = calculateKeySignature(allNotes);
@@ -133,6 +149,7 @@ export async function analyzeMidiFile(file: File): Promise<MidiAnalysis> {
           keySignatures,
           calculatedKeySignature,
           effectiveKeySignature,
+          cyclesPerSecond,
         });
       } catch (error) {
         reject(
@@ -168,18 +185,24 @@ export async function convertMidiToNotes(
         // Parse MIDI using Tone.js
         const midi = new Midi(arrayBuffer);
 
-        // Extract metadata (not used for timing conversion)
-        const _actualTempo =
+        // Extract actual tempo and time signature from MIDI file
+        const actualTempo =
           midi.header.tempos.length > 0
             ? midi.header.tempos[0].bpm
             : settings.beatsPerMinute;
-        const _actualTimeSignature =
+        const actualTimeSignature =
           midi.header.timeSignatures.length > 0
-            ? midi.header.timeSignatures[0]
+            ? {
+                numerator: midi.header.timeSignatures[0].timeSignature[0],
+                denominator: midi.header.timeSignatures[0].timeSignature[1],
+              }
             : settings.timeSignature;
 
-        // Convert seconds to cycles using cps (default 0.5)
-        const cyclesPerSecond = settings.cyclesPerSecond ?? DEFAULT_CPS;
+        // Calculate CPS from tempo/time signature if not explicitly provided
+        // This allows manual override while defaulting to calculated value
+        const cyclesPerSecond =
+          settings.cyclesPerSecond ??
+          calculateCPS(actualTempo, actualTimeSignature);
 
         const allNotes: Note[] = [];
 
