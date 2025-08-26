@@ -375,6 +375,23 @@ export function StrudelPlayer({
     return editorInstance;
   };
 
+  // Auto-initialize editor when bracket notation is provided (after MIDI upload)
+  useEffect(() => {
+    if (!bracketNotation) return;
+    
+    // Small delay to ensure container is ready
+    const timer = setTimeout(async () => {
+      try {
+        // Initialize editor without audio (safe for autoplay)
+        await ensureEditor({ resumeAudio: false });
+      } catch (e) {
+        console.error("[Strudel] Auto-initialization failed:", e);
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [bracketNotation]);
+
   // Pre-initialize editor on page load without resuming audio (safe under autoplay policy)
   // Wait until the container ref exists to avoid "root not found"
   useEffect(() => {
@@ -595,15 +612,6 @@ export function StrudelPlayer({
           Generated Strudel Code:
         </label>
         <div className="relative min-h-32">
-          {/* Overlay guidance before editor is created */}
-          {!editorReady && status !== "loading" && (
-            <div className="absolute inset-0 w-full h-32 bg-muted rounded flex items-center justify-center z-10">
-              <div className="text-muted-foreground">
-                Click Play to start Strudel
-              </div>
-            </div>
-          )}
-
           {/* Loading overlay only during evaluate */}
           {status === "loading" && (
             <div className="absolute inset-0 w-full h-32 bg-muted rounded flex items-center justify-center z-20">
@@ -614,8 +622,7 @@ export function StrudelPlayer({
           {/* Editor container */}
           <div
             ref={containerRef}
-            className={cn("min-h-32", !editorReady && "opacity-0")}
-            style={{ visibility: editorReady ? "visible" : "hidden" }}
+            className="min-h-32"
           />
         </div>
       </div>

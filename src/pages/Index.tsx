@@ -7,11 +7,14 @@ import {
   analyzeMidiFile,
   convertMidiToNotes,
   defaultSettings,
+  calculateCPS,
+  DEFAULT_CPS,
   type MidiAnalysis,
 } from "@/lib/midiProcessor";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   generateFormattedBracketNotation,
+  generateBarBracketNotation,
   calculateStatistics,
   extractFormattedVelocityPattern,
   generateStrudelCode,
@@ -48,11 +51,16 @@ const Index = () => {
   const [useInstrumentSamples, setUseInstrumentSamples] =
     useState<boolean>(false);
   const [outMode, setOutMode] = useState<"single" | "multi">("single");
-  const [currentCps, setCurrentCps] = useState<number>(0.5);
   const [availableSamples, setAvailableSamples] = useState<string[]>([]);
   const [lineLength, setLineLength] = useState<number>(8);
   const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
   const [includeVelocity, setIncludeVelocity] = useState<boolean>(false);
+  
+  // Timing mode state
+  const [timingMode, setTimingMode] = useState<"auto" | "manual">("auto");
+  const [manualCps, setManualCps] = useState<number>(DEFAULT_CPS);
+  const [currentCps, setCurrentCps] = useState<number>(DEFAULT_CPS);
+  const [useBarSyntax, setUseBarSyntax] = useState<boolean>(false);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -65,6 +73,11 @@ const Index = () => {
       // Select all tracks by default
       const allTracks = res.trackInfo.map((_, idx) => idx);
       setSelectedTracks(allTracks);
+
+      // Calculate CPS based on timing mode
+      const calculatedCps = res.cyclesPerSecond ?? calculateCPS(res.tempo, res.timeSignature);
+      const effectiveCps = timingMode === "auto" ? calculatedCps : manualCps;
+      setCurrentCps(effectiveCps);
 
       // Use analyzed notes initially (cycles)
       const convertedNotes = res.notes;
@@ -458,8 +471,21 @@ const Index = () => {
           lines.push(`$: ${drumCode}`);
           drumTrackCount++;
         } else {
-          // Handle pitched instrument track (existing logic)
-          const seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+          // Handle pitched instrument track
+          let seq: string;
+          if (timingMode === "auto" && useBarSyntax) {
+            // Use bar syntax
+            seq = generateBarBracketNotation(
+              perTrackNotes,
+              lineLength,
+              analysis.timeSignature,
+              analysis.calculatedKeySignature,
+              useScaleMode
+            );
+          } else {
+            // Use regular notation
+            seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+          }
           const wrapped = wrapInAngles(seq);
           const instrument = trackInfo?.instrument;
           // Try to map to a sample that actually exists
@@ -523,7 +549,20 @@ const Index = () => {
             );
             lines.push(`$: ${strudelCode}`);
           } else {
-            const seq = buildSequentialBracket(streamNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+            let seq: string;
+            if (timingMode === "auto" && useBarSyntax) {
+              // Use bar syntax
+              seq = generateBarBracketNotation(
+                streamNotes,
+                lineLength,
+                analysis.timeSignature,
+                analysis.calculatedKeySignature,
+                useScaleMode
+              );
+            } else {
+              // Use regular notation
+              seq = buildSequentialBracket(streamNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+            }
             const wrapped = wrapInAngles(seq);
             lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
           }
@@ -776,105 +815,26 @@ const Index = () => {
                   )}
                 </div>
 
-                {/* CPS Slider */}
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">
-                    Cycles per Second (cps)
-                  </div>
-                  <input
-                    type="range"
-                    min={0.25}
-                    max={2}
-                    step={0.05}
-                    defaultValue={0.5}
-                    onChange={async (e) => {
-                      const cps = parseFloat(e.target.value);
-                      setCurrentCps(cps);
-                      if (!uploadedFile) return;
-                      setIsProcessing(true);
-                      try {
-                        const filteredNotes = await convertMidiToNotes(
-                          uploadedFile,
-                          {
-                            ...defaultSettings,
-                            cyclesPerSecond: cps,
-                            selectedTracks,
-                          }
-                        );
-                        const notation =
-                          generateFormattedBracketNotation(filteredNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
-                        const stats = calculateStatistics(
-                          filteredNotes,
-                          notation
-                        );
-
-                        setNotes(filteredNotes);
-                        setBracketNotation(notation);
-                        setStatistics(stats);
-
-                        if (outMode === "multi") {
-                          await regenerateMultiStream(useInstrumentSamples);
-                        }
-                      } finally {
-                        setIsProcessing(false);
-                      }
-                    }}
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    Default cps is 0.5 (1 cycle = 2s)
-                  </div>
-                </div>
-
-                {/* Line Length Slider */}
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">
-                    Notes per line ({lineLength})
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={20}
-                    step={1}
-                    value={lineLength}
-                    onChange={async (e) => {
-                      const newLineLength = parseInt(e.target.value);
-                      setLineLength(newLineLength);
-                      if (!notes.length) return;
-                      setIsProcessing(true);
-                      try {
-                        const notation = generateFormattedBracketNotation(notes, newLineLength, analysis?.calculatedKeySignature, useScaleMode);
-                        setBracketNotation(notation);
-                        
-                        if (outMode === "multi") {
-                          await regenerateMultiStream(useInstrumentSamples);
-                        }
-                      } finally {
-                        setIsProcessing(false);
-                      }
-                    }}
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    Control how many notes appear per line in bracket notation
-                  </div>
-                </div>
-
                 {/* Timing Mode */}
                 <div className="space-y-3 p-4 border rounded">
                   <div>
                     <Label className="text-sm font-medium">Timing Mode</Label>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Choose between raw seconds or normalized Strudel timing
+                      Choose between automatic bar-based timing or manual CPS control
                     </p>
                   </div>
                   <ToggleGroup 
                     type="single" 
-                    value={currentCps === 1 ? "raw" : "normalized"}
-                    onValueChange={async (value) => {
-                      if (!value || !uploadedFile) return;
+                    value={timingMode}
+                    onValueChange={async (value: "auto" | "manual") => {
+                      if (!value || !uploadedFile || !analysis) return;
+                      setTimingMode(value);
                       setIsProcessing(true);
                       try {
-                        const newCps = value === "raw" ? 1 : 0.5;
+                        const calculatedCps = analysis.cyclesPerSecond ?? calculateCPS(analysis.tempo, analysis.timeSignature);
+                        const newCps = value === "auto" ? calculatedCps : manualCps;
                         setCurrentCps(newCps);
+                        
                         const newNotes = await convertMidiToNotes(
                           uploadedFile,
                           {
@@ -886,7 +846,7 @@ const Index = () => {
                         const notation = generateFormattedBracketNotation(
                           newNotes, 
                           lineLength, 
-                          analysis?.calculatedKeySignature, 
+                          analysis.calculatedKeySignature, 
                           useScaleMode
                         );
                         const stats = calculateStatistics(newNotes, notation);
@@ -904,14 +864,222 @@ const Index = () => {
                     }}
                     className="grid grid-cols-2 w-full"
                   >
-                    <ToggleGroupItem value="raw" className="text-xs">
-                      Raw (cps = 1)
+                    <ToggleGroupItem value="auto" className="text-xs">
+                      Auto (Bar-based)
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="normalized" className="text-xs">
-                      Normalized (cps = 0.5)
+                    <ToggleGroupItem value="manual" className="text-xs">
+                      Manual
                     </ToggleGroupItem>
                   </ToggleGroup>
+                  
+                  {/* Auto mode display */}
+                  {timingMode === "auto" && analysis && (
+                    <>
+                      <div className="mt-3 space-y-2 p-3 bg-muted rounded text-xs">
+                        <div>
+                          <span className="font-medium">CPS Formula:</span> {analysis.tempo} / 60 / {analysis.timeSignature.numerator} = {currentCps.toFixed(4)}
+                        </div>
+                        <div>
+                          <span className="font-medium">Cycle length:</span> {(1/currentCps).toFixed(3)}s (1 bar)
+                        </div>
+                        <div>
+                          <span className="font-medium">Bar duration @{analysis.tempo} BPM:</span> {(1/currentCps).toFixed(3)}s
+                        </div>
+                      </div>
+                      
+                      {/* Bar Syntax Switch - DISABLED: Bar syntax implementation not working correctly yet */}
+                      {/* TODO: Fix the bar syntax implementation - timing issues with Strudel's bracket subdivision */}
+                      {false && (
+                        <div className="mt-3 flex items-center justify-between p-3 border rounded">
+                          <div className="space-y-1">
+                            <Label className="text-sm font-medium">Bar Syntax</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Use [...] brackets for bars with automatic note durations
+                            </p>
+                          </div>
+                          <Switch
+                            id="bar-syntax"
+                            checked={useBarSyntax}
+                            onCheckedChange={async (checked) => {
+                              setUseBarSyntax(checked);
+                              if (!notes.length) return;
+                              setIsProcessing(true);
+                              try {
+                                const notation = checked
+                                  ? generateBarBracketNotation(
+                                      notes,
+                                      lineLength,
+                                      analysis.timeSignature,
+                                      analysis.calculatedKeySignature,
+                                      useScaleMode
+                                    )
+                                  : generateFormattedBracketNotation(
+                                      notes,
+                                      lineLength,
+                                      analysis.calculatedKeySignature,
+                                      useScaleMode
+                                    );
+                                setBracketNotation(notation);
+                                
+                                if (outMode === "multi") {
+                                  await regenerateMultiStream(useInstrumentSamples);
+                                }
+                              } finally {
+                                setIsProcessing(false);
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                  
+                  {/* Manual mode controls */}
+                  {timingMode === "manual" && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs">CPS:</Label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="10"
+                          step="0.0001"
+                          value={manualCps}
+                          onChange={async (e) => {
+                            const newManualCps = parseFloat(e.target.value) || DEFAULT_CPS;
+                            setManualCps(newManualCps);
+                            setCurrentCps(newManualCps);
+                            
+                            if (!uploadedFile) return;
+                            setIsProcessing(true);
+                            try {
+                              const newNotes = await convertMidiToNotes(
+                                uploadedFile,
+                                {
+                                  ...defaultSettings,
+                                  cyclesPerSecond: newManualCps,
+                                  selectedTracks,
+                                }
+                              );
+                              const notation = generateFormattedBracketNotation(
+                                newNotes, 
+                                lineLength, 
+                                analysis?.calculatedKeySignature, 
+                                useScaleMode
+                              );
+                              const stats = calculateStatistics(newNotes, notation);
+
+                              setNotes(newNotes);
+                              setBracketNotation(notation);
+                              setStatistics(stats);
+
+                              if (outMode === "multi") {
+                                await regenerateMultiStream(useInstrumentSamples);
+                              }
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }}
+                          className="flex-1 px-2 py-1 text-xs border rounded"
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="2"
+                        step="0.05"
+                        value={manualCps}
+                        onChange={async (e) => {
+                          const newManualCps = parseFloat(e.target.value);
+                          setManualCps(newManualCps);
+                          setCurrentCps(newManualCps);
+                          
+                          if (!uploadedFile) return;
+                          setIsProcessing(true);
+                          try {
+                            const newNotes = await convertMidiToNotes(
+                              uploadedFile,
+                              {
+                                ...defaultSettings,
+                                cyclesPerSecond: newManualCps,
+                                selectedTracks,
+                              }
+                            );
+                            const notation = generateFormattedBracketNotation(
+                              newNotes, 
+                              lineLength, 
+                              analysis?.calculatedKeySignature, 
+                              useScaleMode
+                            );
+                            const stats = calculateStatistics(newNotes, notation);
+
+                            setNotes(newNotes);
+                            setBracketNotation(notation);
+                            setStatistics(stats);
+
+                            if (outMode === "multi") {
+                              await regenerateMultiStream(useInstrumentSamples);
+                            }
+                          } finally {
+                            setIsProcessing(false);
+                          }
+                        }}
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Cycle length: {(1/manualCps).toFixed(3)}s • Default: 0.5 (1 cycle = 2s)
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Line Length Slider */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">
+                    {timingMode === "auto" && useBarSyntax ? `Bars per line (${lineLength})` : `Notes per line (${lineLength})`}
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={timingMode === "auto" && useBarSyntax ? 8 : 20}
+                    step={1}
+                    value={lineLength}
+                    onChange={async (e) => {
+                      const newLineLength = parseInt(e.target.value);
+                      setLineLength(newLineLength);
+                      if (!notes.length) return;
+                      setIsProcessing(true);
+                      try {
+                        const notation = timingMode === "auto" && useBarSyntax && analysis
+                          ? generateBarBracketNotation(
+                              notes,
+                              newLineLength,
+                              analysis.timeSignature,
+                              analysis.calculatedKeySignature,
+                              useScaleMode
+                            )
+                          : generateFormattedBracketNotation(
+                              notes,
+                              newLineLength,
+                              analysis?.calculatedKeySignature,
+                              useScaleMode
+                            );
+                        setBracketNotation(notation);
+                        
+                        if (outMode === "multi") {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        }
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    {timingMode === "auto" && useBarSyntax 
+                      ? "Control how many bars appear per line in bracket notation"
+                      : "Control how many notes appear per line in bracket notation"}
+                  </div>
+                </div>
+
 
                 {/* Instruments / Tracks */}
                 <div className="space-y-3 p-4 border rounded">

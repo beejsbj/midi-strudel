@@ -92,7 +92,7 @@ function generateGroupNotation(group: Note[]): string {
   }
   
   if (entries.length === 0) return '';
-  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+  return `{${entries.join(', ')}}${formatDuration(bracketLength)}`;
 }
 
 // Main function to generate bracket notation
@@ -177,7 +177,7 @@ export function formatBracketNotation(bracketNotation: string, lineLength: numbe
   let bracketCount = 0;
   
   for (const part of parts) {
-    const isBracket = part.startsWith('[');
+    const isBracket = part.startsWith('{');
     
     currentLine.push(part);
     elementCount++;
@@ -315,7 +315,7 @@ function generateScaleDegreeGroupNotation(group: Array<{ degree: number; start: 
   }
   
   if (entries.length === 0) return '';
-  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+  return `{${entries.join(', ')}}${formatDuration(bracketLength)}`;
 }
 
 // Main function to generate formatted bracket notation
@@ -426,7 +426,7 @@ function generateVelocityGroupNotation(group: Note[]): string {
   }
   
   if (entries.length === 0) return '';
-  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+  return `{${entries.join(', ')}}${formatDuration(bracketLength)}`;
 }
 
 /**
@@ -523,7 +523,7 @@ function generateScaleDegreeVelocityGroupNotation(group: Array<{ degree: number;
   }
   
   if (entries.length === 0) return '';
-  return `[${entries.join(', ')}]${formatDuration(bracketLength)}`;
+  return `{${entries.join(', ')}}${formatDuration(bracketLength)}`;
 }
 
 /**
@@ -541,7 +541,7 @@ export function formatVelocityPattern(velocityPattern: string, lineLength: numbe
   let bracketCount = 0;
   
   for (const part of parts) {
-    const isBracket = part.startsWith('[');
+    const isBracket = part.startsWith('{');
     
     currentLine.push(part);
     elementCount++;
@@ -564,6 +564,144 @@ export function formatVelocityPattern(velocityPattern: string, lineLength: numbe
   }
   
   return lines.join('\n');
+}
+
+// Generate bar-based bracket notation
+export function generateBarBracketNotation(
+  notes: Note[], 
+  barsPerLine: number = 4,
+  timeSignature: { numerator: number; denominator: number } = { numerator: 4, denominator: 4 },
+  keySignature?: KeySignature,
+  useScaleMode: boolean = false
+): string {
+  if (notes.length === 0) return '';
+  
+  // Sort notes by start time
+  const sortedNotes = [...notes].sort((a, b) => a.start - b.start);
+  
+  // Group notes into bars (1 cycle = 1 bar)
+  const bars: Array<{ barNumber: number; notes: Note[] }> = [];
+  let currentBar = 0;
+  
+  for (const note of sortedNotes) {
+    const barStart = Math.floor(note.start);
+    
+    // Find or create the bar
+    let bar = bars.find(b => b.barNumber === barStart);
+    if (!bar) {
+      bar = { barNumber: barStart, notes: [] };
+      bars.push(bar);
+    }
+    
+    bar.notes.push(note);
+  }
+  
+  // Sort bars by bar number
+  bars.sort((a, b) => a.barNumber - b.barNumber);
+  
+  // Generate notation for each bar
+  const result: string[] = [];
+  let lastBarEnd = 0;
+  
+  for (const bar of bars) {
+    // Add empty bars if there's a gap
+    while (lastBarEnd < bar.barNumber) {
+      result.push('[~ ~ ~ ~]'); // Rest bar
+      lastBarEnd++;
+    }
+    
+    // Process notes in this bar
+    const barNotation = generateSingleBarNotation(
+      bar.notes, 
+      bar.barNumber, 
+      timeSignature, 
+      keySignature, 
+      useScaleMode
+    );
+    result.push(barNotation);
+    lastBarEnd = bar.barNumber + 1;
+  }
+  
+  // Format with line breaks
+  const lines: string[] = [];
+  for (let i = 0; i < result.length; i += barsPerLine) {
+    lines.push(result.slice(i, i + barsPerLine).join(' '));
+  }
+  
+  return lines.join('\n');
+}
+
+// Generate notation for a single bar
+function generateSingleBarNotation(
+  barNotes: Note[],
+  barNumber: number,
+  timeSignature: { numerator: number; denominator: number },
+  keySignature?: KeySignature,
+  useScaleMode: boolean = false
+): string {
+  const barStart = barNumber;
+  const barEnd = barNumber + 1;
+  
+  // Sort notes by start time within the bar
+  const sortedNotes = [...barNotes].sort((a, b) => a.start - b.start);
+  
+  // Get all unique start times (events) in the bar
+  const events: Array<{ time: number; notes: Note[] }> = [];
+  const eventTimes = new Set<number>();
+  
+  for (const note of sortedNotes) {
+    eventTimes.add(note.start);
+  }
+  
+  // Group notes by their start time
+  for (const time of Array.from(eventTimes).sort((a, b) => a - b)) {
+    const notesAtTime = sortedNotes.filter(n => Math.abs(n.start - time) < 0.001);
+    events.push({ time, notes: notesAtTime });
+  }
+  
+  // Build bar content - each event gets equal time
+  const content: string[] = [];
+  
+  if (events.length === 0) {
+    // Empty bar - just rests
+    return '[~ ~ ~ ~]';
+  }
+  
+  // Add the events
+  for (const event of events) {
+    if (event.notes.length === 1) {
+      // Single note
+      const noteName = useScaleMode && keySignature 
+        ? noteToScaleDegree(event.notes[0].name, keySignature).degree.toString()
+        : event.notes[0].name;
+      content.push(noteName);
+    } else {
+      // Chord
+      const chordNotes = event.notes.map(n => {
+        const noteName = useScaleMode && keySignature 
+          ? noteToScaleDegree(n.name, keySignature).degree.toString()
+          : n.name;
+        return noteName;
+      });
+      content.push(`{${chordNotes.join(', ')}}`);
+    }
+  }
+  
+  // Simply output the content - sustains are handled differently in bar syntax
+  // Each note/chord starts at its event time, and if it sustains longer,
+  // that's represented by the note's natural duration in the equal division
+  const processedContent = [...content];
+  
+  // Handle notes extending beyond this bar
+  const overflowingNotes = sortedNotes.filter(note => note.release > barEnd);
+  if (overflowingNotes.length > 0) {
+    // Find the longest overflow duration
+    const maxOverflow = Math.max(...overflowingNotes.map(note => note.release - barEnd));
+    const continuation = ` _${formatDuration(maxOverflow)}`;
+    return `[${processedContent.join(' ')}]${continuation}`;
+  }
+  
+  return `[${processedContent.join(' ')}]`;
 }
 
 // Calculate statistics for a set of notes
