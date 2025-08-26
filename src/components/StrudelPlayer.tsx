@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Play, Pause, Square, Copy, Download, RotateCcw } from "lucide-react";
+import { Play, Pause, Square, Copy, Download, RotateCcw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -134,21 +134,12 @@ export function StrudelPlayer({
   // Keep current code ref in sync for copy/download/update operations
   useEffect(() => {
     currentCodeRef.current = strudelCode;
-    console.log("[StrudelPlayer] About to setCode with:", strudelCode);
-    console.log("[StrudelPlayer] Editor exists?", !!editorRef.current);
-    console.log(
-      "[StrudelPlayer] setCode function exists?",
-      !!editorRef.current?.setCode
-    );
     // Push code into editor if it already exists
     try {
       if (editorRef.current?.setCode) {
         editorRef.current.setCode(strudelCode);
-        console.log("[StrudelPlayer] setCode called successfully");
         // Also reset the suppress flag to allow immediate re-evaluation
         suppressInitialOnCodeRef.current = false;
-      } else {
-        console.log("[StrudelPlayer] Editor or setCode not ready yet");
       }
     } catch (e) {
       console.error("[StrudelPlayer] setCode failed:", e);
@@ -553,6 +544,30 @@ export function StrudelPlayer({
     URL.revokeObjectURL(url);
   };
 
+  const openInStrudel = () => {
+    try {
+      // Get current code from editor or use currentCodeRef
+      const code = editorRef.current?.getCode
+        ? editorRef.current.getCode()
+        : currentCodeRef.current;
+      
+      // Encode the content as base64 for the URL
+      const encodedContent = btoa(code);
+      const strudelUrl = `https://strudel.cc/#${encodedContent}`;
+      
+      // Open in new tab
+      window.open(strudelUrl, '_blank');
+      
+      toast({ description: "Opening Strudel in new tab..." });
+    } catch (error) {
+      console.error("Failed to open in Strudel:", error);
+      toast({
+        variant: "destructive",
+        description: "Failed to open in Strudel",
+      });
+    }
+  };
+
   if (!bracketNotation) {
     return (
       <Card className="p-6 opacity-0 transition-opacity duration-300">
@@ -616,6 +631,17 @@ export function StrudelPlayer({
             size="sm"
           >
             <Download className="h-4 w-4" />
+          </Button>
+
+          {/* Open in Strudel */}
+          <Button
+            onClick={openInStrudel}
+            disabled={!bracketNotation}
+            variant="outline"
+            size="sm"
+            title="Open on Strudel"
+          >
+            <ExternalLink className="h-4 w-4" />
           </Button>
         </div>
       </div>
