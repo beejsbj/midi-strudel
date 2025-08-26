@@ -134,11 +134,24 @@ export function StrudelPlayer({
   // Keep current code ref in sync for copy/download/update operations
   useEffect(() => {
     currentCodeRef.current = strudelCode;
+    console.log("[StrudelPlayer] About to setCode with:", strudelCode);
+    console.log("[StrudelPlayer] Editor exists?", !!editorRef.current);
+    console.log(
+      "[StrudelPlayer] setCode function exists?",
+      !!editorRef.current?.setCode
+    );
     // Push code into editor if it already exists
     try {
-      editorRef.current?.setCode?.(strudelCode);
+      if (editorRef.current?.setCode) {
+        editorRef.current.setCode(strudelCode);
+        console.log("[StrudelPlayer] setCode called successfully");
+        // Also reset the suppress flag to allow immediate re-evaluation
+        suppressInitialOnCodeRef.current = false;
+      } else {
+        console.log("[StrudelPlayer] Editor or setCode not ready yet");
+      }
     } catch (e) {
-      console.debug("[Strudel] setCode failed (editor not ready yet?)", e);
+      console.error("[StrudelPlayer] setCode failed:", e);
     }
   }, [strudelCode]);
 
@@ -378,7 +391,7 @@ export function StrudelPlayer({
   // Auto-initialize editor when bracket notation is provided (after MIDI upload)
   useEffect(() => {
     if (!bracketNotation) return;
-    
+
     // Small delay to ensure container is ready
     const timer = setTimeout(async () => {
       try {
@@ -388,7 +401,7 @@ export function StrudelPlayer({
         console.error("[Strudel] Auto-initialization failed:", e);
       }
     }, 100);
-    
+
     return () => clearTimeout(timer);
   }, [bracketNotation]);
 
@@ -542,7 +555,7 @@ export function StrudelPlayer({
 
   if (!bracketNotation) {
     return (
-      <Card className="p-6">
+      <Card className="p-6 opacity-0 transition-opacity duration-300">
         <div className="text-center text-muted-foreground">
           Upload a MIDI file to generate Strudel code
         </div>
@@ -620,10 +633,7 @@ export function StrudelPlayer({
           )}
 
           {/* Editor container */}
-          <div
-            ref={containerRef}
-            className="min-h-32"
-          />
+          <div ref={containerRef} className="min-h-32" />
         </div>
       </div>
     </Card>

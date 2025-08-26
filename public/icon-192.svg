@@ -1,0 +1,49 @@
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <defs>
+    <linearGradient id="iconGradient192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7C3AED;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#A855F7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EC4899;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- Rounded Background -->
+  <rect width="192" height="192" rx="36" fill="url(#iconGradient192)"/>
+  
+  <!-- Musical Note (left side) -->
+  <g transform="translate(24, 48)" filter="url(#shadow)">
+    <!-- Note head -->
+    <ellipse cx="24" cy="84" rx="15" ry="12" fill="white"/>
+    <!-- Stem -->
+    <rect x="36" y="24" width="9" height="60" fill="white"/>
+    <!-- Flag/Beam -->
+    <path d="M45 24 Q60 36 45 48" fill="white" stroke="white" stroke-width="2"/>
+  </g>
+  
+  <!-- Transformation Arrow -->
+  <g transform="translate(84, 96)">
+    <path d="M0 0 L24 0" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
+    <path d="M18 -8 L28 0 L18 8" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+  </g>
+  
+  <!-- Bracket Notation (right side) -->
+  <g transform="translate(120, 66)" filter="url(#shadow)">
+    <!-- Opening bracket -->
+    <path d="M0 0 L0 60" stroke="white" stroke-width="9" stroke-linecap="square"/>
+    <path d="M0 0 L12 0" stroke="white" stroke-width="9" stroke-linecap="square"/>
+    <path d="M0 60 L12 60" stroke="white" stroke-width="9" stroke-linecap="square"/>
+    
+    <!-- @ symbol in the middle -->
+    <circle cx="24" cy="30" r="12" stroke="white" stroke-width="6" fill="none"/>
+    <path d="M33 30 Q39 30 39 21" stroke="white" stroke-width="6" fill="none" stroke-linecap="round"/>
+    
+    <!-- Closing bracket -->
+    <path d="M48 0 L48 60" stroke="white" stroke-width="9" stroke-linecap="square"/>
+    <path d="M36 0 L48 0" stroke="white" stroke-width="9" stroke-linecap="square"/>
+    <path d="M36 60 L48 60" stroke="white" stroke-width="9" stroke-linecap="square"/>
+  </g>
+</svg>

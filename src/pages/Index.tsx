@@ -27,12 +27,25 @@ import {
   buildStrudelCode,
   wrapInAngles,
 } from "@/lib/multiStream";
+import { formatScaleForStrudel } from "@/lib/musicTheory";
 import { useToast } from "@/hooks/use-toast";
 import { Music } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  detectPatterns,
+  detectMultiTrackPatterns,
+  getPatternStatistics,
+  getMultiTrackPatternStatistics,
+  type DetectedPattern
+} from "@/lib/patternDetection";
+import {
+  generatePatternizedCode,
+  generateMultiStreamPatternCode
+} from "@/lib/patternGeneration";
+import { generateMultiStreamPatternCodeV2 } from "@/lib/patternGenerationV2";
 
 const Index = () => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -50,11 +63,18 @@ const Index = () => {
   const [codeOverride, setCodeOverride] = useState<string>("");
   const [useInstrumentSamples, setUseInstrumentSamples] =
     useState<boolean>(false);
-  const [outMode, setOutMode] = useState<"single" | "multi">("single");
+  const [outMode, setOutMode] = useState<"single" | "multi" | "patternize">("single");
   const [availableSamples, setAvailableSamples] = useState<string[]>([]);
   const [lineLength, setLineLength] = useState<number>(8);
   const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
   const [includeVelocity, setIncludeVelocity] = useState<boolean>(false);
+  
+  // Pattern detection state
+  const [patternMinLength, setPatternMinLength] = useState<number>(2);
+  const [patternMinRepetitions, setPatternMinRepetitions] = useState<number>(2);
+  const [patternSimilarityThreshold, setPatternSimilarityThreshold] = useState<number>(0.6); // Match the lowered default
+  const [detectedPatterns, setDetectedPatterns] = useState<any[]>([]);
+  const [patternStats, setPatternStats] = useState<any>(null);
   
   // Timing mode state
   const [timingMode, setTimingMode] = useState<"auto" | "manual">("auto");
@@ -90,9 +110,11 @@ const Index = () => {
       setBracketNotation(notation);
       setStatistics(stats);
 
-      // If multi-stream selected, regenerate code
+      // If multi-stream or patternize selected, regenerate code
       if (outMode === "multi") {
-        void regenerateMultiStream(useInstrumentSamples);
+        void regenerateMultiStream(useInstrumentSamples, allTracks);
+      } else if (outMode === "patternize") {
+        void regeneratePatternized(allTracks);
       }
 
       toast({
@@ -136,7 +158,9 @@ const Index = () => {
       setStatistics(stats);
 
       if (outMode === "multi") {
-        void regenerateMultiStream(useInstrumentSamples);
+        void regenerateMultiStream(useInstrumentSamples, newSelected);
+      } else if (outMode === "patternize") {
+        void regeneratePatternized(newSelected);
       }
     } catch (error) {
       toast({
@@ -150,278 +174,191 @@ const Index = () => {
     }
   };
 
-  // Map track instrument names to the closest available sample name using actual loaded sample names
-  const mapInstrumentToSample = (name: string | undefined) => {
+  // Map track instrument names to Strudel sample names with variation
+  // Takes track index to provide different samples for similar instruments
+  const mapInstrumentToSample = (name: string | undefined, trackIndex: number = 0) => {
     const n = (name || "").toLowerCase();
-    const lower = availableSamples.map((s) => s.toLowerCase());
-    const has = (cand: string) => lower.includes(cand.toLowerCase());
-    const firstAvail = (cands: string[]) => cands.find((c) => has(c));
+    
+    // Helper to rotate through options based on track index
+    const pickByIndex = (options: string[]) => {
+      return options[trackIndex % options.length];
+    };
 
     // DRUMS / PERCUSSION
-    if (/(kick|bd|bass\s*drum)/.test(n))
-      return (
-        firstAvail([
-          "bd",
-          "bassdrum1",
-          "bassdrum2",
-          "mpc1000_bd",
-          "rolandtr808_bd",
-          "rolandtr909_bd",
-        ]) || "bd"
-      );
-    if (/(snare|sd)/.test(n))
-      return (
-        firstAvail([
-          "sd",
-          "snare_modern",
-          "snare_hi",
-          "snare_low",
-          "rolandtr808_sd",
-          "rolandtr909_sd",
-        ]) || "sd"
-      );
-    if (/(hi[- ]?hat|hh)/.test(n))
-      return (
-        firstAvail(["hh", "hihat", "rolandtr808_hh", "rolandtr909_hh"]) || "hh"
-      );
-    if (/(ride|rd)/.test(n))
-      return firstAvail(["rd", "rolandtr808_rd", "rolandtr909_rd"]) || "rd";
-    if (/(crash|cymbal|cr)/.test(n))
-      return (
-        firstAvail(["cr", "sus_cymbal", "rolandtr808_cr", "rolandtr909_cr"]) ||
-        "cr"
-      );
-    if (/(tom)/.test(n))
-      return (
-        firstAvail(["tom_stick", "tom_mallet", "tom2_stick", "tom2_mallet"]) ||
-        "tom_stick"
-      );
-    if (/(shaker)/.test(n))
-      return firstAvail(["shaker_large", "shaker_small"]) || "shaker_large";
-    if (/(clap)/.test(n))
-      return firstAvail(["clap", "cp", "akaimpc60_cp"]) || "clap";
-    if (/(cowbell|cb)/.test(n)) return firstAvail(["cb", "cowbell"]) || "cb";
-    if (/(tambourine)/.test(n))
-      return firstAvail(["tambourine", "tambourine2"]) || "tambourine";
-    if (/(woodblock)/.test(n)) return firstAvail(["woodblock"]) || "woodblock";
-    if (/(timpani)/.test(n))
-      return (
-        firstAvail(["timpani", "timpani2", "timpani_roll", "gm_timpani"]) ||
-        "timpani"
-      );
+    if (/(kick|bd|bass\s*drum)/.test(n)) return "bd";
+    if (/(snare|sd)/.test(n)) return "sd";
+    if (/(hi[- ]?hat|hh)/.test(n)) return "hh";
+    if (/(ride|rd)/.test(n)) return "rd";
+    if (/(crash|cymbal|cr)/.test(n)) return "cr";
+    if (/(tom)/.test(n)) return "tom_stick";
+    if (/(shaker)/.test(n)) return "shaker_large";
+    if (/(clap)/.test(n)) return "clap";
+    if (/(cowbell|cb)/.test(n)) return "cb";
+    if (/(tambourine)/.test(n)) return "tambourine";
+    if (/(woodblock)/.test(n)) return "woodblock";
+    if (/(timpani)/.test(n)) return "gm_timpani";
 
     // PIANO / KEYS
     if (/epiano|electric\s*piano|rhodes/.test(n))
-      return (
-        firstAvail(["gm_epiano1", "gm_epiano2", "fmpiano"]) ||
-        (has("piano") ? "piano" : "gm_piano")
-      );
+      return pickByIndex(["gm_epiano1", "gm_epiano2", "gm_piano"]);
     if (/clav|clavinet/.test(n))
-      return firstAvail(["gm_clavinet", "clavisynth"]) || "gm_clavinet";
+      return "gm_clavinet";
     if (/harpsichord/.test(n))
-      return firstAvail(["gm_harpsichord"]) || "gm_harpsichord";
-    if (/celesta/.test(n)) return firstAvail(["gm_celesta"]) || "gm_celesta";
+      return "gm_harpsichord";
+    if (/celesta/.test(n)) return "gm_celesta";
     if (/glockenspiel/.test(n))
-      return (
-        firstAvail(["gm_glockenspiel", "glockenspiel"]) || "gm_glockenspiel"
-      );
+      return "gm_glockenspiel";
     if (/vibraphone/.test(n))
-      return (
-        firstAvail([
-          "gm_vibraphone",
-          "vibraphone",
-          "vibraphone_soft",
-          "vibraphone_bowed",
-        ]) || "gm_vibraphone"
-      );
+      return pickByIndex(["gm_vibraphone", "gm_marimba", "gm_xylophone"]);
     if (/marimba/.test(n))
-      return firstAvail(["gm_marimba", "marimba"]) || "gm_marimba";
+      return "gm_marimba";
     if (/xylophone/.test(n))
-      return (
-        firstAvail([
-          "gm_xylophone",
-          "xylophone_medium_ff",
-          "xylophone_soft_ff",
-        ]) || "gm_xylophone"
-      );
+      return "gm_xylophone";
     if (/tubular\s*bells/.test(n))
-      return (
-        firstAvail(["gm_tubular_bells", "tubularbells", "tubularbells2"]) ||
-        "gm_tubular_bells"
-      );
+      return "gm_tubular_bells";
     if (/music\s*box/.test(n))
-      return firstAvail(["gm_music_box"]) || "gm_music_box";
+      return "gm_music_box";
     if (/piano|grand/.test(n))
-      return (
-        firstAvail(["piano", "gm_piano", "steinway", "kawai", "piano1"]) ||
-        (has("gm_piano") ? "gm_piano" : "piano")
-      );
+      return pickByIndex(["gm_piano", "gm_piano2", "gm_honky_tonk"]);
 
     // ORGANS
     if (/drawbar|rock\s*organ/.test(n))
-      return (
-        firstAvail(["gm_drawbar_organ", "organ_8inch", "organ_full"]) ||
-        "gm_drawbar_organ"
-      );
+      return "gm_drawbar_organ";
     if (/church|pipe\s*organ/.test(n))
-      return (
-        firstAvail(["pipeorgan_quiet", "pipeorgan_loud", "gm_church_organ"]) ||
-        "pipeorgan_quiet"
-      );
+      return "gm_church_organ";
     if (/percussive\s*organ/.test(n))
-      return firstAvail(["gm_percussive_organ"]) || "gm_percussive_organ";
+      return "gm_percussive_organ";
 
     // GUITARS
     if (/nylon\s*guitar/.test(n))
-      return (
-        firstAvail(["gm_acoustic_guitar_nylon"]) || "gm_acoustic_guitar_nylon"
-      );
+      return "gm_acoustic_guitar_nylon";
     if (/steel\s*guitar/.test(n))
-      return (
-        firstAvail(["gm_acoustic_guitar_steel"]) || "gm_acoustic_guitar_steel"
-      );
+      return "gm_acoustic_guitar_steel";
     if (/overdriven/.test(n))
-      return firstAvail(["gm_overdriven_guitar"]) || "gm_overdriven_guitar";
+      return "gm_overdriven_guitar";
     if (/distortion/.test(n))
-      return firstAvail(["gm_distortion_guitar"]) || "gm_distortion_guitar";
+      return "gm_distortion_guitar";
     if (/jazz\s*guitar/.test(n))
-      return (
-        firstAvail(["gm_electric_guitar_jazz"]) || "gm_electric_guitar_jazz"
-      );
+      return "gm_electric_guitar_jazz";
     if (/guitar/.test(n))
-      return (
-        firstAvail([
-          "gm_electric_guitar_clean",
-          "gm_acoustic_guitar_steel",
-          "gm_acoustic_guitar_nylon",
-        ]) || "gm_electric_guitar_clean"
-      );
+      return pickByIndex([
+        "gm_electric_guitar_clean",
+        "gm_acoustic_guitar_steel",
+        "gm_acoustic_guitar_nylon",
+        "gm_electric_guitar_jazz",
+        "gm_electric_guitar_muted"
+      ]);
 
     // BASSES
     if (/fretless\s*bass/.test(n))
-      return firstAvail(["gm_fretless_bass"]) || "gm_fretless_bass";
+      return "gm_fretless_bass";
     if (/slap\s*bass/.test(n))
-      return (
-        firstAvail(["gm_slap_bass_1", "gm_slap_bass_2"]) || "gm_slap_bass_1"
-      );
+      return pickByIndex(["gm_slap_bass_1", "gm_slap_bass_2"]);
     if (/synth\s*bass/.test(n))
-      return (
-        firstAvail(["gm_synth_bass_1", "gm_synth_bass_2"]) || "gm_synth_bass_1"
-      );
+      return pickByIndex(["gm_synth_bass_1", "gm_synth_bass_2"]);
     if (/bass/.test(n))
-      return (
-        firstAvail([
-          "gm_acoustic_bass",
-          "gm_electric_bass_finger",
-          "gm_electric_bass_pick",
-        ]) || "gm_acoustic_bass"
-      );
+      return pickByIndex([
+        "gm_acoustic_bass",
+        "gm_electric_bass_finger",
+        "gm_electric_bass_pick",
+        "gm_fretless_bass",
+        "gm_slap_bass_1"
+      ]);
 
     // STRINGS & ENSEMBLES
     if (/violin/.test(n))
-      return firstAvail(["gm_violin", "fiddle"]) || "gm_violin";
-    if (/viola/.test(n)) return firstAvail(["gm_viola"]) || "gm_viola";
-    if (/cello/.test(n)) return firstAvail(["gm_cello"]) || "gm_cello";
+      return "gm_violin";
+    if (/viola/.test(n)) return "gm_viola";
+    if (/cello/.test(n)) return "gm_cello";
     if (/contrabass|double\s*bass/.test(n))
-      return firstAvail(["gm_contrabass"]) || "gm_contrabass";
+      return "gm_contrabass";
     if (/pizzicato/.test(n))
-      return firstAvail(["gm_pizzicato_strings"]) || "gm_pizzicato_strings";
+      return "gm_pizzicato_strings";
     if (/tremolo/.test(n))
-      return firstAvail(["gm_tremolo_strings"]) || "gm_tremolo_strings";
+      return "gm_tremolo_strings";
     if (/string/.test(n))
-      return (
-        firstAvail([
-          "gm_string_ensemble_1",
-          "gm_string_ensemble_2",
-          "gm_synth_strings_1",
-        ]) || "gm_string_ensemble_1"
-      );
+      return pickByIndex([
+        "gm_string_ensemble_1",
+        "gm_string_ensemble_2",
+        "gm_synth_strings_1",
+        "gm_synth_strings_2"
+      ]);
     if (/harp/.test(n))
-      return firstAvail(["harp", "gm_orchestral_harp", "folkharp"]) || "harp";
+      return "gm_orchestral_harp";
 
     // BRASS & WINDS
     if (/trumpet/.test(n))
-      return firstAvail(["gm_trumpet", "gm_muted_trumpet"]) || "gm_trumpet";
-    if (/trombone/.test(n)) return firstAvail(["gm_trombone"]) || "gm_trombone";
-    if (/tuba/.test(n)) return firstAvail(["gm_tuba"]) || "gm_tuba";
+      return pickByIndex(["gm_trumpet", "gm_muted_trumpet"]);
+    if (/trombone/.test(n)) return "gm_trombone";
+    if (/tuba/.test(n)) return "gm_tuba";
     if (/horn/.test(n))
-      return firstAvail(["gm_french_horn"]) || "gm_french_horn";
+      return "gm_french_horn";
     if (/sax/.test(n))
-      return (
-        firstAvail([
-          "gm_tenor_sax",
-          "gm_alto_sax",
-          "gm_soprano_sax",
-          "gm_baritone_sax",
-        ]) || "gm_tenor_sax"
-      );
-    if (/clarinet/.test(n)) return firstAvail(["gm_clarinet"]) || "gm_clarinet";
-    if (/oboe/.test(n)) return firstAvail(["gm_oboe"]) || "gm_oboe";
-    if (/bassoon/.test(n)) return firstAvail(["gm_bassoon"]) || "gm_bassoon";
+      return pickByIndex([
+        "gm_tenor_sax",
+        "gm_alto_sax",
+        "gm_soprano_sax",
+        "gm_baritone_sax"
+      ]);
+    if (/clarinet/.test(n)) return "gm_clarinet";
+    if (/oboe/.test(n)) return "gm_oboe";
+    if (/bassoon/.test(n)) return "gm_bassoon";
     if (/flute/.test(n))
-      return (
-        firstAvail(["gm_flute", "gm_piccolo", "recorder_soprano_sus"]) ||
-        "gm_flute"
-      );
-    if (/piccolo/.test(n)) return firstAvail(["gm_piccolo"]) || "gm_piccolo";
+      return pickByIndex(["gm_flute", "gm_piccolo", "gm_pan_flute"]);
+    if (/piccolo/.test(n)) return "gm_piccolo";
     if (/recorder/.test(n))
-      return (
-        firstAvail(["gm_recorder", "recorder_soprano_sus"]) || "gm_recorder"
-      );
+      return "gm_recorder";
     if (/pan\s*flute/.test(n))
-      return firstAvail(["gm_pan_flute"]) || "gm_pan_flute";
+      return "gm_pan_flute";
     if (/whistle/.test(n))
-      return firstAvail(["gm_whistle", "trainwhistle"]) || "gm_whistle";
+      return "gm_whistle";
     if (/ocarina/.test(n))
-      return firstAvail(["gm_ocarina", "ocarina"]) || "gm_ocarina";
+      return "gm_ocarina";
 
     // VOICES / CHOIRS
     if (/choir/.test(n))
-      return firstAvail(["gm_choir_aahs", "gm_voice_oohs"]) || "gm_choir_aahs";
+      return pickByIndex(["gm_choir_aahs", "gm_voice_oohs", "gm_synth_voice"]);
 
     // SYNTH LEADS/PADS/FX
     if (/lead/.test(n))
-      return (
-        firstAvail([
-          "gm_lead_2_sawtooth",
-          "gm_lead_1_square",
-          "gm_lead_8_bass_lead",
-        ]) || "gm_lead_2_sawtooth"
-      );
+      return pickByIndex([
+        "gm_lead_2_sawtooth",
+        "gm_lead_1_square",
+        "gm_lead_8_bass_lead",
+        "gm_lead_3_calliope",
+        "gm_lead_4_chiff"
+      ]);
     if (/pad/.test(n))
-      return (
-        firstAvail(["gm_pad_warm", "gm_pad_poly", "gm_pad_sweep"]) ||
-        "gm_pad_warm"
-      );
+      return pickByIndex(["gm_pad_warm", "gm_pad_poly", "gm_pad_sweep", "gm_pad_new_age", "gm_pad_choir"]);
     if (/fx/.test(n))
-      return (
-        firstAvail(["gm_fx_atmosphere", "gm_fx_echoes", "gm_fx_crystal"]) ||
-        "gm_fx_atmosphere"
-      );
+      return pickByIndex(["gm_fx_atmosphere", "gm_fx_echoes", "gm_fx_crystal", "gm_fx_goblins", "gm_fx_sci_fi"]);
 
     // ETHNIC / MISC
-    if (/sitar/.test(n)) return firstAvail(["gm_sitar"]) || "gm_sitar";
-    if (/banjo/.test(n)) return firstAvail(["gm_banjo"]) || "gm_banjo";
-    if (/koto/.test(n)) return firstAvail(["gm_koto"]) || "gm_koto";
-    if (/shamisen/.test(n)) return firstAvail(["gm_shamisen"]) || "gm_shamisen";
-    if (/bagpipe/.test(n)) return firstAvail(["gm_bagpipe"]) || "gm_bagpipe";
+    if (/sitar/.test(n)) return "gm_sitar";
+    if (/banjo/.test(n)) return "gm_banjo";
+    if (/koto/.test(n)) return "gm_koto";
+    if (/shamisen/.test(n)) return "gm_shamisen";
+    if (/bagpipe/.test(n)) return "gm_bagpipe";
     if (/harmonica/.test(n))
-      return firstAvail(["harmonica", "gm_harmonica"]) || "harmonica";
+      return "gm_harmonica";
 
     // ORCHESTRA HIT
     if (/orchestra\s*hit/.test(n))
-      return firstAvail(["gm_orchestra_hit"]) || "gm_orchestra_hit";
+      return "gm_orchestra_hit";
 
-    // Fallbacks
-    if (has("triangle")) return "triangle";
-    if (has("sine")) return "sine";
-    if (has("sawtooth")) return "sawtooth";
-    if (has("square")) return "square";
-    return availableSamples[0] || "triangle";
+    // Fallback - use a simple synth sound
+    return "triangle";
   };
 
   // Regenerate multi-stream code based on current state
-  const regenerateMultiStream = async (perInstrument: boolean) => {
+  const regenerateMultiStream = async (perInstrument: boolean, overrideSelectedTracks?: number[]) => {
+    return regenerateMultiStreamWithScaleMode(perInstrument, overrideSelectedTracks, useScaleMode);
+  };
+  
+  // Regenerate multi-stream code with explicit scale mode
+  const regenerateMultiStreamWithScaleMode = async (perInstrument: boolean, overrideSelectedTracks?: number[] | undefined, explicitScaleMode?: boolean) => {
+    const scaleMode = explicitScaleMode !== undefined ? explicitScaleMode : useScaleMode;
+    console.log("[regenerateMultiStream] Using scale mode:", scaleMode);
     if (!uploadedFile || !analysis) {
       setCodeOverride("");
       return;
@@ -429,11 +366,13 @@ const Index = () => {
 
     if (perInstrument) {
       // Build one stream per selected track with per-instrument sample mapping
+      const tracksToUse = overrideSelectedTracks || selectedTracks;
       const tracks =
-        selectedTracks.length > 0
-          ? selectedTracks
+        tracksToUse.length > 0
+          ? tracksToUse
           : analysis.trackInfo.map((_, i) => i);
       const lines: string[] = [];
+      
       let drumTrackCount = 0;
       
       for (const idx of tracks) {
@@ -444,6 +383,35 @@ const Index = () => {
           selectedTracks: [idx],
         });
         
+        // Skip empty tracks
+        if (perTrackNotes.length === 0) continue;
+        
+        // Generate clean instrument name for the variable
+        const getInstrumentName = () => {
+          if (trackInfo?.isPercussion) return 'DRUMS';
+          const inst = (trackInfo?.instrument || 'UNKNOWN').toUpperCase();
+          // Clean up common instrument names  
+          if (inst.includes('PIANO')) return 'PIANO';
+          if (inst.includes('BASS')) return 'BASS';
+          if (inst.includes('GUITAR')) return 'GUITAR';
+          if (inst.includes('VIOLIN')) return 'VIOLIN';
+          if (inst.includes('CELLO')) return 'CELLO';
+          if (inst.includes('VIOLA')) return 'VIOLA';
+          if (inst.includes('SYNTH')) return 'SYNTH';
+          if (inst.includes('STRING')) return 'STRINGS';
+          if (inst.includes('BRASS')) return 'BRASS';
+          if (inst.includes('FLUTE')) return 'FLUTE';
+          if (inst.includes('SAX')) return 'SAX';
+          if (inst.includes('TRUMPET')) return 'TRUMPET';
+          if (inst.includes('ORGAN')) return 'ORGAN';
+          if (inst.includes('DRUM')) return 'DRUMS';
+          // Fallback: clean the name
+          return inst.replace(/[^A-Z0-9]/g, '_').substring(0, 20);
+        };
+        
+        const instrumentName = getInstrumentName();
+        const varName = `T${idx}_${instrumentName}`;
+        
         if (trackInfo?.isPercussion) {
           // Handle percussion track
           const drumNotation = generateDrumBracketNotation(perTrackNotes);
@@ -453,7 +421,7 @@ const Index = () => {
             drumTrackCount
           );
           
-          let drumCode = `s(\`${wrapped}\`)`;
+          let drumCode = `${varName}: s(\`${wrapped}\`)`;
           if (drumBank) {
             drumCode += `.bank("${drumBank}")`;
           }
@@ -468,7 +436,8 @@ const Index = () => {
             }
           }
           
-          lines.push(`$: ${drumCode}`);
+          lines.push(`// ${varName}: ${trackInfo.name || trackInfo.instrument || 'Percussion'}`);
+          lines.push(drumCode);
           drumTrackCount++;
         } else {
           // Handle pitched instrument track
@@ -480,51 +449,56 @@ const Index = () => {
               lineLength,
               analysis.timeSignature,
               analysis.calculatedKeySignature,
-              useScaleMode
+              scaleMode
             );
           } else {
             // Use regular notation
-            seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+            seq = buildSequentialBracket(perTrackNotes, lineLength, analysis.calculatedKeySignature, scaleMode);
           }
           const wrapped = wrapInAngles(seq);
           const instrument = trackInfo?.instrument;
-          // Try to map to a sample that actually exists
-          let sample = mapInstrumentToSample(instrument);
-          if (availableSamples.length > 0) {
-            const lower = availableSamples.map((s) => s.toLowerCase());
-            const tryNames = [
-              sample,
-              "bd",
-              "sd",
-              "hh",
-              "piano",
-              "bass",
-              "organ",
-              "guitar",
-              "strings",
-              "sawtooth",
-              "triangle",
-            ];
-            sample =
-              tryNames.find((n) => lower.includes(n.toLowerCase())) || sample;
-          }
+          // Map to a sample using the instrument mapper
+          const sample = mapInstrumentToSample(instrument);
+          console.log(`Track ${idx} instrument: "${instrument}" mapped to sample: "${sample}"`);
+          
+          // Don't check availability - just use the exact sample name
+          // Strudel will load these from soundfonts as needed
+          
           // Generate code with velocity if enabled
+          lines.push(`// ${varName}: ${trackInfo?.instrument || trackInfo?.name || 'Unknown'}`);
+          
+          // Debug: Log the final sample name being used
+          console.log(`Final sample for track ${idx}: "${sample}"`);
+          
           if (includeVelocity) {
             const strudelCode = buildStrudelCode(
               perTrackNotes,
               lineLength,
               analysis.calculatedKeySignature,
-              useScaleMode,
+              scaleMode,
               includeVelocity,
               sample
             );
-            lines.push(`$: ${strudelCode}`);
+            console.log(`Generated Strudel code with velocity for ${varName}: ${strudelCode}`);
+            // Use named label instead of $:
+            lines.push(`${varName}: ${strudelCode}`);
           } else {
-            lines.push(`$: note(\`${wrapped}\`).sound("${sample}")`);
+            // Generate proper code based on scale mode
+            let codeWithoutVelocity: string;
+            if (scaleMode && analysis.calculatedKeySignature) {
+              const scaleString = formatScaleForStrudel(analysis.calculatedKeySignature);
+              codeWithoutVelocity = `${varName}: n(\`${wrapped}\`).scale("${scaleString}").sound("${sample}")`;
+            } else {
+              codeWithoutVelocity = `${varName}: note(\`${wrapped}\`).sound("${sample}")`;
+            }
+            console.log(`Generated Strudel code without velocity for ${varName}: ${codeWithoutVelocity}`);
+            lines.push(codeWithoutVelocity);
           }
         }
       }
-      const code = lines.join("\n\n");
+      
+      // Join all lines with proper spacing
+      const code = lines.length > 0 ? lines.join('\n\n') : '// No tracks selected or no notes found';
       setCodeOverride(code);
     } else {
       // Greedy concurrency streams on current notes
@@ -543,7 +517,7 @@ const Index = () => {
               streamNotes,
               lineLength,
               analysis.calculatedKeySignature,
-              useScaleMode,
+              scaleMode,
               includeVelocity,
               "triangle"
             );
@@ -557,18 +531,148 @@ const Index = () => {
                 lineLength,
                 analysis.timeSignature,
                 analysis.calculatedKeySignature,
-                useScaleMode
+                scaleMode
               );
             } else {
               // Use regular notation
-              seq = buildSequentialBracket(streamNotes, lineLength, analysis.calculatedKeySignature, useScaleMode);
+              seq = buildSequentialBracket(streamNotes, lineLength, analysis.calculatedKeySignature, scaleMode);
             }
             const wrapped = wrapInAngles(seq);
-            lines.push(`$: note(\`${wrapped}\`).sound("triangle")`);
+            
+            // Generate proper code based on scale mode
+            let codeWithoutVelocity: string;
+            if (scaleMode && analysis.calculatedKeySignature) {
+              const scaleString = formatScaleForStrudel(analysis.calculatedKeySignature);
+              codeWithoutVelocity = `$: n(\`${wrapped}\`).scale("${scaleString}").sound("triangle")`;
+            } else {
+              codeWithoutVelocity = `$: note(\`${wrapped}\`).sound("triangle")`;
+            }
+            lines.push(codeWithoutVelocity);
           }
         });
       const code = lines.join("\n\n");
       setCodeOverride(code);
+    }
+  };
+
+  // Regenerate patternized code based on current state
+  const regeneratePatternized = async (overrideSelectedTracks?: number[]) => {
+    return regeneratePatternizedWithScaleMode(overrideSelectedTracks, useScaleMode);
+  };
+  
+  // Regenerate patternized code with explicit scale mode
+  const regeneratePatternizedWithScaleMode = async (overrideSelectedTracks?: number[] | undefined, explicitScaleMode?: boolean) => {
+    const scaleMode = explicitScaleMode !== undefined ? explicitScaleMode : useScaleMode;
+    console.log("[regeneratePatternized] Using scale mode:", scaleMode);
+    if (!uploadedFile || !analysis || notes.length === 0) {
+      setCodeOverride("");
+      setDetectedPatterns([]);
+      setPatternStats(null);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+
+      if (selectedTracks.length <= 1) {
+        // Single track pattern detection
+        const patterns = detectPatterns(notes, {
+          minLength: patternMinLength,
+          minRepetitions: patternMinRepetitions,
+          similarityThreshold: patternSimilarityThreshold,
+        });
+
+        const stats = getPatternStatistics(patterns);
+        setDetectedPatterns(patterns);
+        setPatternStats(stats);
+
+        if (patterns.length > 0) {
+          const patternizedCode = generatePatternizedCode(patterns, notes, {
+            keySignature: analysis.calculatedKeySignature,
+            scaleMode,
+            includeVelocity,
+            lineLength,
+            sound: "triangle"
+          });
+          setCodeOverride(patternizedCode);
+        } else {
+          // Fallback to regular notation if no patterns found
+          const notation = generateFormattedBracketNotation(notes, lineLength, analysis.calculatedKeySignature, scaleMode);
+          const strudelCode = generateStrudelCode(notation, analysis.calculatedKeySignature, scaleMode, "triangle");
+          setCodeOverride(strudelCode);
+        }
+      } else {
+        // Multi-track pattern detection
+        const trackNotes = new Map<number, Note[]>();
+        const tracksToUse = overrideSelectedTracks || selectedTracks;
+        
+        for (const trackId of tracksToUse) {
+          const perTrackNotes = await convertMidiToNotes(uploadedFile, {
+            ...defaultSettings,
+            cyclesPerSecond: currentCps,
+            selectedTracks: [trackId],
+          });
+          trackNotes.set(trackId, perTrackNotes);
+        }
+
+        const trackPatterns = detectMultiTrackPatterns(trackNotes, analysis.trackInfo, {
+          minLength: patternMinLength,
+          minRepetitions: patternMinRepetitions,
+          similarityThreshold: patternSimilarityThreshold,
+        });
+
+        const stats = getMultiTrackPatternStatistics(trackPatterns);
+        setPatternStats(stats);
+        
+        // Flatten patterns for display
+        const allPatterns: DetectedPattern[] = [];
+        trackPatterns.forEach(patterns => allPatterns.push(...patterns));
+        setDetectedPatterns(allPatterns);
+
+        if (allPatterns.length > 0) {
+          // Use V2 pattern generation with proper instrument support
+          // Always use instrument samples for patternize mode
+          const multiStreamCode = generateMultiStreamPatternCodeV2(
+            trackPatterns,
+            trackNotes,
+            analysis.trackInfo,
+            {
+              keySignature: analysis.calculatedKeySignature,
+              scaleMode,
+              includeVelocity,
+              lineLength,
+              sound: undefined,  // Always use instrument samples in patternize mode
+              mapInstrumentToSample: mapInstrumentToSample,  // Always map instruments
+              availableSamples
+            },
+            tracksToUse  // Pass selected tracks for toggle constants
+          );
+          console.log("[Index] Generated multi-stream pattern code:", multiStreamCode);
+          console.log("[Index] Code length:", multiStreamCode.length);
+          setCodeOverride(multiStreamCode);
+        } else {
+          // Fallback to multi-stream without patterns
+          await regenerateMultiStream(useInstrumentSamples);
+        }
+      }
+
+      toast({
+        title: "Pattern analysis complete",
+        description: `Found ${detectedPatterns.length} patterns`,
+      });
+    } catch (error) {
+      console.error("Pattern detection error:", error);
+      toast({
+        title: "Error analyzing patterns",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+      // Fallback to regular code
+      setCodeOverride("");
+      setDetectedPatterns([]);
+      setPatternStats(null);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -607,42 +711,113 @@ const Index = () => {
         {notes.length === 0 && !isProcessing && (
           <div className="text-center py-8">
             <h2 className="text-xl font-semibold mb-4">
-              How Bracket Notation Works
+              How This Tool Works
             </h2>
-            <div className="max-w-2xl mx-auto space-y-4 text-left bg-card p-6 rounded-lg">
-              <div>
-                <h3 className="font-medium mb-2">Raw Notes Mode:</h3>
-                <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
+            <div className="max-w-4xl mx-auto space-y-6">
+              {/* Overview */}
+              <div className="bg-card p-6 rounded-lg text-left">
+                <h3 className="font-semibold mb-3">What is Bracket Notation?</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Bracket notation is a time-based musical notation system used by Strudel. 
+                  This tool converts MIDI files into bracket notation, allowing you to play complex 
+                  musical pieces in Strudel's live coding environment.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Basic Notation */}
                   <div>
-                    <span className="text-accent">Single notes:</span> C4 D4 E4@0.25
+                    <h4 className="font-medium mb-2">Basic Notation:</h4>
+                    <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
+                      <div>
+                        <span className="text-accent">Notes:</span> C4 D4 E4
+                      </div>
+                      <div>
+                        <span className="text-accent">Durations:</span> C4@0.5 D4@0.25
+                      </div>
+                      <div>
+                        <span className="text-accent">Rests:</span> C4 ~@0.5 D4
+                      </div>
+                      <div>
+                        <span className="text-accent">Chords:</span> [C4, E4, G4]@1
+                      </div>
+                    </div>
                   </div>
+                  {/* Advanced Notation */}
                   <div>
-                    <span className="text-accent">Chord:</span> [C4, E4, G4]@1
-                  </div>
-                  <div>
-                    <span className="text-accent">With rests:</span> C4 ~@0.5 D4
-                  </div>
-                  <div>
-                    <span className="text-accent">Complex overlap:</span> [C4@2 ~@1, ~@0.5 E4@1.5]@3
+                    <h4 className="font-medium mb-2">Advanced Features:</h4>
+                    <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
+                      <div>
+                        <span className="text-accent">Overlaps:</span> {`{C4@2, ~@0.5 E4@1.5}@2`}
+                      </div>
+                      <div>
+                        <span className="text-accent">Patterns:</span> {`<C4 D4 E4>`}
+                      </div>
+                      <div>
+                        <span className="text-accent">Velocity:</span> .velocity(`0.8 0.7 0.9`)
+                      </div>
+                      <div>
+                        <span className="text-accent">Drums:</span> s(`bd sd hh`).bank("TR909")
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div>
-                <h3 className="font-medium mb-2">Scale Degrees Mode (when key detected):</h3>
-                <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
-                  <div>
-                    <span className="text-accent">Scale degrees:</span> 0 1 2@0.25 (C major: C D E)
-                  </div>
-                  <div>
-                    <span className="text-accent">Chord:</span> [0, 2, 4]@1 (C major triad)
-                  </div>
-                  <div>
-                    <span className="text-accent">Octaves:</span> 0 7 -7 (C4, C5, C3)
-                  </div>
-                  <div>
-                    <span className="text-accent">Strudel syntax:</span> {`n(\`<0 1 2>\`).scale("C4:major")`}
-                  </div>
+
+              {/* Feature Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Notation Modes */}
+                <div className="bg-card p-4 rounded-lg text-left">
+                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                    <span className="text-lg">🎵</span> Notation Modes
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Choose how notes are represented:
+                  </p>
+                  <ul className="text-sm space-y-1">
+                    <li>• <strong>Raw Notes</strong>: C4, D#3, F5</li>
+                    <li>• <strong>Scale Degrees</strong>: 0, 1, 2 (with key)</li>
+                  </ul>
                 </div>
+
+                {/* Output Modes */}
+                <div className="bg-card p-4 rounded-lg text-left">
+                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                    <span className="text-lg">📊</span> Output Modes
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Organize your music:
+                  </p>
+                  <ul className="text-sm space-y-1">
+                    <li>• <strong>Single</strong>: One combined pattern</li>
+                    <li>• <strong>Multi</strong>: Separate tracks</li>
+                    <li>• <strong>Patternize</strong>: Detect loops</li>
+                  </ul>
+                </div>
+
+                {/* Smart Features */}
+                <div className="bg-card p-4 rounded-lg text-left">
+                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                    <span className="text-lg">✨</span> Smart Features
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Automatic enhancements:
+                  </p>
+                  <ul className="text-sm space-y-1">
+                    <li>• Key signature detection</li>
+                    <li>• Instrument mapping</li>
+                    <li>• Pattern recognition</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Quick Start */}
+              <div className="bg-gradient-musical text-primary-foreground p-6 rounded-lg text-center">
+                <h3 className="font-semibold mb-2">Ready to Start?</h3>
+                <p className="text-sm mb-3 opacity-90">
+                  Simply drag & drop a MIDI file onto this page, or click the upload button above.
+                </p>
+                <p className="text-xs opacity-75">
+                  Supported formats: .mid, .midi, .mid.rtx
+                </p>
               </div>
             </div>
           </div>
@@ -703,34 +878,66 @@ const Index = () => {
                       type="single" 
                       value={useScaleMode ? "scale" : "notes"}
                       onValueChange={async (value) => {
-                        if (value) {
-                          const newUseScaleMode = value === "scale";
-                          setUseScaleMode(newUseScaleMode);
-                          if (!notes.length) return;
-                          setIsProcessing(true);
-                          try {
-                            const notation = generateFormattedBracketNotation(
-                              notes, 
-                              lineLength, 
-                              analysis.calculatedKeySignature, 
-                              newUseScaleMode
-                            );
-                            setBracketNotation(notation);
-                            
-                            if (outMode === "multi") {
-                              await regenerateMultiStream(useInstrumentSamples);
-                            }
-                          } finally {
-                            setIsProcessing(false);
+                        // Add debug logging
+                        console.log("[Toggle] Value changed to:", value);
+                        console.log("[Toggle] Current useScaleMode:", useScaleMode);
+                        console.log("[Toggle] Current outMode:", outMode);
+                        
+                        if (!value) return; // Guard against undefined
+                        
+                        const newUseScaleMode = value === "scale";
+                        console.log("[Toggle] Setting useScaleMode to:", newUseScaleMode);
+                        
+                        // Update state immediately
+                        setUseScaleMode(newUseScaleMode);
+                        
+                        // Don't process if no notes
+                        if (!notes.length) {
+                          console.log("[Toggle] No notes to process");
+                          return;
+                        }
+                        
+                        setIsProcessing(true);
+                        
+                        // Small delay to ensure state is updated
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                        
+                        try {
+                          const notation = generateFormattedBracketNotation(
+                            notes, 
+                            lineLength, 
+                            analysis.calculatedKeySignature, 
+                            newUseScaleMode
+                          );
+                          setBracketNotation(notation);
+                          const stats = calculateStatistics(notes, notation);
+                          setStatistics(stats);
+                          
+                          console.log("[Toggle] Regenerated notation, first few chars:", notation.substring(0, 50));
+                          console.log("[Toggle] useScaleMode is now:", newUseScaleMode);
+                          
+                          // Force code regeneration for all modes - pass newUseScaleMode explicitly
+                          if (outMode === "multi") {
+                            await regenerateMultiStreamWithScaleMode(useInstrumentSamples, undefined, newUseScaleMode);
+                          } else if (outMode === "patternize") {
+                            await regeneratePatternizedWithScaleMode(undefined, newUseScaleMode);
+                          } else {
+                            // For single mode, clear the codeOverride to let StrudelPlayer regenerate from bracketNotation
+                            setCodeOverride("");
+                            console.log("[Toggle] Cleared codeOverride for single mode");
                           }
+                        } catch (error) {
+                          console.error("[Toggle] Error processing:", error);
+                        } finally {
+                          setIsProcessing(false);
                         }
                       }}
                       className="grid grid-cols-2 w-full"
                     >
-                      <ToggleGroupItem value="notes" className="text-xs">
+                      <ToggleGroupItem value="notes" className="text-xs" disabled={isProcessing}>
                         Raw Notes
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="scale" className="text-xs">
+                      <ToggleGroupItem value="scale" className="text-xs" disabled={isProcessing}>
                         Scale Degrees  
                       </ToggleGroupItem>
                     </ToggleGroup>
@@ -754,6 +961,8 @@ const Index = () => {
                           setIncludeVelocity(checked);
                           if (outMode === "multi") {
                             await regenerateMultiStream(useInstrumentSamples);
+                          } else if (outMode === "patternize") {
+                            await regeneratePatternized();
                           }
                         }}
                       />
@@ -772,23 +981,30 @@ const Index = () => {
                   <ToggleGroup 
                     type="single" 
                     value={outMode}
-                    onValueChange={async (value: "single" | "multi") => {
+                    onValueChange={async (value: "single" | "multi" | "patternize") => {
                       if (value) {
+                        console.log("[OutputMode] Switching to:", value);
                         setOutMode(value);
                         if (value === "single") {
                           setCodeOverride("");
-                        } else {
+                          console.log("[OutputMode] Cleared codeOverride for single mode");
+                        } else if (value === "multi") {
                           await regenerateMultiStream(useInstrumentSamples);
+                        } else if (value === "patternize") {
+                          await regeneratePatternized();
                         }
                       }
                     }}
-                    className="grid grid-cols-2 w-full"
+                    className="grid grid-cols-3 w-full"
                   >
                     <ToggleGroupItem value="single" className="text-xs">
                       Single Stream
                     </ToggleGroupItem>
                     <ToggleGroupItem value="multi" className="text-xs">
                       Multi Stream
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="patternize" className="text-xs">
+                      Patternize
                     </ToggleGroupItem>
                   </ToggleGroup>
                   
@@ -811,6 +1027,95 @@ const Index = () => {
                           }}
                         />
                       </div>
+                    </div>
+                  )}
+                  
+                  {/* Pattern Detection Controls - Only show when patternize is selected */}
+                  {outMode === "patternize" && (
+                    <div className="mt-4 pt-3 border-t space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium">Pattern Detection Parameters</Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Adjust how patterns are detected and analyzed
+                        </p>
+                      </div>
+                      
+                      {/* Pattern Length */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Min Pattern Length ({patternMinLength} notes)</div>
+                        <input
+                          type="range"
+                          min={1}
+                          max={10}
+                          step={1}
+                          value={patternMinLength}
+                          onChange={async (e) => {
+                            const newLength = parseInt(e.target.value);
+                            setPatternMinLength(newLength);
+                            if (notes.length > 0) {
+                              await regeneratePatternized();
+                            }
+                          }}
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          Minimum number of notes required for a pattern
+                        </div>
+                      </div>
+                      
+                      {/* Pattern Repetitions */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Min Repetitions ({patternMinRepetitions})</div>
+                        <input
+                          type="range"
+                          min={2}
+                          max={10}
+                          step={1}
+                          value={patternMinRepetitions}
+                          onChange={async (e) => {
+                            const newReps = parseInt(e.target.value);
+                            setPatternMinRepetitions(newReps);
+                            if (notes.length > 0) {
+                              await regeneratePatternized();
+                            }
+                          }}
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          How many times a pattern must repeat to be detected
+                        </div>
+                      </div>
+                      
+                      {/* Similarity Threshold */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Similarity Threshold ({(patternSimilarityThreshold * 100).toFixed(0)}%)</div>
+                        <input
+                          type="range"
+                          min={0.5}
+                          max={1.0}
+                          step={0.05}
+                          value={patternSimilarityThreshold}
+                          onChange={async (e) => {
+                            const newThreshold = parseFloat(e.target.value);
+                            setPatternSimilarityThreshold(newThreshold);
+                            if (notes.length > 0) {
+                              await regeneratePatternized();
+                            }
+                          }}
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          How similar pattern repetitions must be (higher = more strict)
+                        </div>
+                      </div>
+                      
+                      {/* Pattern Statistics Display */}
+                      {patternStats && (
+                        <div className="mt-4 p-3 bg-muted rounded text-xs space-y-1">
+                          <div className="font-medium">Pattern Analysis Results:</div>
+                          <div>Patterns found: {patternStats.totalPatterns}</div>
+                          <div>Total repetitions: {patternStats.totalRepetitions}</div>
+                          <div>Average similarity: {(patternStats.averageSimilarity * 100).toFixed(1)}%</div>
+                          <div>Coverage: {(patternStats.totalCoverage * 100).toFixed(1)}% of music</div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
