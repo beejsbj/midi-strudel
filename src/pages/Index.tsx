@@ -589,7 +589,7 @@ const Index = () => {
         if (patterns.length > 0) {
           const patternizedCode = generatePatternizedCode(patterns, notes, {
             keySignature: analysis.calculatedKeySignature,
-            scaleMode,
+            useScaleMode,
             includeVelocity,
             lineLength,
             sound: "triangle"
@@ -638,7 +638,7 @@ const Index = () => {
             analysis.trackInfo,
             {
               keySignature: analysis.calculatedKeySignature,
-              scaleMode,
+              useScaleMode,
               includeVelocity,
               lineLength,
               sound: undefined,  // Always use instrument samples in patternize mode
@@ -874,7 +874,7 @@ const Index = () => {
                         Choose between note names (C4, D4) or scale degrees (0, 1, 2)
                       </p>
                     </div>
-                    <ToggleGroup 
+                     <ToggleGroup 
                       type="single" 
                       value={useScaleMode ? "scale" : "notes"}
                       onValueChange={async (value) => {
@@ -932,13 +932,19 @@ const Index = () => {
                           setIsProcessing(false);
                         }
                       }}
-                      className="grid grid-cols-2 w-full"
+                      className="flex flex-col gap-2 w-full"
                     >
-                      <ToggleGroupItem value="notes" className="text-xs" disabled={isProcessing}>
-                        Raw Notes
+                      <ToggleGroupItem value="notes" className="text-xs justify-start" disabled={isProcessing}>
+                        <div className="text-left">
+                          <div className="font-medium">Raw Notes</div>
+                          <div className="text-xs text-muted-foreground">Example: C4 D#4 F5</div>
+                        </div>
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="scale" className="text-xs" disabled={isProcessing}>
-                        Scale Degrees  
+                      <ToggleGroupItem value="scale" className="text-xs justify-start" disabled={isProcessing}>
+                        <div className="text-left">
+                          <div className="font-medium">Scale Degrees</div>
+                          <div className="text-xs text-muted-foreground">Example: 0 1 2 (based on key)</div>
+                        </div>
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </div>
@@ -995,16 +1001,25 @@ const Index = () => {
                         }
                       }
                     }}
-                    className="grid grid-cols-3 w-full"
+                    className="flex flex-col gap-2 w-full"
                   >
-                    <ToggleGroupItem value="single" className="text-xs">
-                      Single Stream
+                    <ToggleGroupItem value="single" className="text-xs justify-start">
+                      <div className="text-left">
+                        <div className="font-medium">Single Stream</div>
+                        <div className="text-xs text-muted-foreground">All tracks combined into one pattern</div>
+                      </div>
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="multi" className="text-xs">
-                      Multi Stream
+                    <ToggleGroupItem value="multi" className="text-xs justify-start">
+                      <div className="text-left">
+                        <div className="font-medium">Multi Stream</div>
+                        <div className="text-xs text-muted-foreground">Separate pattern for each track</div>
+                      </div>
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="patternize" className="text-xs">
-                      Patternize
+                    <ToggleGroupItem value="patternize" className="text-xs justify-start">
+                      <div className="text-left">
+                        <div className="font-medium">Patternize</div>
+                        <div className="text-xs text-muted-foreground">Detect and use repeated patterns</div>
+                      </div>
                     </ToggleGroupItem>
                   </ToggleGroup>
                   
@@ -1128,54 +1143,60 @@ const Index = () => {
                       Choose between automatic bar-based timing or manual CPS control
                     </p>
                   </div>
-                  <ToggleGroup 
-                    type="single" 
-                    value={timingMode}
-                    onValueChange={async (value: "auto" | "manual") => {
-                      if (!value || !uploadedFile || !analysis) return;
-                      setTimingMode(value);
-                      setIsProcessing(true);
-                      try {
-                        const calculatedCps = analysis.cyclesPerSecond ?? calculateCPS(analysis.tempo, analysis.timeSignature);
-                        const newCps = value === "auto" ? calculatedCps : manualCps;
-                        setCurrentCps(newCps);
-                        
-                        const newNotes = await convertMidiToNotes(
-                          uploadedFile,
-                          {
-                            ...defaultSettings,
-                            cyclesPerSecond: newCps,
-                            selectedTracks,
-                          }
-                        );
-                        const notation = generateFormattedBracketNotation(
-                          newNotes, 
-                          lineLength, 
-                          analysis.calculatedKeySignature, 
-                          useScaleMode
-                        );
-                        const stats = calculateStatistics(newNotes, notation);
+                   <ToggleGroup 
+                     type="single" 
+                     value={timingMode}
+                     onValueChange={async (value: "auto" | "manual") => {
+                       if (!value || !uploadedFile || !analysis) return;
+                       setTimingMode(value);
+                       setIsProcessing(true);
+                       try {
+                         const calculatedCps = analysis.cyclesPerSecond ?? calculateCPS(analysis.tempo, analysis.timeSignature);
+                         const newCps = value === "auto" ? calculatedCps : manualCps;
+                         setCurrentCps(newCps);
+                         
+                         const newNotes = await convertMidiToNotes(
+                           uploadedFile,
+                           {
+                             ...defaultSettings,
+                             cyclesPerSecond: newCps,
+                             selectedTracks,
+                           }
+                         );
+                         const notation = generateFormattedBracketNotation(
+                           newNotes, 
+                           lineLength, 
+                           analysis.calculatedKeySignature, 
+                           useScaleMode
+                         );
+                         const stats = calculateStatistics(newNotes, notation);
 
-                        setNotes(newNotes);
-                        setBracketNotation(notation);
-                        setStatistics(stats);
+                         setNotes(newNotes);
+                         setBracketNotation(notation);
+                         setStatistics(stats);
 
-                        if (outMode === "multi") {
-                          await regenerateMultiStream(useInstrumentSamples);
-                        }
-                      } finally {
-                        setIsProcessing(false);
-                      }
-                    }}
-                    className="grid grid-cols-2 w-full"
-                  >
-                    <ToggleGroupItem value="auto" className="text-xs">
-                      Auto (Bar-based)
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="manual" className="text-xs">
-                      Manual
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                         if (outMode === "multi") {
+                           await regenerateMultiStream(useInstrumentSamples);
+                         }
+                       } finally {
+                         setIsProcessing(false);
+                       }
+                     }}
+                     className="flex flex-col gap-2 w-full"
+                   >
+                     <ToggleGroupItem value="auto" className="text-xs justify-start">
+                       <div className="text-left">
+                         <div className="font-medium">Auto</div>
+                         <div className="text-xs text-muted-foreground">Use MIDI tempo & time signature</div>
+                       </div>
+                     </ToggleGroupItem>
+                     <ToggleGroupItem value="manual" className="text-xs justify-start">
+                       <div className="text-left">
+                         <div className="font-medium">Manual</div>
+                         <div className="text-xs text-muted-foreground">Set your own CPS value</div>
+                       </div>
+                     </ToggleGroupItem>
+                   </ToggleGroup>
                   
                   {/* Auto mode display */}
                   {timingMode === "auto" && analysis && (
