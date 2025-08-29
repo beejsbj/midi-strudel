@@ -680,17 +680,19 @@ const Index = () => {
     <GlobalDragZone onFileUpload={handleFileUpload} isProcessing={isProcessing}>
       <div className="min-h-screen bg-gradient-subtle">
         {/* Header */}
-        <header className="border-b bg-card/50 backdrop-blur">
+        <header className="border-b border-primary/20 bg-card/90 backdrop-blur-xl shadow-tech cyber-grid">
           <div className="container mx-auto px-4 py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg gradient-musical">
-                  <Music className="h-6 w-6 text-primary-foreground" />
+                <div className="p-3 rounded-xl gradient-musical shadow-glow transition-glow hover:shadow-neon-glow">
+                  <Music className="h-8 w-8 text-primary-foreground" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold">MIDI to Bracket Notation</h1>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    MIDI → Bracket Notation
+                  </h1>
                   <p className="text-muted-foreground">
-                    Convert MIDI files to custom bracket notation for musical timing
+                    🚀 Convert MIDI files to Strudel's bracket notation with AI-powered pattern detection
                   </p>
                 </div>
               </div>
@@ -714,8 +716,8 @@ const Index = () => {
               How This Tool Works
             </h2>
             <div className="max-w-4xl mx-auto space-y-6">
-              {/* Overview */}
-              <div className="bg-card p-6 rounded-lg text-left">
+               {/* Overview */}
+               <div className="tech-card p-6 text-left gradient-tech">
                 <h3 className="font-semibold mb-3">What is Bracket Notation?</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   Bracket notation is a time-based musical notation system used by Strudel. 
@@ -724,48 +726,58 @@ const Index = () => {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Basic Notation */}
-                  <div>
-                    <h4 className="font-medium mb-2">Basic Notation:</h4>
-                    <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
-                      <div>
-                        <span className="text-accent">Notes:</span> C4 D4 E4
-                      </div>
-                      <div>
-                        <span className="text-accent">Durations:</span> C4@0.5 D4@0.25
-                      </div>
-                      <div>
-                        <span className="text-accent">Rests:</span> C4 ~@0.5 D4
-                      </div>
-                      <div>
-                        <span className="text-accent">Chords:</span> [C4, E4, G4]@1
-                      </div>
-                    </div>
-                  </div>
+                   <div>
+                     <h4 className="font-medium mb-2">Basic Notation:</h4>
+                     <div className="font-mono text-sm space-y-1 bg-muted/50 p-3 rounded-lg border border-primary/20">
+                       <div>
+                         <span className="text-primary font-medium">Notes:</span> C4 D4 E4
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Durations:</span> C4@0.5 D4@0.25
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Rests:</span> C4 ~@0.5 D4
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Chords:</span> [C4, E4, G4]@1
+                       </div>
+                     </div>
+                     
+                     <h4 className="font-medium mt-4 mb-2">Duration Values:</h4>
+                     <div className="font-mono text-xs space-y-1 bg-muted/30 p-3 rounded-lg border border-accent/20">
+                       <div className="text-accent font-medium mb-2">@ = Duration in beats</div>
+                       <div><span className="text-secondary">@1</span> = Whole note (1 beat)</div>
+                       <div><span className="text-secondary">@0.5</span> = Half note (1/2 beat)</div>
+                       <div><span className="text-secondary">@0.25</span> = Quarter note (1/4 beat)</div>
+                       <div><span className="text-secondary">@0.125</span> = Eighth note (1/8 beat)</div>
+                       <div><span className="text-secondary">@0.0625</span> = Sixteenth note (1/16 beat)</div>
+                     </div>
+                   </div>
                   {/* Advanced Notation */}
-                  <div>
-                    <h4 className="font-medium mb-2">Advanced Features:</h4>
-                    <div className="font-mono text-sm space-y-1 bg-muted p-3 rounded">
-                      <div>
-                        <span className="text-accent">Overlaps:</span> {`{C4@2, ~@0.5 E4@1.5}@2`}
-                      </div>
-                      <div>
-                        <span className="text-accent">Patterns:</span> {`<C4 D4 E4>`}
-                      </div>
-                      <div>
-                        <span className="text-accent">Velocity:</span> .velocity(`0.8 0.7 0.9`)
-                      </div>
-                      <div>
-                        <span className="text-accent">Drums:</span> s(`bd sd hh`).bank("TR909")
-                      </div>
-                    </div>
-                  </div>
+                   <div>
+                     <h4 className="font-medium mb-2">Advanced Features:</h4>
+                     <div className="font-mono text-sm space-y-1 bg-muted/50 p-3 rounded-lg border border-secondary/20">
+                       <div>
+                         <span className="text-primary font-medium">Overlaps:</span> {`{C4@2, ~@0.5 E4@1.5}@2`}
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Patterns:</span> {`<C4 D4 E4>`}
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Velocity:</span> .velocity(`0.8 0.7 0.9`)
+                       </div>
+                       <div>
+                         <span className="text-primary font-medium">Drums:</span> s(`bd sd hh`).bank("TR909")
+                       </div>
+                     </div>
+                   </div>
                 </div>
               </div>
 
               {/* Feature Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Notation Modes */}
-                <div className="bg-card p-4 rounded-lg text-left">
+                <div className="tech-card p-4 text-left">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
                     <span className="text-lg">🎵</span> Notation Modes
                   </h4>
@@ -779,7 +791,7 @@ const Index = () => {
                 </div>
 
                 {/* Output Modes */}
-                <div className="bg-card p-4 rounded-lg text-left">
+                <div className="tech-card p-4 text-left">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
                     <span className="text-lg">📊</span> Output Modes
                   </h4>
@@ -794,7 +806,7 @@ const Index = () => {
                 </div>
 
                 {/* Smart Features */}
-                <div className="bg-card p-4 rounded-lg text-left">
+                <div className="tech-card p-4 text-left">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
                     <span className="text-lg">✨</span> Smart Features
                   </h4>
