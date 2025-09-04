@@ -26,13 +26,18 @@ function injectNoteStyles() {
 
   let styles = '';
   
-  // Note styles with chromatic coloring
+  // Note styles with chromatic coloring - override Strudel's default outline styles
   Object.entries(NOTE_COLORS).forEach(([note, hue]) => {
     const className = note.replace('#', 'sharp').toLowerCase();
     styles += `
-      .strudel-note-${className} {
+      .cm-content .strudel-note-${className},
+      .cm-line .strudel-note-${className},
+      span.strudel-note-${className} {
         color: hsl(${hue}, 70%, 60%) !important;
         font-weight: 600 !important;
+        outline: none !important;
+        border: none !important;
+        background: transparent !important;
       }
     `;
   });
