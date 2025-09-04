@@ -28,6 +28,7 @@ import {
   wrapInAngles,
 } from "@/lib/multiStream";
 import { formatScaleForStrudel } from "@/lib/musicTheory";
+import { groupNotesByMeasures, formatMeasuresPerLine } from "@/lib/measureGrouping";
 import { useToast } from "@/hooks/use-toast";
 import { Music } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -81,6 +82,7 @@ const Index = () => {
   const [manualCps, setManualCps] = useState<number>(DEFAULT_CPS);
   const [currentCps, setCurrentCps] = useState<number>(DEFAULT_CPS);
   const [useBarSyntax, setUseBarSyntax] = useState<boolean>(false);
+  const [lineMeasureMode, setLineMeasureMode] = useState<"notes" | "measures">("notes");
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
@@ -1370,15 +1372,35 @@ const Index = () => {
                   )}
                 </div>
 
+                {/* Line/Measure Mode Toggle */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Line Content Mode</div>
+                  <ToggleGroup
+                    type="single"
+                    value={lineMeasureMode}
+                    onValueChange={(value) => {
+                      if (value) setLineMeasureMode(value as "notes" | "measures");
+                    }}
+                    className="grid grid-cols-2 w-full"
+                  >
+                    <ToggleGroupItem value="notes" className="text-xs">
+                      Notes per line
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="measures" className="text-xs">
+                      Measures per line
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
                 {/* Line Length Slider */}
                 <div className="space-y-2">
                   <div className="text-sm font-medium">
-                    {timingMode === "auto" && useBarSyntax ? `Bars per line (${lineLength})` : `Notes per line (${lineLength})`}
+                    {lineMeasureMode === "measures" ? `Measures per line (${lineLength})` : `Notes per line (${lineLength})`}
                   </div>
                   <input
                     type="range"
                     min={1}
-                    max={timingMode === "auto" && useBarSyntax ? 8 : 20}
+                    max={lineMeasureMode === "measures" ? 8 : 20}
                     step={1}
                     value={lineLength}
                     onChange={async (e) => {
@@ -1386,29 +1408,55 @@ const Index = () => {
                       setLineLength(newLineLength);
                       if (!notes.length) return;
                       setIsProcessing(true);
-                      try {
-                        const notation = timingMode === "auto" && useBarSyntax && analysis
-                          ? generateBarBracketNotation(
-                              notes,
-                              newLineLength,
-                              analysis.timeSignature,
-                              analysis.calculatedKeySignature,
-                              useScaleMode
-                            )
-                          : generateFormattedBracketNotation(
-                              notes,
-                              newLineLength,
-                              analysis?.calculatedKeySignature,
-                              useScaleMode
-                            );
-                        setBracketNotation(notation);
-                        
-                        if (outMode === "multi") {
-                          await regenerateMultiStream(useInstrumentSamples);
-                        }
-                      } finally {
-                        setIsProcessing(false);
-                      }
+                       try {
+                         let notation: string;
+                         if (lineMeasureMode === "measures" && analysis) {
+                           // Group by measures and format
+                           const measureGroups = groupNotesByMeasures(
+                             notes,
+                             analysis.timeSignature,
+                             currentCps,
+                             analysis.tempo
+                           );
+                           notation = formatMeasuresPerLine(
+                             measureGroups,
+                             newLineLength,
+                             (measureNotes) => generateFormattedBracketNotation(
+                               measureNotes,
+                               8, // Fixed notes per measure notation
+                               analysis.calculatedKeySignature,
+                               useScaleMode
+                             )
+                           );
+                         } else if (timingMode === "auto" && useBarSyntax && analysis) {
+                           notation = generateBarBracketNotation(
+                             notes,
+                             newLineLength,
+                             analysis.timeSignature,
+                             analysis.calculatedKeySignature,
+                             useScaleMode
+                           );
+                         } else {
+                           notation = generateFormattedBracketNotation(
+                             notes,
+                             newLineLength,
+                             analysis?.calculatedKeySignature,
+                             useScaleMode
+                           );
+                         }
+                         setBracketNotation(notation);
+                         const stats = calculateStatistics(notes, notation);
+                         setStatistics(stats);
+                         if (outMode === "multi") {
+                           void regenerateMultiStream(useInstrumentSamples);
+                         } else if (outMode === "patternize") {
+                           void regeneratePatternized();
+                         }
+                       } catch (error) {
+                         console.error("Error updating line length:", error);
+                       } finally {
+                         setIsProcessing(false);
+                       }
                     }}
                   />
                   <div className="text-xs text-muted-foreground">
