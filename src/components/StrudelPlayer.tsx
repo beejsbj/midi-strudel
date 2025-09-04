@@ -7,7 +7,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   generateStrudelCode,
   extractFormattedVelocityPattern,
+  generateFormattedBracketNotation,
 } from "@/lib/bracketNotation";
+import { groupNotesByMeasures, formatMeasuresPerLine } from "@/lib/measureGrouping";
 import type { KeySignature } from "@/lib/musicTheory";
 import type { Note } from "@/types/music";
 
@@ -26,6 +28,10 @@ interface StrudelPlayerProps {
   notes?: Note[]; // Optional notes for velocity extraction
   includeVelocity?: boolean; // Whether to include velocity in the code
   lineLength?: number; // Line length for velocity pattern formatting
+  formatByMeasures?: boolean; // Whether to format by measures instead of notes per line
+  measuresPerLine?: number; // Number of measures per line when formatByMeasures is true
+  tempo?: number; // BPM for measure calculations
+  timeSignature?: { numerator: number; denominator: number }; // Time signature for measure calculations
 }
 
 // Minimal type surface for the Strudel editor we use
@@ -61,6 +67,10 @@ export function StrudelPlayer({
   notes,
   includeVelocity = false,
   lineLength = 8,
+  formatByMeasures = false,
+  measuresPerLine = 1,
+  tempo = 120,
+  timeSignature = { numerator: 4, denominator: 4 },
 }: StrudelPlayerProps) {
   const { toast } = useToast();
 
@@ -68,6 +78,30 @@ export function StrudelPlayer({
   const strudelCode = useMemo(() => {
     if (codeOverride && codeOverride.trim().length > 0) return codeOverride;
     if (bracketNotation) {
+      let finalNotation = bracketNotation;
+      
+      // If we have notes and formatByMeasures is enabled, regenerate notation by measures
+      if (formatByMeasures && notes && notes.length > 0) {
+        const cyclesPerSecond = 0.5; // Default cycles per second
+        const measureGroups = groupNotesByMeasures(
+          notes,
+          timeSignature,
+          cyclesPerSecond,
+          tempo
+        );
+        
+        finalNotation = formatMeasuresPerLine(
+          measureGroups,
+          measuresPerLine,
+          (measureNotes: Note[]) => generateFormattedBracketNotation(
+            measureNotes,
+            lineLength,
+            keySignature,
+            useScaleMode
+          )
+        );
+      }
+      
       let velocityPattern: string | undefined;
       if (includeVelocity && notes && notes.length > 0) {
         velocityPattern = extractFormattedVelocityPattern(
@@ -78,7 +112,7 @@ export function StrudelPlayer({
         );
       }
       return generateStrudelCode(
-        bracketNotation,
+        finalNotation,
         keySignature,
         useScaleMode,
         "triangle",
@@ -95,6 +129,10 @@ export function StrudelPlayer({
     notes,
     includeVelocity,
     lineLength,
+    formatByMeasures,
+    measuresPerLine,
+    tempo,
+    timeSignature,
   ]);
 
   // Component state

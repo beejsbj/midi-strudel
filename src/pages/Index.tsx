@@ -1534,13 +1534,17 @@ const Index = () => {
 
             <StrudelPlayer
               bracketNotation={bracketNotation}
-              codeOverride={codeOverride}
+              codeOverride={outMode === "patternize" ? codeOverride : (outMode === "multi" ? codeOverride : "")}
               statistics={statistics}
               keySignature={analysis?.calculatedKeySignature}
               useScaleMode={useScaleMode}
               notes={notes}
               includeVelocity={includeVelocity}
               lineLength={lineLength}
+              formatByMeasures={lineMeasureMode === "measures"}
+              measuresPerLine={lineLength}
+              tempo={analysis?.tempo || 120}
+              timeSignature={analysis?.timeSignature || { numerator: 4, denominator: 4 }}
               onSamplesChanged={(names) => {
                 setAvailableSamples(names);
               }}
