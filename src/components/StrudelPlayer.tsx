@@ -10,7 +10,7 @@ import {
 } from "@/lib/bracketNotation";
 import type { KeySignature } from "@/lib/musicTheory";
 import type { Note } from "@/types/music";
-import { initializeNoteHighlighting } from "@/lib/strudelSyntaxHighlight";
+
 
 interface StrudelPlayerProps {
   bracketNotation: string;
@@ -350,10 +350,6 @@ export function StrudelPlayer({
     editorRef.current = editorInstance;
     replRef.current = editorInstance.repl ?? null;
 
-    // Initialize note highlighting after editor is created
-    if (containerRef.current) {
-      initializeNoteHighlighting(containerRef.current);
-    }
 
     // Report available sample names back up after a short delay
     if (onSamplesChanged) {
