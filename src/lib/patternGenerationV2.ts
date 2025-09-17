@@ -163,7 +163,8 @@ function generateTrackPatterns(
         pattern.notes,
         options.lineLength || 8,
         options.keySignature,
-        options.useScaleMode
+        options.useScaleMode,
+        false // patterns use duration mode by default
       );
     }
     

@@ -40,15 +40,15 @@ function formatDuration(duration: number): string {
 }
 
 // Build a simple sequential bracket for a monophonic stream of notes (cycles)
-export function buildSequentialBracket(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false): string {
+export function buildSequentialBracket(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false, useSubdivisionMode: boolean = false): string {
   if (!notes || notes.length === 0) return "";
   
   // Use the new unified function that handles both regular and scale modes
-  return generateFormattedBracketNotation(notes, lineLength, keySignature, useScaleMode);
+  return generateFormattedBracketNotation(notes, lineLength, keySignature, useScaleMode, useSubdivisionMode);
 }
 
 // Build velocity pattern for a monophonic stream of notes (cycles)
-export function buildSequentialVelocityPattern(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false): string {
+export function buildSequentialVelocityPattern(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false, useSubdivisionMode: boolean = false): string {
   if (!notes || notes.length === 0) return "";
   
   // Use the new unified function that handles both regular and scale modes
@@ -56,9 +56,9 @@ export function buildSequentialVelocityPattern(notes: Note[], lineLength: number
 }
 
 // Build Strudel code for a stream with optional velocity
-export function buildStrudelCode(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false, includeVelocity: boolean = false, sound: string = "triangle"): string {
-  const bracketNotation = buildSequentialBracket(notes, lineLength, keySignature, useScaleMode);
-  const velocityPattern = includeVelocity ? buildSequentialVelocityPattern(notes, lineLength, keySignature, useScaleMode) : undefined;
+export function buildStrudelCode(notes: Note[], lineLength: number = 8, keySignature?: KeySignature, useScaleMode: boolean = false, useSubdivisionMode: boolean = false, includeVelocity: boolean = false, sound: string = "triangle"): string {
+  const bracketNotation = buildSequentialBracket(notes, lineLength, keySignature, useScaleMode, useSubdivisionMode);
+  const velocityPattern = includeVelocity ? buildSequentialVelocityPattern(notes, lineLength, keySignature, useScaleMode, useSubdivisionMode) : undefined;
   
   return generateStrudelCode(bracketNotation, keySignature, useScaleMode, sound, velocityPattern, includeVelocity);
 }

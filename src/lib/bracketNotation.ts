@@ -14,6 +14,15 @@ import {
 } from "./musicTheory";
 import { midiToDrumToken } from "./drumMapping";
 
+// Subdivision notation interfaces
+export interface SubdivisionNode {
+  type: 'note' | 'rest' | 'group';
+  content?: string; // note name or "~" for rest
+  duration?: number; // explicit duration override (@duration)
+  children?: SubdivisionNode[];
+  totalDuration?: number; // total duration for this node
+}
+
 // Convert MIDI number to note name
 export function midiNumberToNoteName(midi: number): string {
   const noteNames = [
@@ -377,14 +386,142 @@ function generateScaleDegreeGroupNotation(
   return `{${entries.join(", ")}}${formatDuration(bracketLength)}`;
 }
 
+// Analyze rhythmic structure to detect subdivision patterns
+export function analyzeRhythmicHierarchy(notes: Note[]): SubdivisionNode {
+  if (notes.length === 0) return { type: 'group', children: [] };
+
+  // Sort notes by start time
+  const sortedNotes = [...notes].sort((a, b) => a.start - b.start);
+  
+  // Find the smallest common duration (likely the subdivision unit)
+  const durations = sortedNotes.map(n => n.release - n.start);
+  const uniqueDurations = [...new Set(durations)].sort((a, b) => a - b);
+  const baseDuration = uniqueDurations[0] || QUARTER;
+  
+  // Group notes by timing patterns
+  const timeline: Array<{ start: number; note: Note }> = sortedNotes.map(note => ({ start: note.start, note }));
+  
+  // Detect natural groupings based on timing
+  const groups: Note[][] = [];
+  let currentGroup: Note[] = [];
+  let lastEnd = 0;
+  
+  for (const { note } of timeline) {
+    const gap = note.start - lastEnd;
+    // If there's a significant gap or this is the first note, start a new group
+    if (gap > baseDuration * 0.1 || currentGroup.length === 0) {
+      if (currentGroup.length > 0) {
+        groups.push(currentGroup);
+      }
+      currentGroup = [note];
+    } else {
+      currentGroup.push(note);
+    }
+    lastEnd = note.release;
+  }
+  
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+  
+  // Build subdivision tree from groups
+  const children: SubdivisionNode[] = [];
+  
+  for (const group of groups) {
+    if (group.length === 1) {
+      // Single note
+      const note = group[0];
+      const duration = note.release - note.start;
+      children.push({
+        type: 'note',
+        content: note.name,
+        duration: duration > 1 ? duration : undefined,
+        totalDuration: duration
+      });
+    } else {
+      // Multiple notes - create subdivision
+      const groupStart = Math.min(...group.map(n => n.start));
+      const groupEnd = Math.max(...group.map(n => n.release));
+      const groupDuration = groupEnd - groupStart;
+      
+      // Recursively analyze the group
+      const groupChildren = group.map(note => ({
+        type: 'note' as const,
+        content: note.name,
+        totalDuration: note.release - note.start
+      }));
+      
+      children.push({
+        type: 'group',
+        children: groupChildren,
+        duration: groupDuration > 1 ? groupDuration : undefined,
+        totalDuration: groupDuration
+      });
+    }
+  }
+  
+  return {
+    type: 'group',
+    children,
+    totalDuration: sortedNotes.length > 0 ? Math.max(...sortedNotes.map(n => n.release)) : 0
+  };
+}
+
+// Convert subdivision tree to bracket notation
+export function generateSubdivisionNotation(tree: SubdivisionNode): string {
+  if (!tree.children || tree.children.length === 0) {
+    if (tree.type === 'note' && tree.content) {
+      const durationStr = tree.duration ? formatDuration(tree.duration) : '';
+      return `${tree.content}${durationStr}`;
+    } else if (tree.type === 'rest') {
+      const durationStr = tree.duration ? formatDuration(tree.duration) : '';
+      return `~${durationStr}`;
+    }
+    return '';
+  }
+  
+  // Process children
+  const childrenStr = tree.children
+    .map(child => generateSubdivisionNotation(child))
+    .filter(str => str.length > 0)
+    .join(' ');
+  
+  if (!childrenStr) return '';
+  
+  // Wrap in brackets and add duration if needed
+  const durationStr = tree.duration ? formatDuration(tree.duration) : '';
+  return `[${childrenStr}]${durationStr}`;
+}
+
 // Main function to generate formatted bracket notation
 export function generateFormattedBracketNotation(
   notes: Note[],
   lineLength: number = 8,
   keySignature?: KeySignature,
-  useScaleMode: boolean = false
+  useScaleMode: boolean = false,
+  useSubdivisionMode: boolean = false
 ): string {
-  if (useScaleMode && keySignature) {
+  if (useSubdivisionMode) {
+    // Generate subdivision-based notation
+    if (useScaleMode && keySignature) {
+      // For scale mode + subdivision mode, convert to scale degrees first
+      const scaleDegrees = convertNotesToScaleDegrees(notes, keySignature);
+      // Convert scale degrees to Note-like format for analysis
+      const scaleNotes: Note[] = scaleDegrees.map(sd => ({
+        name: sd.degree.toString(),
+        start: sd.start,
+        release: sd.release
+      }));
+      const tree = analyzeRhythmicHierarchy(scaleNotes);
+      const notation = generateSubdivisionNotation(tree);
+      return formatBracketNotation(notation, lineLength);
+    } else {
+      // Regular subdivision mode
+      const tree = analyzeRhythmicHierarchy(notes);
+      const notation = generateSubdivisionNotation(tree);
+      return formatBracketNotation(notation, lineLength);
+    }
+  } else if (useScaleMode && keySignature) {
     const scaleDegrees = convertNotesToScaleDegrees(notes, keySignature);
     const notation = generateScaleDegreeNotation(scaleDegrees);
     return formatBracketNotation(notation, lineLength);

@@ -69,6 +69,7 @@ const Index = () => {
   const [lineLength, setLineLength] = useState<number>(8);
   const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
   const [includeVelocity, setIncludeVelocity] = useState<boolean>(false);
+  const [useSubdivisionMode, setUseSubdivisionMode] = useState<boolean>(false);
   
   // Pattern detection state
   const [patternMinLength, setPatternMinLength] = useState<number>(2);
@@ -103,7 +104,7 @@ const Index = () => {
 
       // Use analyzed notes initially (cycles)
       const convertedNotes = res.notes;
-      const notation = generateFormattedBracketNotation(convertedNotes, lineLength, res.calculatedKeySignature, useScaleMode);
+      const notation = generateFormattedBracketNotation(convertedNotes, lineLength, res.calculatedKeySignature, useScaleMode, useSubdivisionMode);
       const stats = calculateStatistics(convertedNotes, notation);
 
       // Log analysis and initial conversion
@@ -152,7 +153,7 @@ const Index = () => {
         cyclesPerSecond: currentCps,
         selectedTracks: newSelected,
       });
-      const notation = generateFormattedBracketNotation(filteredNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode);
+      const notation = generateFormattedBracketNotation(filteredNotes, lineLength, analysis?.calculatedKeySignature, useScaleMode, useSubdivisionMode);
       const stats = calculateStatistics(filteredNotes, notation);
 
       setNotes(filteredNotes);
@@ -478,6 +479,7 @@ const Index = () => {
               lineLength,
               analysis.calculatedKeySignature,
               scaleMode,
+              useSubdivisionMode,
               includeVelocity,
               sample
             );
@@ -520,6 +522,7 @@ const Index = () => {
               lineLength,
               analysis.calculatedKeySignature,
               scaleMode,
+              useSubdivisionMode,
               includeVelocity,
               "triangle"
             );
@@ -599,7 +602,7 @@ const Index = () => {
           setCodeOverride(patternizedCode);
         } else {
           // Fallback to regular notation if no patterns found
-          const notation = generateFormattedBracketNotation(notes, lineLength, analysis.calculatedKeySignature, scaleMode);
+          const notation = generateFormattedBracketNotation(notes, lineLength, analysis.calculatedKeySignature, scaleMode, useSubdivisionMode);
           const strudelCode = generateStrudelCode(notation, analysis.calculatedKeySignature, scaleMode, "triangle");
           setCodeOverride(strudelCode);
         }
@@ -921,7 +924,8 @@ const Index = () => {
                             notes, 
                             lineLength, 
                             analysis.calculatedKeySignature, 
-                            newUseScaleMode
+                            newUseScaleMode,
+                            useSubdivisionMode
                           );
                           setBracketNotation(notation);
                           const stats = calculateStatistics(notes, notation);
@@ -962,7 +966,71 @@ const Index = () => {
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </div>
-                )}
+                 )}
+
+                {/* Duration/Subdivision Mode Toggle */}
+                <div className="space-y-3 p-4 border rounded">
+                  <div>
+                    <Label className="text-sm font-medium">Bracket Mode</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Choose between duration-based (@0.25) or subdivision-based ([...]) notation
+                    </p>
+                  </div>
+                  <ToggleGroup 
+                    type="single" 
+                    value={useSubdivisionMode ? "subdivision" : "duration"}
+                    onValueChange={async (value) => {
+                      if (!value) return;
+                      
+                      const newUseSubdivisionMode = value === "subdivision";
+                      setUseSubdivisionMode(newUseSubdivisionMode);
+                      
+                      if (!notes.length) return;
+                      
+                      setIsProcessing(true);
+                      
+                      try {
+                        const notation = generateFormattedBracketNotation(
+                          notes, 
+                          lineLength, 
+                          analysis.calculatedKeySignature, 
+                          useScaleMode,
+                          newUseSubdivisionMode
+                        );
+                        setBracketNotation(notation);
+                        const stats = calculateStatistics(notes, notation);
+                        setStatistics(stats);
+                        
+                        // Force code regeneration for all modes
+                        if (outMode === "multi") {
+                          await regenerateMultiStream(useInstrumentSamples);
+                        } else if (outMode === "patternize") {
+                          await regeneratePatternized();
+                        } else {
+                          setCodeOverride("");
+                        }
+                      } catch (error) {
+                        console.error("Error processing subdivision mode change:", error);
+                      } finally {
+                        setIsProcessing(false);
+                      }
+                    }}
+                    className="flex flex-col gap-2 w-full"
+                  >
+                    <ToggleGroupItem value="duration" className="text-xs justify-start" disabled={isProcessing}>
+                      <div className="text-left">
+                        <div className="font-medium">Duration Mode</div>
+                        <div className="text-xs text-muted-foreground">Example: C4@0.25 D4@0.5</div>
+                      </div>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="subdivision" className="text-xs justify-start" disabled={isProcessing}>
+                      <div className="text-left">
+                        <div className="font-medium">Subdivision Mode</div>
+                        <div className="text-xs text-muted-foreground">Example: [C4 D4] [E4 F4]</div>
+                      </div>
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
 
                 {/* Velocity Switch - Show if notes have velocity data */}
                 {notes.some(note => note.velocity !== undefined) && (
@@ -1177,12 +1245,13 @@ const Index = () => {
                              selectedTracks,
                            }
                          );
-                         const notation = generateFormattedBracketNotation(
-                           newNotes, 
-                           lineLength, 
-                           analysis.calculatedKeySignature, 
-                           useScaleMode
-                         );
+          const notation = generateFormattedBracketNotation(
+            newNotes, 
+            lineLength, 
+            analysis.calculatedKeySignature, 
+            useScaleMode,
+            useSubdivisionMode
+          );
                          const stats = calculateStatistics(newNotes, notation);
 
                          setNotes(newNotes);
@@ -1253,12 +1322,13 @@ const Index = () => {
                                       analysis.calculatedKeySignature,
                                       useScaleMode
                                     )
-                                  : generateFormattedBracketNotation(
-                                      notes,
-                                      lineLength,
-                                      analysis.calculatedKeySignature,
-                                      useScaleMode
-                                    );
+                                   : generateFormattedBracketNotation(
+                                       notes,
+                                       lineLength,
+                                       analysis.calculatedKeySignature,
+                                       useScaleMode,
+                                       useSubdivisionMode
+                                     );
                                 setBracketNotation(notation);
                                 
                                 if (outMode === "multi") {
@@ -1301,12 +1371,13 @@ const Index = () => {
                                   selectedTracks,
                                 }
                               );
-                              const notation = generateFormattedBracketNotation(
-                                newNotes, 
-                                lineLength, 
-                                analysis?.calculatedKeySignature, 
-                                useScaleMode
-                              );
+                               const notation = generateFormattedBracketNotation(
+                                 newNotes, 
+                                 lineLength, 
+                                 analysis?.calculatedKeySignature, 
+                                 useScaleMode,
+                                 useSubdivisionMode
+                               );
                               const stats = calculateStatistics(newNotes, notation);
 
                               setNotes(newNotes);
@@ -1345,12 +1416,13 @@ const Index = () => {
                                 selectedTracks,
                               }
                             );
-                            const notation = generateFormattedBracketNotation(
-                              newNotes, 
-                              lineLength, 
-                              analysis?.calculatedKeySignature, 
-                              useScaleMode
-                            );
+                             const notation = generateFormattedBracketNotation(
+                               newNotes, 
+                               lineLength, 
+                               analysis?.calculatedKeySignature, 
+                               useScaleMode,
+                               useSubdivisionMode
+                             );
                             const stats = calculateStatistics(newNotes, notation);
 
                             setNotes(newNotes);
@@ -1421,12 +1493,13 @@ const Index = () => {
                            notation = formatMeasuresPerLine(
                              measureGroups,
                              newLineLength,
-                             (measureNotes) => generateFormattedBracketNotation(
-                               measureNotes,
-                               8, // Fixed notes per measure notation
-                               analysis.calculatedKeySignature,
-                               useScaleMode
-                             )
+                              (measureNotes) => generateFormattedBracketNotation(
+                                measureNotes,
+                                8, // Fixed notes per measure notation
+                                analysis.calculatedKeySignature,
+                                useScaleMode,
+                                useSubdivisionMode
+                              )
                            );
                          } else if (timingMode === "auto" && useBarSyntax && analysis) {
                            notation = generateBarBracketNotation(
@@ -1437,12 +1510,13 @@ const Index = () => {
                              useScaleMode
                            );
                          } else {
-                           notation = generateFormattedBracketNotation(
-                             notes,
-                             newLineLength,
-                             analysis?.calculatedKeySignature,
-                             useScaleMode
-                           );
+                            notation = generateFormattedBracketNotation(
+                              notes,
+                              newLineLength,
+                              analysis?.calculatedKeySignature,
+                              useScaleMode,
+                              useSubdivisionMode
+                            );
                          }
                          setBracketNotation(notation);
                          const stats = calculateStatistics(notes, notation);
