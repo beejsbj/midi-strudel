@@ -60,7 +60,7 @@ export function generatePatternizedCode(
 
   if (patterns.length === 0) {
     // Fallback to regular notation if no patterns found
-    const notation = generateFormattedBracketNotation(allNotes, lineLength, keySignature, useScaleMode);
+    const notation = generateFormattedBracketNotation(allNotes, lineLength, keySignature, useScaleMode, false);
     return generateStrudelCode(notation, keySignature, useScaleMode, sound);
   }
 
@@ -99,7 +99,8 @@ export function createPatternPhrases(
       normalizedNotes, 
       lineLength, 
       keySignature, 
-      useScaleMode
+      useScaleMode,
+      false // patterns use duration mode by default
     );
     
     console.log(`Generated bracket notation for ${phraseName}:`, bracketNotation);

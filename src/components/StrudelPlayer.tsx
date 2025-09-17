@@ -97,7 +97,8 @@ export function StrudelPlayer({
             measureNotes,
             lineLength,
             keySignature,
-            useScaleMode
+            useScaleMode,
+            false // subdivision mode handled at top level
           )
         );
       }
