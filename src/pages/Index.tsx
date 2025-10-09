@@ -29,6 +29,7 @@ import {
 } from "@/lib/multiStream";
 import { formatScaleForStrudel } from "@/lib/musicTheory";
 import { groupNotesByMeasures, formatMeasuresPerLine } from "@/lib/measureGrouping";
+import { StrudelNotation } from "@/lib/strudelNotation";
 import { useToast } from "@/hooks/use-toast";
 import { Music } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -70,6 +71,19 @@ const Index = () => {
   const [useScaleMode, setUseScaleMode] = useState<boolean>(false);
   const [includeVelocity, setIncludeVelocity] = useState<boolean>(false);
   const [useSubdivisionMode, setUseSubdivisionMode] = useState<boolean>(false);
+  
+  // New Strudel Notation Config
+  const [strudelOutputStyle, setStrudelOutputStyle] = useState<'polyphonic' | 'melody+harmony' | 'monophonic'>('melody+harmony');
+  const [strudelNotationType, setStrudelNotationType] = useState<'absolute' | 'relative'>('absolute');
+  const [strudelCycleUnit, setStrudelCycleUnit] = useState<'bar' | 'beat'>('bar');
+  const [strudelFormatBy, setStrudelFormatBy] = useState<'note' | 'measure'>('note');
+  const [strudelNotesPerLine, setStrudelNotesPerLine] = useState(8);
+  const [strudelMeasuresPerLine, setStrudelMeasuresPerLine] = useState(1);
+  const [strudelIncludeVelocity, setStrudelIncludeVelocity] = useState(false);
+  const [strudelTimingStyle, setStrudelTimingStyle] = useState<'absoluteDuration' | 'relativeDivision'>('absoluteDuration');
+  const [strudelQuantize, setStrudelQuantize] = useState(false);
+  const [strudelQuantizeThreshold, setStrudelQuantizeThreshold] = useState(50);
+  const [strudelQuantizeStrength, setStrudelQuantizeStrength] = useState(70);
   
   // Pattern detection state
   const [patternMinLength, setPatternMinLength] = useState<number>(2);
@@ -1540,6 +1554,155 @@ const Index = () => {
                   </div>
                 </div>
 
+                {/* Advanced Strudel Notation Configuration */}
+                <details className="space-y-3 p-4 border rounded">
+                  <summary className="text-sm font-medium cursor-pointer hover:text-primary">
+                    ⚙️ Advanced Notation Settings
+                  </summary>
+                  
+                  <div className="mt-4 space-y-4">
+                    {/* Output Style */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Output Style</Label>
+                      <ToggleGroup
+                        type="single"
+                        value={strudelOutputStyle}
+                        onValueChange={(value) => {
+                          if (value) setStrudelOutputStyle(value as typeof strudelOutputStyle);
+                        }}
+                        className="grid grid-cols-3 w-full text-xs"
+                      >
+                        <ToggleGroupItem value="polyphonic" className="text-xs">Poly</ToggleGroupItem>
+                        <ToggleGroupItem value="melody+harmony" className="text-xs">Mel+Har</ToggleGroupItem>
+                        <ToggleGroupItem value="monophonic" className="text-xs">Mono</ToggleGroupItem>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* Notation Type */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Notation Type</Label>
+                      <ToggleGroup
+                        type="single"
+                        value={strudelNotationType}
+                        onValueChange={(value) => {
+                          if (value) setStrudelNotationType(value as typeof strudelNotationType);
+                        }}
+                        className="grid grid-cols-2 w-full"
+                      >
+                        <ToggleGroupItem value="absolute" className="text-xs">Absolute</ToggleGroupItem>
+                        <ToggleGroupItem value="relative" className="text-xs">Relative</ToggleGroupItem>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* Cycle Unit */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Cycle Unit</Label>
+                      <ToggleGroup
+                        type="single"
+                        value={strudelCycleUnit}
+                        onValueChange={(value) => {
+                          if (value) setStrudelCycleUnit(value as typeof strudelCycleUnit);
+                        }}
+                        className="grid grid-cols-2 w-full"
+                      >
+                        <ToggleGroupItem value="bar" className="text-xs">Bar</ToggleGroupItem>
+                        <ToggleGroupItem value="beat" className="text-xs">Beat</ToggleGroupItem>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* Timing Style */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Timing Style</Label>
+                      <ToggleGroup
+                        type="single"
+                        value={strudelTimingStyle}
+                        onValueChange={(value) => {
+                          if (value) setStrudelTimingStyle(value as typeof strudelTimingStyle);
+                        }}
+                        className="grid grid-cols-2 w-full"
+                      >
+                        <ToggleGroupItem value="absoluteDuration" className="text-xs">Duration</ToggleGroupItem>
+                        <ToggleGroupItem value="relativeDivision" className="text-xs">Subdivision</ToggleGroupItem>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* Quantization */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Quantization</Label>
+                        <Switch
+                          checked={strudelQuantize}
+                          onCheckedChange={setStrudelQuantize}
+                        />
+                      </div>
+                      {strudelQuantize && (
+                        <div className="space-y-2 pl-4 border-l-2">
+                          <div className="text-xs">
+                            <span className="font-medium">Threshold:</span> {strudelQuantizeThreshold}ms
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={200}
+                            step={10}
+                            value={strudelQuantizeThreshold}
+                            onChange={(e) => setStrudelQuantizeThreshold(parseInt(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs">
+                            <span className="font-medium">Strength:</span> {strudelQuantizeStrength}%
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={strudelQuantizeStrength}
+                            onChange={(e) => setStrudelQuantizeStrength(parseInt(e.target.value))}
+                            className="w-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Test Button */}
+                    <button
+                      onClick={() => {
+                        if (notes.length === 0) {
+                          toast({ title: "No notes to process", variant: "destructive" });
+                          return;
+                        }
+                        
+                        const notation = new StrudelNotation(notes, {
+                          outputStyle: strudelOutputStyle,
+                          notationType: strudelNotationType,
+                          cycleUnit: strudelCycleUnit,
+                          timingStyle: strudelTimingStyle,
+                          isQuantized: strudelQuantize,
+                          quantizationThreshold: strudelQuantizeThreshold,
+                          quantizationStrength: strudelQuantizeStrength,
+                          bpm: analysis?.tempo,
+                          timeSignature: analysis?.timeSignature,
+                          sound: 'sine',
+                          includeVelocity: strudelIncludeVelocity,
+                          formatPerLineBy: strudelFormatBy,
+                          notesPerLine: strudelNotesPerLine
+                        });
+                        
+                        const generated = notation.generate();
+                        setCodeOverride(generated);
+                        
+                        toast({ 
+                          title: "Advanced notation generated!", 
+                          description: `Using ${strudelOutputStyle} style with ${strudelTimingStyle} timing`
+                        });
+                      }}
+                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 text-sm font-medium"
+                    >
+                      Generate with Advanced Settings
+                    </button>
+                  </div>
+                </details>
 
                 {/* Instruments / Tracks */}
                 <div className="space-y-3 p-4 border rounded">
