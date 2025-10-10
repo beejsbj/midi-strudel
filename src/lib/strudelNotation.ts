@@ -610,7 +610,8 @@ export class StrudelNotation {
   // ============================================================================
 
   private quantizeNotes(notes: Note[]): Note[] {
-    const threshold = this.config.quantizationThreshold;
+    const thresholdMs = this.config.quantizationThreshold;
+    const thresholdCycles = thresholdMs / this.cycleLength;
     const strength = this.config.quantizationStrength / 100;
     
     return notes.map(note => {
@@ -620,8 +621,8 @@ export class StrudelNotation {
       let newStart = note.start;
       let newRelease = note.release;
       
-      // Only quantize if offset exceeds threshold
-      if (offsetStart > threshold) {
+      // Only quantize if offset exceeds threshold (in cycle units)
+      if (offsetStart > thresholdCycles) {
         const correction = (nearestGridStart - note.start) * strength;
         newStart = note.start + correction;
         newRelease = note.release + correction;
