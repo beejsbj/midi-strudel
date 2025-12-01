@@ -1,0 +1,5 @@
+{
+  "name": "Strudel MIDI Converter",
+  "description": "A sophisticated tool to convert MIDI files into Strudel live-coding bracket notation with customizable aesthetics and logic.",
+  "requestFramePermissions": []
+}
