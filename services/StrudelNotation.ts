@@ -504,73 +504,113 @@ export class StrudelNotation {
     const numerator = this.config.timeSignature.numerator || 4;
     const beatDur = measureDur / numerator;
 
-    const beatTokens: string[] = [];
+    const beatGrids: string[][] = [];
 
     for (let i = 0; i < numerator; i++) {
       const beatStart = measureStart + (i * beatDur);
       const beatEnd = beatStart + beatDur;
       
       // Filter notes that START within this beat
-      const beatNotes = notes.filter(n => n.noteOn >= beatStart - 0.001 && n.noteOn < beatEnd - 0.001);
+      let beatNotes = notes.filter(n => n.noteOn >= beatStart - 0.001 && n.noteOn < beatEnd - 0.001);
       
       // Notes sustaining from previous beats into this one
-      const sustainedNotes = notes.filter(n => n.noteOn < beatStart - 0.001 && n.noteOff > beatStart + 0.001);
+      let sustainedNotes = notes.filter(n => n.noteOn < beatStart - 0.001 && n.noteOff > beatStart + 0.001);
 
-      beatTokens.push(this.renderBeat(beatNotes, sustainedNotes, beatStart, beatDur, isDrum));
+      // FIX: If this is the start of the measure (i=0), we cannot start with a sustain '_'.
+      // We must treat these as new note onsets (re-triggers/ties).
+      if (i === 0 && sustainedNotes.length > 0) {
+        const retriggered = sustainedNotes.map(n => ({ ...n, noteOn: beatStart }));
+        beatNotes = [...beatNotes, ...retriggered];
+        sustainedNotes = [];
+      }
+
+      beatGrids.push(this.getBeatGrid(beatNotes, sustainedNotes, beatStart, beatDur, isDrum));
     }
 
-    const content = beatTokens.join(" ");
+    // --- FLATTEN MEASURE ---
+    // 1. Find LCM of all beat grid lengths to normalize resolution
+    const lengths = beatGrids.map(g => g.length);
+    const totalLCM = lengths.reduce((a, b) => this.lcm(a, b), 1);
     
-    // Check if empty
-    if (beatTokens.every(t => t === "~" || t === "[~]")) {
-        const suffix = cyclesRounded === 1 ? "" : `@${cyclesRounded}`;
-        return `[~]${suffix}`;
+    // 2. Expand and Concat
+    let fullGrid: string[] = [];
+    
+    for (const grid of beatGrids) {
+       const factor = totalLCM / grid.length;
+       if (factor === 1) {
+           fullGrid.push(...grid);
+       } else {
+           for (const cell of grid) {
+               // FIX: If the cell is complex (polyphonic layer), we cannot expand with `_` because
+               // `_` will only sustain the last event in the sequence, destroying internal timing.
+               // Instead, we use `@factor` to stretch the complex event.
+               const isComplex = cell.startsWith('{') && (cell.includes(',') || cell.length > 20); // Heuristic for complex layer
+               
+               if (isComplex) {
+                   fullGrid.push(`${cell}@${factor}`);
+                   // Do NOT push `_` fillers, because `@factor` tells Strudel to give this token `factor` units of time.
+                   // However, Strudel sums durations. If we mix `@` tokens with standard tokens in a list, 
+                   // we need to be careful. 
+                   // If we have [A, B@2, C]. Time = 1 + 2 + 1 = 4.
+                   // A(1/4), B(2/4), C(1/4).
+                   // This works perfectly without padding `_`.
+               } else {
+                    fullGrid.push(cell);
+                    // Fill expansion with sustains for simple tokens
+                    for (let k = 1; k < factor; k++) fullGrid.push("_");
+               }
+           }
+       }
     }
+    
+    // 3. Simplify (optional optimization for readability)
+    fullGrid = this.simplifyGrid(fullGrid);
 
+    const content = fullGrid.join(" ");
+    
     const suffix = cyclesRounded === 1 ? "" : `@${cyclesRounded}`;
-    
     return `[${content}]${suffix}`;
   }
 
-  private renderBeat(startedNotes: Note[], sustainedNotes: Note[], startTime: number, duration: number, isDrum: boolean): string {
-    if (startedNotes.length === 0 && sustainedNotes.length === 0) return "~";
+  private getBeatGrid(startedNotes: Note[], sustainedNotes: Note[], startTime: number, duration: number, isDrum: boolean): string[] {
+    const simpleGrid = this.generateSimpleGrid(startedNotes, sustainedNotes, startTime, duration, isDrum);
+
+    // Validate syntax: Check for polyphonic groups starting with or containing `_` in a way that implies invalid sustain
+    // Example: {_, A} or {A, _} inside a generated beat cell.
+    // If we find this, it means the simple grid approach failed to express the overlap cleanly.
+    // We fall back to a "Layered" approach: { Lane1, Lane2 }
+    const hasBadSyntax = simpleGrid.some(t => t.includes('{') && t.includes('_'));
+
+    if (!hasBadSyntax) return simpleGrid;
+
+    return this.generateLayeredGrid([...startedNotes, ...sustainedNotes], startTime, duration, isDrum);
+  }
+
+  private generateSimpleGrid(startedNotes: Note[], sustainedNotes: Note[], startTime: number, duration: number, isDrum: boolean): string[] {
+    if (startedNotes.length === 0 && sustainedNotes.length === 0) return ["~"];
 
     // 1. Find optimal resolution
     const possibleResolutions = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
     let bestRes = 16; 
-    
-    // Tolerance for grid alignment
     const ERROR_TOLERANCE = 0.05;
 
     for (const res of possibleResolutions) {
         const tickDur = duration / res;
         let fits = true;
-
-        // Check Onsets (started notes only)
         for (const n of startedNotes) {
             const rel = n.noteOn - startTime;
             const tick = rel / tickDur;
-            if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) {
-                fits = false; break;
-            }
+            if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) { fits = false; break; }
         }
         if (!fits) continue;
-
-        // Check Offsets (started + sustained notes)
         for (const n of [...startedNotes, ...sustainedNotes]) {
             if (n.noteOff < startTime + duration - 0.001) {
                  const rel = n.noteOff - startTime;
                  const tick = rel / tickDur;
-                 if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) {
-                    fits = false; break;
-                 }
+                 if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) { fits = false; break; }
             }
         }
-        
-        if (fits) {
-            bestRes = res;
-            break; 
-        }
+        if (fits) { bestRes = res; break; }
     }
 
     const grid: string[] = new Array(bestRes).fill("~");
@@ -582,50 +622,113 @@ export class StrudelNotation {
         if (current === "~" || current === "") {
             grid[index] = token;
         } else {
-            // Polyphony merge
             const existing = current.startsWith("{") ? current.slice(1, -1) : current;
-            if (!existing.includes(token)) { // Avoid duplicates if possible
+            if (!existing.includes(token)) {
                grid[index] = `{${existing}, ${token}}`;
             }
         }
     };
 
-    // 1. Fill Sustained Notes (coming from previous beats)
-    sustainedNotes.forEach(n => {
-         const relEnd = n.noteOff - startTime;
-         const endTick = Math.min(bestRes, Math.round(relEnd / tickDur));
-         for (let i = 0; i < endTick; i++) {
-             addToGrid(i, "_");
-         }
-    });
-
-    // 2. Fill Started Notes
+    // Process Started Notes
     startedNotes.forEach(note => {
         const relStart = note.noteOn - startTime;
         const startTick = Math.round(relStart / tickDur);
-        
         const relEnd = note.noteOff - startTime;
         const endTick = Math.min(bestRes, Math.round(relEnd / tickDur));
         
         if (startTick < bestRes) {
              const val = this.formatNoteVal(note, this.getCycleDuration(), isDrum, 0).replace(/@.*/, '');
              addToGrid(startTick, val);
-
-             // Sustain
-             for (let i = startTick + 1; i < endTick; i++) {
-                 addToGrid(i, "_");
-             }
+             for (let i = startTick + 1; i < endTick; i++) addToGrid(i, "_");
         }
     });
 
-    // Simplify grid if possible
-    if (grid.length === 1) return grid[0];
-    
-    const isFullHold = grid[0] !== "~" && !grid[0].startsWith("{") && grid.slice(1).every(c => c === "_");
-    if (isFullHold) {
-        return grid[0];
-    }
+    // Process Sustained Notes
+    sustainedNotes.forEach(n => {
+         const relEnd = n.noteOff - startTime;
+         const endTick = Math.min(bestRes, Math.round(relEnd / tickDur));
+         for (let i = 0; i < endTick; i++) addToGrid(i, "_");
+    });
 
-    return `[${grid.join(" ")}]`;
+    return grid;
+  }
+
+  private generateLayeredGrid(allNotes: Note[], startTime: number, duration: number, isDrum: boolean): string[] {
+      // 1. Sort notes by start time
+      const notes = [...allNotes].sort((a,b) => a.noteOn - b.noteOn);
+      
+      const lanes: Note[][] = [];
+      
+      // 2. Distribute to lanes (greedy allocation)
+      for (const note of notes) {
+          let placed = false;
+          // Note effective range within this beat
+          const start = Math.max(startTime, note.noteOn);
+          const end = Math.min(startTime + duration, note.noteOff);
+
+          for (const lane of lanes) {
+              // Check collision with last note in lane (since sorted, checking last is usually enough)
+              const last = lane[lane.length - 1];
+              // Check if last note overlaps with current note range
+              const lastStart = Math.max(startTime, last.noteOn);
+              const lastEnd = Math.min(startTime + duration, last.noteOff);
+              
+              if (lastEnd <= start + 0.001) {
+                  lane.push(note);
+                  placed = true;
+                  break;
+              }
+          }
+          if (!placed) lanes.push([note]);
+      }
+
+      // 3. Generate grid for each lane
+      const laneGrids: string[] = lanes.map(laneNotes => {
+          const started = laneNotes.filter(n => n.noteOn >= startTime - 0.001);
+          const sustained = laneNotes.filter(n => n.noteOn < startTime - 0.001);
+          const grid = this.generateSimpleGrid(started, sustained, startTime, duration, isDrum);
+          // Simple grids might be [C, _, _, _]. Join them.
+          return grid.join(" ");
+      });
+
+      // 4. Combine lanes into polyphonic block
+      if (laneGrids.length === 0) return ["~"];
+      if (laneGrids.length === 1) return [laneGrids[0]]; // Should ideally be handled by simple grid, but ok
+
+      // Result: { Lane1, Lane2 }
+      // This represents the entire beat as a single token
+      return [`{ ${laneGrids.join(", ")} }`];
+  }
+
+  // --- Grid Math Helpers ---
+
+  private gcd(a: number, b: number): number {
+      return !b ? a : this.gcd(b, a % b);
+  }
+
+  private lcm(a: number, b: number): number {
+      if (a === 0 || b === 0) return 0;
+      return (a * b) / this.gcd(a, b);
+  }
+
+  private simplifyGrid(grid: string[]): string[] {
+      const len = grid.length;
+      for (let d = 1; d <= len; d++) {
+          if (len % d !== 0) continue;
+          const step = len / d;
+          let possible = true;
+          for (let i = 0; i < len; i += step) {
+              for (let j = 1; j < step; j++) {
+                  if (grid[i+j] !== "_") { possible = false; break; }
+              }
+              if (!possible) break;
+          }
+          if (possible) {
+              const newGrid: string[] = [];
+              for (let i = 0; i < len; i += step) newGrid.push(grid[i]);
+              return newGrid;
+          }
+      }
+      return grid;
   }
 }

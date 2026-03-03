@@ -19,8 +19,7 @@
     "@strudel/soundfonts": "1.2.2",
     "@strudel/tonal": "1.2.2",
     "@strudel/transpiler": "1.2.2",
-    "@strudel/webaudio": "1.2.2",
-    "soundfont2": "0.4.5"
+    "@strudel/webaudio": "1.2.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
