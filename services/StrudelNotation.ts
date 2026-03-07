@@ -89,27 +89,28 @@ export class StrudelNotation {
         scaleSuffix = `\n  .scale("${k.root}${k.averageOctave}:${k.type}")`;
     }
 
-    if (this.config.outputStyle === 'melody+harmony') {
-      const { melody, harmony } = this.splitMelodyHarmony(notes);
-      let trackOutput = "";
+    const { melody, harmony } = this.splitMelodyHarmony(notes);
+    let trackOutput = "";
 
-      if (melody.length > 0) {
-        const melodyCode = this.renderSequence(melody, globalMaxDuration, false);
-        trackOutput += `$${this.formatTrackName(track.name)}_MELODY: \`<\n${melodyCode}\n>\`\n  .as("${this.getAsString(false)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
-      }
-
-      if (harmony.length > 0) {
-        const harmonyCode = this.renderSequence(harmony, globalMaxDuration, false);
-        trackOutput += `$${this.formatTrackName(track.name)}_HARMONY: \`<\n${harmonyCode}\n>\`\n  .as("${this.getAsString(false)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
-      }
-      return trackOutput;
+    if (melody.length > 0) {
+      const melodyCode = this.renderSequence(melody, globalMaxDuration, false);
+      trackOutput += `$${this.formatTrackName(track.name)}_MELODY: \`<\n${melodyCode}\n>\`\n  .as("${this.getAsString(false)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
     }
-    
-    return `// Unknown output style`;
+
+    if (harmony.length > 0) {
+      const harmonyCode = this.renderSequence(harmony, globalMaxDuration, false);
+      trackOutput += `$${this.formatTrackName(track.name)}_HARMONY: \`<\n${harmonyCode}\n>\`\n  .as("${this.getAsString(false)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
+    }
+    return trackOutput;
   }
 
   private processDrumTrack(track: Track, globalMaxDuration: number): string {
       // Filter out notes that don't map to our drum kit to avoid silence/errors
+      track.notes.forEach(n => {
+        if (!DRUM_MAP[n.midi]) {
+          console.warn(`Unmapped MIDI drum note dropped: ${n.midi}`);
+        }
+      });
       const rawNotes = track.notes.filter(n => DRUM_MAP[n.midi]);
       const notes = this.prepareNotes(rawNotes);
       
@@ -300,13 +301,7 @@ export class StrudelNotation {
 
   private isRest(token: string): boolean {
     const t = token.trim();
-    if (/[A-G]/.test(t) || /{/.test(t) || /[0-9]/.test(t.split('@')[0]) || /[a-z][a-z]/.test(t.split(':')[0])) {
-         // Added logic to check for drum tokens (which are a-z chars like 'bd', 'sd')
-         // If it matches drum tokens, it's not a rest.
-         if(t.startsWith('[~]') || t === '~' || t.startsWith('~@')) return true;
-         // Special case: check against drum map values if needed, but the generic check usually suffices if drum names don't start with ~
-         return false;
-    }
+    // A token is a rest if it matches the rest pattern (~, ~@0.5, [~], [~]@0.5)
     return /^~(@[\d\.]+)?$/.test(t) || /^\[~\](@[\d\.]+)?$/.test(t);
   }
 
