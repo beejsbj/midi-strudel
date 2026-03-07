@@ -15,9 +15,9 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
 
   return (
     <div className="space-y-4">
-        <SectionHeader 
-            icon={<Sliders size={14} />} 
-            title="Options" 
+        <SectionHeader
+            icon={<Sliders size={14} />}
+            title="Options"
         />
             <div className="px-1 space-y-3">
             <div className="flex items-center justify-between cursor-pointer" onClick={() => updateConfig('includeVelocity', !config.includeVelocity)}>
@@ -25,9 +25,10 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
                     <span className="text-xs text-zinc-300 font-medium">Include Velocity</span>
                     <span className="text-[9px] text-zinc-500">Adds :velocity to notes</span>
                 </div>
-                <ToggleSwitch 
-                    checked={config.includeVelocity} 
-                    onChange={(checked) => updateConfig('includeVelocity', checked)} 
+                <ToggleSwitch
+                    checked={config.includeVelocity}
+                    onChange={(checked) => updateConfig('includeVelocity', checked)}
+                    aria-label="Include velocity"
                 />
             </div>
                 <label className="flex items-center justify-between cursor-pointer">
@@ -35,11 +36,12 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
                     <span className="text-xs text-zinc-300 font-medium">Measures Per Line</span>
                     <span className="text-[9px] text-zinc-500">Controls line wrapping</span>
                 </div>
-                <input 
+                <input
                     type="number" min="1" max="8"
+                    aria-label="Measures per line"
                     value={config.measuresPerLine}
                     onChange={(e) => updateConfig('measuresPerLine', parseInt(e.target.value))}
-                    className="w-12 bg-black border border-zinc-800 text-xs text-center rounded py-1 focus:border-gold-500 outline-none"
+                    className="w-12 bg-black border border-zinc-800 text-xs text-center rounded py-1 focus:border-gold-500 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                 />
             </label>
             </div>

@@ -14,22 +14,22 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
-  const updatePlaybackKey = (field: keyof KeySignature, value: any) => {
+  const updatePlaybackKey = (field: keyof KeySignature, value: string | number) => {
       if (!config.playbackKey) return;
       updateConfig('playbackKey', { ...config.playbackKey, [field]: value });
   };
-  
+
   const updateTimeSig = (field: 'numerator' | 'denominator', value: number) => {
       updateConfig('timeSignature', { ...config.timeSignature, [field]: value });
   };
 
   return (
     <div className="space-y-4">
-        <SectionHeader 
-            icon={<Activity size={14} />} 
-            title="Playback Settings" 
+        <SectionHeader
+            icon={<Activity size={14} />}
+            title="Playback Settings"
         />
-        
+
         {/* Combined Tempo & Time Sig */}
         <div className="grid grid-cols-3 gap-2">
             {/* BPM Card */}
@@ -40,7 +40,7 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                         Orig: {config.sourceBpm}
                     </span>
                 </div>
-                
+
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-baseline space-x-1">
@@ -48,21 +48,23 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                             <span className="text-zinc-600 text-[10px] font-bold uppercase">BPM</span>
                         </div>
                         {config.bpm !== config.sourceBpm && (
-                            <button 
+                            <button
                                 onClick={() => updateConfig('bpm', config.sourceBpm)}
-                                className="text-gold-500 hover:text-white p-1 rounded transition-colors"
+                                aria-label="Reset to source BPM"
+                                className="text-gold-500 hover:text-white p-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                                 title="Reset to Source BPM"
                             >
                                 <RotateCcw size={12} />
                             </button>
                         )}
                     </div>
-                    
-                    <input 
-                        type="range" min="20" max="300" 
+
+                    <input
+                        type="range" min="20" max="300"
                         value={config.bpm}
+                        aria-label={`Tempo ${config.bpm} BPM`}
                         onChange={(e) => updateConfig('bpm', parseInt(e.target.value))}
-                        className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                        className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                 </div>
             </div>
@@ -74,25 +76,29 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                     </span>
                 <div className="flex w-full justify-between items-start mb-1">
                         <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider">Meter</span>
-                        
+
                 </div>
-                
+
                 <div className="flex flex-col items-center w-full max-w-[60px] relative mt-1">
                         {(config.timeSignature.numerator !== config.sourceTimeSignature?.numerator) && (
-                        <button 
+                        <button
                             onClick={() => updateConfig('timeSignature', config.sourceTimeSignature!)}
-                            className="absolute -right-6 top-1 text-gold-500 hover:text-white p-1 rounded transition-colors"
+                            aria-label="Reset time signature"
+                            className="absolute -right-6 top-1 text-gold-500 hover:text-white p-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                             title="Reset"
                         >
                             <RotateCcw size={10} />
                         </button>
                     )}
                     <div className="flex items-baseline justify-center w-full mb-0.5">
-                            <input 
-                            type="number" 
+                            <input
+                            type="number"
+                            min="1"
+                            max="16"
+                            aria-label="Time signature numerator (beats per bar)"
                             value={config.timeSignature.numerator}
                             onChange={(e) => updateTimeSig('numerator', parseInt(e.target.value))}
-                            className="bg-transparent text-xl font-bold text-white outline-none w-8 text-right p-0"
+                            className="bg-transparent text-xl font-bold text-white outline-none w-8 text-right p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                         />
                         <span className="text-zinc-500 text-[9px] font-bold uppercase ml-1 translate-y-[1px]">Beats</span>
                     </div>
@@ -115,18 +121,20 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                    <select 
+                    <select
                         value={config.playbackKey.root}
                         onChange={(e) => updatePlaybackKey('root', e.target.value)}
                         disabled={config.notationType !== 'relative'}
+                        aria-label="Playback key root"
                         className="bg-noir-900 border border-zinc-700 text-lg font-bold text-white rounded px-2 py-2 focus:border-gold-500 outline-none appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {PITCH_CLASSES.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
-                        <select 
+                        <select
                         value={config.playbackKey.type}
                         onChange={(e) => updatePlaybackKey('type', e.target.value)}
                         disabled={config.notationType !== 'relative'}
+                        aria-label="Playback key type"
                         className="bg-noir-900 border border-zinc-700 text-lg font-bold text-white rounded px-2 py-2 focus:border-gold-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <option value="major">Major</option>
@@ -139,12 +147,13 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                         <span className={`text-zinc-500 text-[10px] uppercase font-bold ${config.notationType !== 'relative' ? 'opacity-50' : ''}`}>Relative Root Octave</span>
                         <span className={`text-white text-xs font-mono ${config.notationType !== 'relative' ? 'opacity-50' : ''}`}>{config.playbackKey.averageOctave}</span>
                     </div>
-                        <input 
-                        type="range" min="0" max="8" 
+                        <input
+                        type="range" min="0" max="8"
                         value={config.playbackKey.averageOctave}
+                        aria-label={`Relative root octave ${config.playbackKey.averageOctave}`}
                         onChange={(e) => updatePlaybackKey('averageOctave', parseInt(e.target.value))}
                         disabled={config.notationType !== 'relative'}
-                        className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed disabled:bg-zinc-800"
+                        className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed disabled:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                         {config.notationType !== 'relative' && (
                             <div className="text-[9px] text-zinc-500 text-center mt-1 italic opacity-75">Only active in Relative Notation mode</div>

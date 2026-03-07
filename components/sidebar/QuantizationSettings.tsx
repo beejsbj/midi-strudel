@@ -15,17 +15,18 @@ export const QuantizationSettings: React.FC<Props> = ({ config, setConfig }) => 
 
   return (
     <div className="space-y-4">
-        <SectionHeader 
-            icon={<Clock size={14} />} 
-            title="Quantization" 
+        <SectionHeader
+            icon={<Clock size={14} />}
+            title="Quantization"
             action={
-                <ToggleSwitch 
-                    checked={config.isQuantized} 
-                    onChange={(checked) => updateConfig('isQuantized', checked)} 
+                <ToggleSwitch
+                    checked={config.isQuantized}
+                    onChange={(checked) => updateConfig('isQuantized', checked)}
+                    aria-label="Enable quantization"
                 />
             }
         />
-        
+
         {config.isQuantized && (
             <div className="space-y-4 px-1">
                 <div>
@@ -33,11 +34,12 @@ export const QuantizationSettings: React.FC<Props> = ({ config, setConfig }) => 
                         <span>Strength</span>
                         <span>{config.quantizationStrength}%</span>
                     </div>
-                    <input 
-                        type="range" min="0" max="100" 
+                    <input
+                        type="range" min="0" max="100"
                         value={config.quantizationStrength}
+                        aria-label={`Quantization strength ${config.quantizationStrength}%`}
                         onChange={(e) => updateConfig('quantizationStrength', parseInt(e.target.value))}
-                        className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                        className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                 </div>
                     <div>
@@ -45,11 +47,12 @@ export const QuantizationSettings: React.FC<Props> = ({ config, setConfig }) => 
                         <span>Threshold (ms)</span>
                         <span>{config.quantizationThreshold}ms</span>
                     </div>
-                    <input 
+                    <input
                         type="range" min="0" max="200" step="10"
                         value={config.quantizationThreshold}
+                        aria-label={`Quantization threshold ${config.quantizationThreshold} milliseconds`}
                         onChange={(e) => updateConfig('quantizationThreshold', parseInt(e.target.value))}
-                        className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                        className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                     <HelpText>Snaps notes to the nearest grid line if they are close enough.</HelpText>
                 </div>
