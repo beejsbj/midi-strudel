@@ -25,18 +25,21 @@ const App: React.FC = () => {
       
       // Detect Key
       const detectedKey = detectKey(result.tracks);
-      
+
       setTracks(result.tracks);
-      setKeySignature(detectedKey);
-      
+      setKeySignature(detectedKey ?? undefined);
+
       setConfig(prev => ({
         ...prev,
         bpm: result.bpm,
-        sourceBpm: result.bpm, 
+        sourceBpm: result.bpm,
         timeSignature: result.timeSignature,
         sourceTimeSignature: result.timeSignature,
-        key: detectedKey,
-        playbackKey: detectedKey 
+        // Only update key fields when a key was detected; leave unchanged if no notes
+        ...(detectedKey !== null && {
+          key: detectedKey,
+          playbackKey: detectedKey,
+        }),
       }));
 
     } catch (err) {
