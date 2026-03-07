@@ -27,7 +27,7 @@ export const INSTRUMENTS = [
   "gm_lead_7_fifths", "gm_lead_8_bass_lead", "gm_marimba", "gm_melodic_tom", "gm_music_box", 
   "gm_muted_trumpet", "gm_oboe", "gm_ocarina", "gm_orchestra_hit", "gm_orchestral_harp", 
   "gm_overdriven_guitar", "gm_pad_bowed", "gm_pad_choir", "gm_pad_halo", "gm_pad_metallic", 
-  "gm_pad_new_age", "gm_pad_poly", "gm_pad_sweep", "gm_pad_warm", "gm_pad_choir", "gm_pad_halo", "gm_pan_flute", 
+  "gm_pad_new_age", "gm_pad_poly", "gm_pad_sweep", "gm_pad_warm", "gm_pan_flute",
   "gm_percussive_organ", "gm_piano", "gm_piccolo", "gm_pizzicato_strings", "gm_recorder", 
   "gm_reed_organ", "gm_reverse_cymbal", "gm_rock_organ", "gm_seashore", "gm_shakuhachi", 
   "gm_shamisen", "gm_shanai", "gm_sitar", "gm_slap_bass_1", "gm_slap_bass_2", "gm_soprano_sax", 
@@ -110,6 +110,7 @@ export const getAutoSound = (track: Track): string | null => {
     }
   }
 
+  // require at least 5 keyword matches to auto-assign a sound
   if (maxScore >= 5) {
       return bestInst;
   }

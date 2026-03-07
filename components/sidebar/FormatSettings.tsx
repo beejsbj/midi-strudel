@@ -15,27 +15,29 @@ export const FormatSettings: React.FC<Props> = ({ config, setConfig }) => {
 
   return (
     <div className="space-y-4">
-        <SectionHeader 
-            icon={<Settings size={14} />} 
-            title="Format" 
+        <SectionHeader
+            icon={<Settings size={14} />}
+            title="Format"
         />
-        
+
         <div className="space-y-4 px-1">
                 {/* Notation Type */}
                 <div>
                 <label className="block text-xs text-zinc-300 font-medium mb-1.5">Notation Type</label>
-                <div className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.notationType === 'absolute' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                <div role="group" aria-label="Notation type" className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
+                    <button
+                        aria-pressed={config.notationType === 'absolute'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.notationType === 'absolute' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('notationType', 'absolute')}
                     >Absolute</button>
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.notationType === 'relative' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    <button
+                        aria-pressed={config.notationType === 'relative'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.notationType === 'relative' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('notationType', 'relative')}
                     >Relative</button>
                 </div>
                 <HelpText>
-                    {config.notationType === 'absolute' 
+                    {config.notationType === 'absolute'
                         ? "Uses pitch names like 'C4', 'A#3'. Good for preserving exact notes."
                         : "Uses scale degrees like '0', '2b'. Good for transposing and pattern manipulation."}
                 </HelpText>
@@ -44,13 +46,15 @@ export const FormatSettings: React.FC<Props> = ({ config, setConfig }) => {
                 {/* Cycle Unit */}
                 <div>
                 <label className="block text-xs text-zinc-300 font-medium mb-1.5">Cycle Unit (@1)</label>
-                <div className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.cycleUnit === 'bar' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                <div role="group" aria-label="Cycle unit" className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
+                    <button
+                        aria-pressed={config.cycleUnit === 'bar'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.cycleUnit === 'bar' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('cycleUnit', 'bar')}
                     >Whole Bar</button>
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.cycleUnit === 'beat' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    <button
+                        aria-pressed={config.cycleUnit === 'beat'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.cycleUnit === 'beat' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('cycleUnit', 'beat')}
                     >Beat</button>
                 </div>
@@ -60,13 +64,15 @@ export const FormatSettings: React.FC<Props> = ({ config, setConfig }) => {
                 {/* Timing Style */}
                 <div>
                 <label className="block text-xs text-zinc-300 font-medium mb-1.5">Timing Syntax</label>
-                    <div className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.timingStyle === 'absoluteDuration' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    <div role="group" aria-label="Timing syntax" className="grid grid-cols-2 gap-1 bg-black p-1 rounded border border-zinc-800">
+                    <button
+                        aria-pressed={config.timingStyle === 'absoluteDuration'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.timingStyle === 'absoluteDuration' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('timingStyle', 'absoluteDuration')}
                     >Duration</button>
-                    <button 
-                        className={`text-xs py-1 rounded transition-colors ${config.timingStyle === 'relativeDivision' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    <button
+                        aria-pressed={config.timingStyle === 'relativeDivision'}
+                        className={`text-xs py-1 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${config.timingStyle === 'relativeDivision' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
                         onClick={() => updateConfig('timingStyle', 'relativeDivision')}
                     >Division</button>
                 </div>

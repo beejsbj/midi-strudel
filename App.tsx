@@ -8,40 +8,121 @@ import { detectKey } from './services/KeyDetector';
 import { Track, StrudelConfig, DEFAULT_CONFIG, KeySignature } from './types';
 import { Music, Wand2, Clock, FileCode, Github } from 'lucide-react';
 
+// --- Error Boundary ---
+interface ErrorBoundaryState {
+  hasError: boolean;
+  message: string;
+}
+
+type ErrorBoundaryProps = { children: React.ReactNode };
+
+class ErrorBoundary extends React.Component {
+  declare props: ErrorBoundaryProps;
+  declare state: ErrorBoundaryState;
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
+    const message = error instanceof Error ? error.message : String(error);
+    return { hasError: true, message };
+  }
+
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    console.error('React error boundary caught:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen w-full bg-noir-900 text-gray-200 items-center justify-center p-8">
+          <div className="max-w-md w-full space-y-4 text-center">
+            <h1 className="text-2xl font-bold text-red-400">Something went wrong</h1>
+            <p className="text-zinc-400 text-sm">{this.state.message || 'An unexpected error occurred.'}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-gold-600 text-white text-sm font-bold rounded hover:bg-gold-500 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (this.props as ErrorBoundaryProps).children;
+  }
+}
+
+// --- localStorage helpers ---
+const CONFIG_STORAGE_KEY = 'midi-strudel-config';
+
+function loadConfigFromStorage(): StrudelConfig {
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed = JSON.parse(raw);
+    // Merge with defaults so any new fields are present
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+function saveConfigToStorage(config: StrudelConfig): void {
+  try {
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    // Storage quota exceeded or unavailable — silently ignore
+  }
+}
+
+// --- Main App ---
 const App: React.FC = () => {
-  const [config, setConfig] = useState<StrudelConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<StrudelConfig>(() => loadConfigFromStorage());
   const [tracks, setTracks] = useState<Track[]>([]);
   const [code, setCode] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [keySignature, setKeySignature] = useState<KeySignature | undefined>(undefined);
-  
+  const [error, setError] = useState<string | null>(null);
+
   // Hidden input for the sidebar "Upload New" button
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Persist config to localStorage on every change
+  useEffect(() => {
+    saveConfigToStorage(config);
+  }, [config]);
+
   const handleFile = async (file: File) => {
     setIsProcessing(true);
+    setError(null);
     try {
       const result = await parseMidiFile(file);
-      
+
       // Detect Key
       const detectedKey = detectKey(result.tracks);
-      
+
       setTracks(result.tracks);
-      setKeySignature(detectedKey);
-      
+      setKeySignature(detectedKey ?? undefined);
+
       setConfig(prev => ({
         ...prev,
         bpm: result.bpm,
-        sourceBpm: result.bpm, 
+        sourceBpm: result.bpm,
         timeSignature: result.timeSignature,
         sourceTimeSignature: result.timeSignature,
-        key: detectedKey,
-        playbackKey: detectedKey 
+        // Only update key fields when a key was detected; leave unchanged if no notes
+        ...(detectedKey !== null && {
+          key: detectedKey,
+          playbackKey: detectedKey,
+        }),
       }));
 
     } catch (err) {
       console.error("Failed to parse MIDI", err);
-      alert("Failed to parse MIDI file");
+      setError(err instanceof Error ? err.message : "Failed to parse MIDI file. Please try a different file.");
     } finally {
       setIsProcessing(false);
     }
@@ -68,11 +149,12 @@ const App: React.FC = () => {
       setKeySignature(undefined);
       setConfig(DEFAULT_CONFIG);
       setCode("");
+      setError(null);
   };
 
   useEffect(() => {
     if (tracks.length === 0) return;
-    
+
     const generate = () => {
       const service = new StrudelNotation(config);
       const output = service.generate(tracks);
@@ -86,9 +168,9 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-noir-900 text-gray-200 font-sans overflow-hidden">
       {tracks.length > 0 && (
-          <Sidebar 
-            config={config} 
-            setConfig={setConfig} 
+          <Sidebar
+            config={config}
+            setConfig={setConfig}
             tracks={tracks}
             setTracks={setTracks}
             keySignature={keySignature}
@@ -96,12 +178,26 @@ const App: React.FC = () => {
             onUpload={triggerFileUpload}
           />
       )}
-      
+
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Inline error banner */}
+        {error && (
+          <div role="alert" className="flex items-center justify-between px-4 py-2 bg-red-900/60 border-b border-red-700/50 text-red-300 text-sm">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
+              className="ml-4 text-red-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400 rounded"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {tracks.length === 0 ? (
             <div className="flex-1 overflow-y-auto bg-noir-900 flex flex-col items-center justify-center p-8">
                 <div className="max-w-xl w-full space-y-12">
-                    
+
                     {/* Header Section */}
                     <div className="text-center space-y-6">
                          <div className="inline-block border border-gold-500/30 bg-gold-500/5 rounded-full px-4 py-1.5 mb-2">
@@ -182,17 +278,23 @@ const App: React.FC = () => {
             </div>
         )}
       </main>
-      
+
       {/* Hidden File Input for Sidebar Action */}
-      <input 
-        type="file" 
+      <input
+        type="file"
         ref={fileInputRef}
         onChange={handleFileInputChange}
         accept=".mid,.midi"
-        className="hidden" 
+        className="hidden"
       />
     </div>
   );
 };
 
-export default App;
+const AppWithBoundary: React.FC = () => (
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
+
+export default AppWithBoundary;
