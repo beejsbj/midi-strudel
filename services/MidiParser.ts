@@ -5,7 +5,12 @@ import { Track, Note } from '../types';
 
 export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm: number, timeSignature: {numerator: number, denominator: number} }> => {
   const arrayBuffer = await file.arrayBuffer();
-  const midi = new Midi(arrayBuffer);
+  let midi;
+  try {
+    midi = new Midi(arrayBuffer);
+  } catch (e) {
+    throw new Error("Failed to parse MIDI file. The file may be corrupt or in an unsupported format.");
+  }
 
   const bpm = midi.header.tempos.length > 0 ? Math.round(midi.header.tempos[0].bpm) : 120;
   const ts = midi.header.timeSignatures.length > 0 
@@ -22,7 +27,8 @@ export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm:
     }));
 
     // Improved drum detection: Channel 10 (index 9) or explicit percussion flag or name
-    const isDrum = t.instrument.percussion || (t.channel === 9) || t.name.toLowerCase().includes('drum');
+    const nameLower = t.name.toLowerCase();
+    const isDrum = t.instrument.percussion || (t.channel === 9) || nameLower.includes('drum') || nameLower.includes('perc');
 
     return {
       id: `track-${index}`,
