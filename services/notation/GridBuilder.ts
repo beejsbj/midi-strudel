@@ -1,0 +1,295 @@
+import { Note, StrudelConfig } from '../../types';
+import {
+  gcd,
+  lcm,
+  round,
+  formatNoteVal,
+  getCycleDuration,
+} from './NotationUtils';
+
+export { gcd, lcm };
+
+export function simplifyGrid(grid: string[]): string[] {
+  const len = grid.length;
+  for (let d = 1; d <= len; d++) {
+    if (len % d !== 0) continue;
+    const step = len / d;
+    let possible = true;
+    for (let i = 0; i < len; i += step) {
+      for (let j = 1; j < step; j++) {
+        if (grid[i + j] !== "_") { possible = false; break; }
+      }
+      if (!possible) break;
+    }
+    if (possible) {
+      const newGrid: string[] = [];
+      for (let i = 0; i < len; i += step) newGrid.push(grid[i]);
+      return newGrid;
+    }
+  }
+  return grid;
+}
+
+export function generateSimpleGrid(
+  startedNotes: Note[],
+  sustainedNotes: Note[],
+  startTime: number,
+  duration: number,
+  isDrum: boolean,
+  config: StrudelConfig,
+  drumMap: Record<number, string>
+): string[] {
+  if (startedNotes.length === 0 && sustainedNotes.length === 0) return ["~"];
+
+  const possibleResolutions = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+  let bestRes = 16;
+  const ERROR_TOLERANCE = 0.05;
+
+  for (const res of possibleResolutions) {
+    const tickDur = duration / res;
+    let fits = true;
+    for (const n of startedNotes) {
+      const rel = n.noteOn - startTime;
+      const tick = rel / tickDur;
+      if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) { fits = false; break; }
+    }
+    if (!fits) continue;
+    for (const n of [...startedNotes, ...sustainedNotes]) {
+      if (n.noteOff < startTime + duration - 0.001) {
+        const rel = n.noteOff - startTime;
+        const tick = rel / tickDur;
+        if (Math.abs(tick - Math.round(tick)) > ERROR_TOLERANCE) { fits = false; break; }
+      }
+    }
+    if (fits) { bestRes = res; break; }
+  }
+
+  const grid: string[] = new Array(bestRes).fill("~");
+  const tickDur = duration / bestRes;
+  const cycleDur = getCycleDuration(config);
+
+  const addToGrid = (index: number, token: string) => {
+    if (index >= bestRes) return;
+    const current = grid[index];
+    if (current === "~" || current === "") {
+      grid[index] = token;
+    } else {
+      const existing = current.startsWith("{") ? current.slice(1, -1) : current;
+      if (!existing.includes(token)) {
+        grid[index] = `{${existing}, ${token}}`;
+      }
+    }
+  };
+
+  startedNotes.forEach(note => {
+    const relStart = note.noteOn - startTime;
+    const startTick = Math.round(relStart / tickDur);
+    const relEnd = note.noteOff - startTime;
+    const endTick = Math.min(bestRes, Math.round(relEnd / tickDur));
+
+    if (startTick < bestRes) {
+      const val = formatNoteVal(note, cycleDur, isDrum, config, drumMap, 0).replace(/@.*/, '');
+      addToGrid(startTick, val);
+      for (let i = startTick + 1; i < endTick; i++) addToGrid(i, "_");
+    }
+  });
+
+  sustainedNotes.forEach(n => {
+    const relEnd = n.noteOff - startTime;
+    const endTick = Math.min(bestRes, Math.round(relEnd / tickDur));
+    for (let i = 0; i < endTick; i++) addToGrid(i, "_");
+  });
+
+  return grid;
+}
+
+export function generateLayeredGrid(
+  allNotes: Note[],
+  startTime: number,
+  duration: number,
+  isDrum: boolean,
+  config: StrudelConfig,
+  drumMap: Record<number, string>
+): string[] {
+  const notes = [...allNotes].sort((a, b) => a.noteOn - b.noteOn);
+  const lanes: Note[][] = [];
+
+  for (const note of notes) {
+    let placed = false;
+    const start = Math.max(startTime, note.noteOn);
+
+    for (const lane of lanes) {
+      const last = lane[lane.length - 1];
+      const lastEnd = Math.min(startTime + duration, last.noteOff);
+
+      if (lastEnd <= start + 0.001) {
+        lane.push(note);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) lanes.push([note]);
+  }
+
+  const laneGrids: string[] = lanes.map(laneNotes => {
+    const started = laneNotes.filter(n => n.noteOn >= startTime - 0.001);
+    const sustained = laneNotes.filter(n => n.noteOn < startTime - 0.001);
+    const grid = generateSimpleGrid(started, sustained, startTime, duration, isDrum, config, drumMap);
+    return grid.join(" ");
+  });
+
+  if (laneGrids.length === 0) return ["~"];
+  if (laneGrids.length === 1) return [laneGrids[0]];
+
+  return [`{ ${laneGrids.join(", ")} }`];
+}
+
+export function getBeatGrid(
+  startedNotes: Note[],
+  sustainedNotes: Note[],
+  startTime: number,
+  duration: number,
+  isDrum: boolean,
+  config: StrudelConfig,
+  drumMap: Record<number, string>
+): string[] {
+  const simpleGrid = generateSimpleGrid(startedNotes, sustainedNotes, startTime, duration, isDrum, config, drumMap);
+
+  const hasBadSyntax = simpleGrid.some(t => t.includes('{') && t.includes('_'));
+
+  if (!hasBadSyntax) return simpleGrid;
+
+  return generateLayeredGrid([...startedNotes, ...sustainedNotes], startTime, duration, isDrum, config, drumMap);
+}
+
+export function flattenGrid(beatGrids: string[][]): string[] {
+  const lengths = beatGrids.map(g => g.length);
+  const totalLCM = lengths.reduce((a, b) => lcm(a, b), 1);
+
+  let fullGrid: string[] = [];
+
+  for (const grid of beatGrids) {
+    const factor = totalLCM / grid.length;
+    if (factor === 1) {
+      fullGrid.push(...grid);
+    } else {
+      for (const cell of grid) {
+        const isComplex = cell.startsWith('{') && (cell.includes(',') || cell.length > 20);
+
+        if (isComplex) {
+          fullGrid.push(`${cell}@${factor}`);
+        } else {
+          fullGrid.push(cell);
+          for (let k = 1; k < factor; k++) fullGrid.push("_");
+        }
+      }
+    }
+  }
+
+  return simplifyGrid(fullGrid);
+}
+
+export function renderMeasureSubdivision(
+  notes: Note[],
+  measureStart: number,
+  measureDur: number,
+  cycleDur: number,
+  isDrum: boolean,
+  config: StrudelConfig,
+  drumMap: Record<number, string>
+): string {
+  const cycles = measureDur / cycleDur;
+  const cyclesRounded = round(cycles, 4);
+
+  if (notes.length === 0) {
+    const suffix = cyclesRounded === 1 ? "" : `@${cyclesRounded}`;
+    return `[~]${suffix}`;
+  }
+
+  const numerator = config.timeSignature.numerator || 4;
+  const beatDur = measureDur / numerator;
+  const beatGrids: string[][] = [];
+
+  for (let i = 0; i < numerator; i++) {
+    const beatStart = measureStart + (i * beatDur);
+    const beatEnd = beatStart + beatDur;
+
+    let beatNotes = notes.filter(n => n.noteOn >= beatStart - 0.001 && n.noteOn < beatEnd - 0.001);
+    let sustainedNotes = notes.filter(n => n.noteOn < beatStart - 0.001 && n.noteOff > beatStart + 0.001);
+
+    if (i === 0 && sustainedNotes.length > 0) {
+      const retriggered = sustainedNotes.map(n => ({ ...n, noteOn: beatStart }));
+      beatNotes = [...beatNotes, ...retriggered];
+      sustainedNotes = [];
+    }
+
+    beatGrids.push(getBeatGrid(beatNotes, sustainedNotes, beatStart, beatDur, isDrum, config, drumMap));
+  }
+
+  const fullGrid = flattenGrid(beatGrids);
+  const content = fullGrid.join(" ");
+
+  const suffix = cyclesRounded === 1 ? "" : `@${cyclesRounded}`;
+  return `[${content}]${suffix}`;
+}
+
+export function renderMeasureAbsolute(
+  notes: Note[],
+  measureStart: number,
+  measureDur: number,
+  cycleDur: number,
+  isDrum: boolean,
+  config: StrudelConfig,
+  drumMap: Record<number, string>,
+  createRestTokenFn: (dur: number, cycleDur: number) => string
+): string {
+  const EPSILON = 0.01;
+
+  if (notes.length === 0) return createRestTokenFn(measureDur, cycleDur);
+
+  let cursor = measureStart;
+  let output = "";
+
+  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const note = sorted[i];
+    if (note.noteOn > cursor + EPSILON) {
+      const gap = note.noteOn - cursor;
+      if (gap > EPSILON) {
+        output += `${createRestTokenFn(gap, cycleDur)} `;
+      }
+      cursor += gap;
+    } else {
+      cursor = Math.max(cursor, note.noteOn);
+    }
+
+    const chordNotes = [note];
+    let j = i + 1;
+    while (j < sorted.length && Math.abs(sorted[j].noteOn - note.noteOn) < EPSILON) {
+      chordNotes.push(sorted[j]);
+      j++;
+    }
+    i = j - 1;
+
+    if (chordNotes.length > 1) {
+      const maxEnd = Math.max(...chordNotes.map(n => n.noteOff));
+      const dur = maxEnd - note.noteOn;
+      const noteStrs = chordNotes.map(n => formatNoteVal(n, cycleDur, isDrum, config, drumMap, 0));
+      const cycles = dur / cycleDur;
+      const suffix = Math.abs(cycles - 1) < 0.001 ? "" : `@${round(cycles, config.durationPrecision)}`;
+      output += `{${noteStrs.join(', ')}}${suffix} `;
+      cursor = maxEnd;
+    } else {
+      output += `${formatNoteVal(note, cycleDur, isDrum, config, drumMap)} `;
+      cursor = note.noteOff;
+    }
+  }
+
+  if (cursor < measureStart + measureDur - EPSILON) {
+    const rem = (measureStart + measureDur) - cursor;
+    output += createRestTokenFn(rem, cycleDur);
+  }
+
+  return output.trim();
+}
