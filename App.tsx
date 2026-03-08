@@ -57,6 +57,8 @@ class ErrorBoundary extends React.Component {
 
 // --- localStorage helpers ---
 const CONFIG_STORAGE_KEY = 'midi-strudel-config';
+const TRACKS_STORAGE_KEY = 'midi-strudel-tracks';
+const KEY_SIG_STORAGE_KEY = 'midi-strudel-keysig';
 
 function loadConfigFromStorage(): StrudelConfig {
   try {
@@ -78,22 +80,66 @@ function saveConfigToStorage(config: StrudelConfig): void {
   }
 }
 
+function loadTracksFromStorage(): Track[] {
+  try {
+    const raw = localStorage.getItem(TRACKS_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function saveTracksToStorage(tracks: Track[]): void {
+  try {
+    if (tracks.length === 0) {
+      localStorage.removeItem(TRACKS_STORAGE_KEY);
+    } else {
+      localStorage.setItem(TRACKS_STORAGE_KEY, JSON.stringify(tracks));
+    }
+  } catch {
+    // Storage quota exceeded — silently ignore
+  }
+}
+
+function loadKeySignatureFromStorage(): KeySignature | undefined {
+  try {
+    const raw = localStorage.getItem(KEY_SIG_STORAGE_KEY);
+    if (!raw) return undefined;
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function saveKeySignatureToStorage(keySig: KeySignature | undefined): void {
+  try {
+    if (keySig === undefined) {
+      localStorage.removeItem(KEY_SIG_STORAGE_KEY);
+    } else {
+      localStorage.setItem(KEY_SIG_STORAGE_KEY, JSON.stringify(keySig));
+    }
+  } catch {
+    // silently ignore
+  }
+}
+
 // --- Main App ---
 const App: React.FC = () => {
   const [config, setConfig] = useState<StrudelConfig>(() => loadConfigFromStorage());
-  const [tracks, setTracks] = useState<Track[]>([]);
+  const [tracks, setTracks] = useState<Track[]>(() => loadTracksFromStorage());
   const [code, setCode] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [keySignature, setKeySignature] = useState<KeySignature | undefined>(undefined);
+  const [keySignature, setKeySignature] = useState<KeySignature | undefined>(() => loadKeySignatureFromStorage());
   const [error, setError] = useState<string | null>(null);
 
   // Hidden input for the sidebar "Upload New" button
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Persist config to localStorage on every change
-  useEffect(() => {
-    saveConfigToStorage(config);
-  }, [config]);
+  // Persist config, tracks, and key signature to localStorage on every change
+  useEffect(() => { saveConfigToStorage(config); }, [config]);
+  useEffect(() => { saveTracksToStorage(tracks); }, [tracks]);
+  useEffect(() => { saveKeySignatureToStorage(keySignature); }, [keySignature]);
 
   const handleFile = async (file: File) => {
     setIsProcessing(true);
@@ -150,6 +196,9 @@ const App: React.FC = () => {
       setConfig(DEFAULT_CONFIG);
       setCode("");
       setError(null);
+      localStorage.removeItem(TRACKS_STORAGE_KEY);
+      localStorage.removeItem(KEY_SIG_STORAGE_KEY);
+      localStorage.removeItem(CONFIG_STORAGE_KEY);
   };
 
   useEffect(() => {
