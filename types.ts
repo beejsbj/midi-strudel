@@ -51,8 +51,8 @@ export interface StrudelConfig {
   cycleUnit: 'bar' | 'beat';
   
   // Formatting
-  formatPerLineBy: 'measure'; // Simplified for this implementation
-  measuresPerLine: number;
+  formatPerLineBy: 'measure' | 'note';
+  measuresPerLine: number; // items per line (measures or notes depending on formatPerLineBy)
   
   // Sound
   useAutoMapping: boolean;
@@ -82,8 +82,8 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   outputStyle: 'melody+harmony',
   notationType: 'absolute',
   cycleUnit: 'bar',
-  formatPerLineBy: 'measure',
-  measuresPerLine: 1,
+  formatPerLineBy: 'note',
+  measuresPerLine: 4,
   
   useAutoMapping: false,
   globalSound: 'triangle',

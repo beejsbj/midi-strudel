@@ -35,6 +35,9 @@ interface StrudelEditorInstance {
   stop?: () => void;
   destroy?: () => void;
   updateSettings?: (settings: Record<string, unknown>) => void;
+  // The underlying CodeMirror EditorView (StrudelMirror stores it as .editor)
+  editor?: EditorView;
+  // Legacy fallback name
   view?: {
     state?: { doc?: { toString: () => string; length: number } };
     dispatch: (tx: unknown) => void;
@@ -69,9 +72,10 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
     if (typeof editorRef.current.getCode === 'function') {
       return editorRef.current.getCode();
     }
-    // Fallback for CodeMirror 6 view access
-    if (editorRef.current.view?.state?.doc) {
-      return editorRef.current.view.state.doc.toString();
+    // Fallback: read from the underlying CodeMirror EditorView
+    const cmView = editorRef.current.editor ?? (editorRef.current.view as EditorView | undefined);
+    if (cmView?.state?.doc) {
+      return cmView.state.doc.toString();
     }
     return '';
   };
@@ -89,10 +93,9 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
     }
 
     // CM6 Fallback
-    if (editorRef.current.view) {
-        editorRef.current.view.dispatch({
-            changes: { from: 0, to: current?.length ?? 0, insert: newCode }
-        });
+    const cmView = editorRef.current.editor ?? (editorRef.current.view as EditorView | undefined);
+    if (cmView) {
+        cmView.dispatch({ changes: { from: 0, to: current?.length ?? 0, insert: newCode } });
     }
   };
 
@@ -168,11 +171,11 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
 
         editorRef.current = editor;
 
-        // Inject decoration extension to dim @duration annotations
-        if (editor.view) {
-          (editor.view as EditorView).dispatch({
-            effects: StateEffect.appendConfig.of(durationPlugin),
-          });
+        // Inject decoration extension to dim @duration annotations.
+        // StrudelMirror stores the CodeMirror EditorView as .editor (not .view)
+        const cmView = editor.editor ?? (editor.view as EditorView | undefined);
+        if (cmView) {
+          cmView.dispatch({ effects: StateEffect.appendConfig.of(durationPlugin) });
         }
       } catch (err) {
         console.error("Failed to init Strudel", err);

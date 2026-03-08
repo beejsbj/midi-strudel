@@ -111,20 +111,33 @@ export function renderSequence(
 
   // FORMATTING INTO LINES
   const outputLines: string[] = [];
-  let currentLine = "";
-  let itemsInLine = 0;
-  const itemsPerLine = config.measuresPerLine;
+  const perLine = config.measuresPerLine;
 
-  for (const token of mergedTokens) {
-    currentLine += token + " ";
-    itemsInLine++;
-    if (itemsInLine >= itemsPerLine) {
-      outputLines.push(currentLine.trim());
-      currentLine = "";
-      itemsInLine = 0;
+  if (config.formatPerLineBy === 'note') {
+    const flatTokens = mergedTokens.flatMap(t => t.trim().split(/\s+/).filter(Boolean));
+    let lineTokens: string[] = [];
+    for (const t of flatTokens) {
+      lineTokens.push(t);
+      if (lineTokens.length >= perLine) {
+        outputLines.push(lineTokens.join(' '));
+        lineTokens = [];
+      }
     }
+    if (lineTokens.length > 0) outputLines.push(lineTokens.join(' '));
+  } else {
+    let currentLine = "";
+    let itemsInLine = 0;
+    for (const token of mergedTokens) {
+      currentLine += token + " ";
+      itemsInLine++;
+      if (itemsInLine >= perLine) {
+        outputLines.push(currentLine.trim());
+        currentLine = "";
+        itemsInLine = 0;
+      }
+    }
+    if (currentLine.trim()) outputLines.push(currentLine.trim());
   }
-  if (currentLine.trim()) outputLines.push(currentLine.trim());
 
   return outputLines.join('\n');
 }
