@@ -73,8 +73,11 @@
         pointer-events: none;
       }
       /* Dim @duration annotations (e.g. @0.25) so note names read more clearly */
+      /* Regex /@[\d.]+/ only matches the @xx part, so ~ in ~@0.5 stays full opacity */
       .cm-at-duration {
-        opacity: 0.4;
+        opacity: 0.25;
+        font-size: 8px;
+        vertical-align: super;
       }
     </style>
   <script type="importmap">
