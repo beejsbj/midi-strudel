@@ -33,9 +33,9 @@ export class StrudelNotation {
     let cpsFormula = "";
     if (this.config.cycleUnit === 'bar') {
       const numerator = this.config.timeSignature.numerator || 4;
-      cpsFormula = `${this.config.bpm} / 60 / ${numerator}`;
+      cpsFormula = `BPM / 60 / ${numerator}`;
     } else {
-      cpsFormula = `${this.config.bpm} / 60`;
+      cpsFormula = `BPM / 60`;
     }
 
     const timeSig = `${this.config.timeSignature.numerator}/${this.config.timeSignature.denominator}`;

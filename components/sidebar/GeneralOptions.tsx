@@ -13,6 +13,17 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
+  const toggleLineMode = () => {
+    const next = config.formatPerLineBy === 'note' ? 'measure' : 'note';
+    setConfig(prev => ({
+      ...prev,
+      formatPerLineBy: next,
+      measuresPerLine: next === 'note' ? 4 : 1,
+    }));
+  };
+
+  const isByNote = config.formatPerLineBy === 'note';
+
   return (
     <div className="space-y-4">
         <SectionHeader
@@ -33,12 +44,20 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
             </div>
                 <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex flex-col">
-                    <span className="text-xs text-zinc-300 font-medium">Measures Per Line</span>
+                    <span className="text-xs text-zinc-300 font-medium">
+                        <button
+                            type="button"
+                            onClick={toggleLineMode}
+                            className="text-gold-500 hover:text-gold-400 underline decoration-dotted focus:outline-none"
+                            title={`Switch to ${isByNote ? 'measures' : 'notes'} per line`}
+                        >{isByNote ? 'Notes' : 'Measures'}</button>
+                        {' Per Line'}
+                    </span>
                     <span className="text-[9px] text-zinc-500">Controls line wrapping</span>
                 </div>
                 <input
-                    type="number" min="1" max="8"
-                    aria-label="Measures per line"
+                    type="number" min="1" max="64"
+                    aria-label={`${isByNote ? 'Notes' : 'Measures'} per line`}
                     value={config.measuresPerLine}
                     onChange={(e) => updateConfig('measuresPerLine', parseInt(e.target.value))}
                     className="w-12 bg-black border border-zinc-800 text-xs text-center rounded py-1 focus:border-gold-500 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
