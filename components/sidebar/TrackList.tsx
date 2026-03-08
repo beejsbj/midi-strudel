@@ -90,10 +90,12 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
                             <span className="text-[10px] text-gold-500/80 truncate font-mono mt-0.5">Drum Track</span>
                         ) : (
                             <>
-                                {config.useAutoMapping && !isOverridden && autoSound && (
-                                    <span className="text-[10px] text-gold-500/80 truncate font-mono">Auto: {autoSound}</span>
+                                {!isOverridden && autoSound && (
+                                    <span className={`text-[10px] truncate font-mono ${config.useAutoMapping ? 'text-gold-500/80' : 'text-zinc-500/50'}`}>
+                                        Auto: {autoSound}
+                                    </span>
                                 )}
-                                {(!config.useAutoMapping || !autoSound) && !isOverridden && (
+                                {!isOverridden && !autoSound && (
                                     <span className="text-[10px] text-zinc-500 truncate font-mono">Using Global</span>
                                 )}
                             </>

@@ -159,6 +159,7 @@ const App: React.FC = () => {
         sourceBpm: result.bpm,
         timeSignature: result.timeSignature,
         sourceTimeSignature: result.timeSignature,
+        fileName: file.name.replace(/\.[^.]+$/, ''),
         // Only update key fields when a key was detected; leave unchanged if no notes
         ...(detectedKey !== null && {
           key: detectedKey,

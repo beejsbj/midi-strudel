@@ -56,7 +56,7 @@ export function createRestToken(durationSeconds: number, cycleDur: number, confi
 /** Creates a rest token from a duration in cycles */
 export function createRestTokenCycles(cycles: number, config: StrudelConfig): string {
   const r = round(cycles, config.durationPrecision);
-  const suffix = r === 1 ? "" : `@${r}`;
+  const suffix = Math.abs(r - 1) < 1e-6 ? "" : `@${r}`;
 
   if (config.timingStyle === 'relativeDivision') {
     return `[~]${suffix}`;

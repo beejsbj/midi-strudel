@@ -1,10 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Check, Play, Square, Loader2, AlertTriangle } from 'lucide-react';
 import { StrudelMirror } from '@strudel/codemirror';
+import { MatchDecorator, ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
+import { StateEffect } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
 import { registerSoundfonts } from "@strudel/soundfonts";
+
+// CodeMirror decoration that dims @duration annotations (e.g. @0.25, @1.5)
+const durationDecorator = new MatchDecorator({
+  regexp: /@[\d.]+/g,
+  decoration: Decoration.mark({ class: 'cm-at-duration' }),
+});
+const durationPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) { this.decorations = durationDecorator.createDeco(view); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    update(u: any) { this.decorations = durationDecorator.updateDeco(u, this.decorations); }
+  },
+  { decorations: v => v.decorations }
+);
 
 interface Props {
   code: string;
@@ -41,6 +58,7 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
   const [isReady, setIsReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [strudelError, setStrudelError] = useState<string | null>(null);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<StrudelEditorInstance | null>(null);
@@ -95,6 +113,8 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
           },
           onError: (error: unknown) => {
             console.error("Strudel error:", error);
+            setStrudelError(String(error));
+            setIsPlaying(false);
           },
           prebake: async () => {
             try {
@@ -147,6 +167,13 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
         }
 
         editorRef.current = editor;
+
+        // Inject decoration extension to dim @duration annotations
+        if (editor.view) {
+          (editor.view as EditorView).dispatch({
+            effects: StateEffect.appendConfig.of(durationPlugin),
+          });
+        }
       } catch (err) {
         console.error("Failed to init Strudel", err);
         setAudioError("Audio engine failed to load. Try refreshing.");
@@ -226,6 +253,7 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
             }
             setIsPlaying(false);
         } else {
+            setStrudelError(null);
             if (typeof editorRef.current.evaluate === 'function') {
                 editorRef.current.evaluate();
             }
@@ -304,6 +332,14 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
         <div role="alert" className="flex items-center space-x-2 px-4 py-2 bg-red-900/40 border-b border-red-800/50 text-red-300 text-xs">
           <AlertTriangle size={12} />
           <span>{audioError}</span>
+        </div>
+      )}
+
+      {/* Strudel pattern evaluation error */}
+      {strudelError && (
+        <div role="alert" className="flex items-center space-x-2 px-4 py-2 bg-red-900/40 border-b border-red-800/50 text-red-300 text-xs font-mono">
+          <AlertTriangle size={12} className="shrink-0" />
+          <span className="truncate">{strudelError}</span>
         </div>
       )}
 

@@ -17,7 +17,7 @@ export function splitMelodyHarmony(notes: Note[]): { melody: Note[]; harmony: No
   const harmony: Note[] = [];
   let lastEnd = 0;
 
-  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn);
+  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn || b.midi - a.midi);
 
   sorted.forEach(note => {
     if (note.noteOn >= lastEnd - 0.01) {
