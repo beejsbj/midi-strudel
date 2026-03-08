@@ -69,6 +69,9 @@ export interface StrudelConfig {
   
   // Precision
   durationPrecision: number;
+
+  // Source file metadata
+  fileName?: string;
 }
 
 export const DEFAULT_CONFIG: StrudelConfig = {
