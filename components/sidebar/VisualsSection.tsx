@@ -18,9 +18,12 @@ const DURATION_STYLES = [
 ] as const;
 
 const VISUAL_METHODS = [
-  { value: 'none',      label: 'None' },
-  { value: 'pianoroll', label: 'Piano' },
-  { value: 'punchcard', label: 'Punch' },
+  { value: 'none',       label: 'None' },
+  { value: 'pianoroll',  label: 'Piano' },
+  { value: 'punchcard',  label: 'Punch' },
+  { value: 'spiral',     label: 'Spiral' },
+  { value: 'pitchwheel', label: 'Wheel' },
+  { value: 'scope',      label: 'Scope' },
 ] as const;
 
 const MARKCSS_PRESETS = [
