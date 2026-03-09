@@ -316,33 +316,35 @@ export const CodeViewer: React.FC<Props> = ({
       'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
     };
 
-    const applyNoteProps = (el: HTMLElement) => {
+    // Find elements whose style uses var(--note-value) and set the variable
+    // from their text content. Must run AFTER strudel sets the style attr.
+    const applyNoteValue = (el: HTMLElement) => {
+      const styleAttr = el.getAttribute('style') || '';
+      if (!styleAttr.includes('var(--note-value')) return;
+      if (styleAttr.includes('--note-value:')) return; // already set, avoid loop
       const text = el.textContent || '';
       const m = text.match(NOTE_RE);
       if (m) {
         const pc = PITCH_CLASS[m[1]] ?? 0;
         const octave = parseInt(m[2], 10);
-        const midiNum = pc + octave * 12 + 12;
-        el.style.setProperty('--note-value', String(midiNum));
+        el.style.setProperty('--note-value', String(pc + octave * 12 + 12));
       }
     };
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node instanceof HTMLElement) {
-            if (node.classList.contains('strudel-mark')) {
-              applyNoteProps(node);
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (node instanceof HTMLElement) {
+              applyNoteValue(node);
+              node.querySelectorAll<HTMLElement>('span').forEach(applyNoteValue);
             }
-            node.querySelectorAll<HTMLElement>('.strudel-mark').forEach(applyNoteProps);
           }
-        }
-        if (
+        } else if (
           mutation.type === 'attributes' &&
-          mutation.target instanceof HTMLElement &&
-          mutation.target.classList.contains('strudel-mark')
+          mutation.target instanceof HTMLElement
         ) {
-          applyNoteProps(mutation.target);
+          applyNoteValue(mutation.target);
         }
       }
     });
@@ -351,7 +353,7 @@ export const CodeViewer: React.FC<Props> = ({
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['class'],
+      attributeFilter: ['style'],
     });
     observerRef.current = observer;
 

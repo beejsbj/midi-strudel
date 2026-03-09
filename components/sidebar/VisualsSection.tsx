@@ -23,7 +23,6 @@ const VISUAL_METHODS = [
   { value: 'punchcard',  label: 'Punch' },
   { value: 'spiral',     label: 'Spiral' },
   { value: 'pitchwheel', label: 'Wheel' },
-  { value: 'scope',      label: 'Scope' },
 ] as const;
 
 const MARKCSS_PRESETS = [
@@ -127,13 +126,28 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
         )}
       </div>
 
+      {/* Track Color Toggle — uses .color() in generated code */}
+      <div
+        className="flex items-center justify-between cursor-pointer"
+        onClick={() => updateConfig('isTrackColoringEnabled', !config.isTrackColoringEnabled)}
+      >
+        <div className="flex flex-col">
+          <span className="text-xs text-zinc-300">Track Colors</span>
+          <span className="text-[9px] text-zinc-500">Adds .color() per track — affects highlights + visuals</span>
+        </div>
+        <ToggleSwitch
+          checked={config.isTrackColoringEnabled}
+          onChange={(checked) => updateConfig('isTrackColoringEnabled', checked)}
+          aria-label="Track Colors"
+        />
+      </div>
+
       {/* Coloring Toggles */}
       <div className="space-y-2">
-        <span className="text-xs text-zinc-300 font-medium">Coloring</span>
+        <span className="text-xs text-zinc-300 font-medium">Mark Coloring</span>
         {([
-          ['isTrackColoringEnabled',       'Track Colors',   'Distinct hue per track in markcss + swatch in list'] as const,
-          ['isNoteColoringEnabled',         'Note Colors',    'Sets --note-value on highlights (for Rainbow/Glow)'] as const,
-          ['isProgressiveFillEnabled',      'Fill Animation', 'Animate fill over note duration (when no other preset)'] as const,
+          ['isNoteColoringEnabled',         'Note Colors',    'Sets --note-value for Rainbow/Glow (must be on for those presets)'] as const,
+          ['isProgressiveFillEnabled',      'Auto Fill',      'Gold fill animation on active notes (when no mark preset)'] as const,
           ['isPatternTextColoringEnabled',  'Code Text',      'Color note names in editor by pitch class'] as const,
         ]).map(([key, label, desc]) => (
           <div

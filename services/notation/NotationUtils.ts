@@ -6,12 +6,9 @@ export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverri
   const customCss = customCssOverride ?? config.markcssCustom ?? '';
 
   if (preset === 'none') {
-    // Only apply implicit track/fill coloring when there is no per-track preset override
-    if (presetOverride === undefined && config.isTrackColoringEnabled && hue) {
-      return `background:hsla(${hue},60%,45%,0.75);border-radius:2px`;
-    }
+    // Only apply implicit fill when there is no per-track preset override
     if (presetOverride === undefined && config.isProgressiveFillEnabled) {
-      return `animation:strudel-fill calc(var(--duration,0.5)*1s) linear forwards`;
+      return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
     }
     return '';
   }
@@ -19,7 +16,7 @@ export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverri
     case 'track-color':      return hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : '';
     case 'pitch-rainbow':    return `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`;
     case 'velocity-glow':    return `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`;
-    case 'progressive-fill': return `animation:strudel-fill calc(var(--duration,0.5)*1s) linear forwards`;
+    case 'progressive-fill': return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
     case 'custom':           return customCss;
     default:                 return '';
   }
@@ -35,6 +32,11 @@ export function buildVisualSuffix(config: StrudelConfig, track?: Track): string 
   if (method && method !== 'none') {
     const fn = scope === 'inline' ? `_${method}` : method;
     parts.push(`  .${fn}()`);
+  }
+
+  // .color() for track color — affects highlights AND visual methods (pianoroll etc)
+  if (config.isTrackColoringEnabled && trackHue) {
+    parts.push(`  .color("hsl(${trackHue},60%,60%)")`);
   }
 
   const css = resolveMarkcss(
