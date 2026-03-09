@@ -39,7 +39,6 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
     { value: 'punchcard' as const,    label: 'Punch' },
     { value: 'spiral' as const,       label: 'Spiral' },
     { value: 'pitchwheel' as const,   label: 'Wheel' },
-    { value: 'scope' as const,        label: 'Scope' },
   ];
 
   const MARKCSS_OPTIONS = [
