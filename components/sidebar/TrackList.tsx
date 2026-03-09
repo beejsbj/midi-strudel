@@ -28,6 +28,29 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
     setTracks(prev => prev.map(t => t.id === id ? { ...t, drumBank: bank } : t));
   };
 
+  const updateTrack = <K extends keyof import('../../types').Track>(id: string, key: K, value: import('../../types').Track[K]) => {
+    setTracks(prev => prev.map(t => t.id === id ? { ...t, [key]: value } : t));
+  };
+
+  const VISUAL_METHOD_OPTIONS = [
+    { value: undefined as undefined,  label: 'Global' },
+    { value: 'none' as const,         label: 'Off' },
+    { value: 'pianoroll' as const,    label: 'Piano' },
+    { value: 'punchcard' as const,    label: 'Punch' },
+    { value: 'spiral' as const,       label: 'Spiral' },
+    { value: 'pitchwheel' as const,   label: 'Wheel' },
+  ];
+
+  const MARKCSS_OPTIONS = [
+    { value: undefined as undefined,               label: 'Global' },
+    { value: 'none' as const,                      label: 'None' },
+    { value: 'track-color' as const,               label: 'Track' },
+    { value: 'pitch-rainbow' as const,             label: 'Rainbow' },
+    { value: 'velocity-glow' as const,             label: 'Glow' },
+    { value: 'progressive-fill' as const,          label: 'Fill' },
+    { value: 'custom' as const,                    label: 'Custom' },
+  ];
+
   const getEffectiveSound = (track: Track) => {
     if (track.sound) return track.sound;
     if (config.useAutoMapping) return getAutoSound(track) || config.globalSound;
@@ -37,16 +60,16 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
   return (
     <div className="space-y-4 pb-10">
         <div className="flex flex-col space-y-4">
-            <SectionHeader 
-                icon={<Music size={14} />} 
-                title="Tracks" 
+            <SectionHeader
+                icon={<Music size={14} />}
+                title="Tracks"
             />
-            
+
             {/* Global Sound Control Block */}
             <div className="bg-zinc-800/30 p-3 rounded border border-zinc-800 space-y-3">
                 <div>
                 <label className="block text-xs text-zinc-400 mb-1.5 uppercase tracking-wide font-bold">Global Sound</label>
-                <select 
+                <select
                     className="w-full bg-black border border-zinc-700 text-xs text-zinc-300 rounded px-2 py-1.5 focus:border-gold-500 outline-none"
                     value={config.globalSound}
                     onChange={(e) => updateConfig('globalSound', e.target.value)}
@@ -61,9 +84,10 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
                         <span className="text-xs text-zinc-300 font-medium">Auto Mapping</span>
                         <span className="text-[9px] text-zinc-500">Guess instruments from names</span>
                 </div>
-                <ToggleSwitch 
-                    checked={config.useAutoMapping} 
-                    onChange={(checked) => updateConfig('useAutoMapping', checked)} 
+                <ToggleSwitch
+                    checked={config.useAutoMapping}
+                    onChange={(checked) => updateConfig('useAutoMapping', checked)}
+                    aria-label="Enable auto mapping"
                 />
             </div>
             </div>
@@ -76,59 +100,106 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
             const autoSound = getAutoSound(track);
             const isOverridden = !!track.sound;
             const isDrum = track.isDrum;
-            
+
             return (
             <div key={track.id} className={`p-3 rounded border transition-all ${track.hidden ? 'border-zinc-800 bg-transparent opacity-50' : 'border-gold-600/30 bg-zinc-900/50'}`}>
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex flex-col overflow-hidden mr-2">
                         <div className="flex items-center space-x-1.5">
                             {isDrum && <Drum size={10} className="text-gold-500" />}
+                            {config.isTrackColoringEnabled && track.color && (
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0 inline-block"
+                                style={{ background: `hsl(${track.color}, 60%, 50%)` }}
+                              />
+                            )}
                             <span className="text-xs font-mono truncate text-zinc-300" title={track.name}>{track.name}</span>
                         </div>
                         {isDrum ? (
                             <span className="text-[10px] text-gold-500/80 truncate font-mono mt-0.5">Drum Track</span>
                         ) : (
                             <>
-                                {config.useAutoMapping && !isOverridden && autoSound && (
-                                    <span className="text-[10px] text-gold-500/80 truncate font-mono">Auto: {autoSound}</span>
+                                {!isOverridden && autoSound && (
+                                    <span className={`text-[10px] truncate font-mono ${config.useAutoMapping ? 'text-gold-500/80' : 'text-zinc-500/50'}`}>
+                                        Auto: {autoSound}
+                                    </span>
                                 )}
-                                {(!config.useAutoMapping || !autoSound) && !isOverridden && (
+                                {!isOverridden && !autoSound && (
                                     <span className="text-[10px] text-zinc-500 truncate font-mono">Using Global</span>
                                 )}
                             </>
                         )}
                     </div>
-                    <ToggleSwitch 
+                    <ToggleSwitch
                         checked={!track.hidden}
                         onChange={() => toggleTrack(track.id)}
+                        aria-label={`${track.hidden ? 'Show' : 'Hide'} track ${track.name}`}
                     />
                 </div>
-                
+
                 {!track.hidden && (
-                    isDrum ? (
-                            <select 
-                            className="w-full bg-black border border-zinc-700 text-xs text-zinc-400 rounded px-2 py-1 focus:border-gold-500 outline-none"
-                            value={track.drumBank || "RolandTR909"}
-                            onChange={(e) => updateTrackDrumBank(track.id, e.target.value)}
-                        >
-                            {DRUM_BANKS.map(bank => (
-                                <option key={bank} value={bank}>{bank}</option>
-                            ))}
-                        </select>
+                  <div className="space-y-1.5">
+                    {isDrum ? (
+                      <select
+                        className="w-full bg-black border border-zinc-700 text-xs text-zinc-400 rounded px-2 py-1 focus:border-gold-500 outline-none"
+                        value={track.drumBank || "RolandTR909"}
+                        aria-label={`Drum bank for ${track.name}`}
+                        onChange={(e) => updateTrackDrumBank(track.id, e.target.value)}
+                      >
+                        {DRUM_BANKS.map(bank => (
+                          <option key={bank} value={bank}>{bank}</option>
+                        ))}
+                      </select>
                     ) : (
-                        <select 
-                            className="w-full bg-black border border-zinc-700 text-xs text-zinc-400 rounded px-2 py-1 focus:border-gold-500 outline-none"
-                            value={track.sound || ''}
-                            onChange={(e) => updateTrackSound(track.id, e.target.value)}
-                        >
-                            <option value="">
-                                    {isOverridden ? 'Reset to Default' : (config.useAutoMapping && autoSound ? `Auto (${autoSound})` : `Global (${config.globalSound})`)}
-                            </option>
-                            {INSTRUMENTS.map(inst => (
-                            <option key={inst} value={inst}>{inst}</option>
-                            ))}
-                        </select>
-                    )
+                      <select
+                        className="w-full bg-black border border-zinc-700 text-xs text-zinc-400 rounded px-2 py-1 focus:border-gold-500 outline-none"
+                        value={track.sound || ''}
+                        aria-label={`Instrument for ${track.name}`}
+                        onChange={(e) => updateTrackSound(track.id, e.target.value)}
+                      >
+                        <option value="">
+                          {isOverridden ? 'Reset to Default' : (config.useAutoMapping && autoSound ? `Auto (${autoSound})` : `Global (${config.globalSound})`)}
+                        </option>
+                        {INSTRUMENTS.map(inst => (
+                          <option key={inst} value={inst}>{inst}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Per-track visuals */}
+                    <div className="flex gap-1.5">
+                      <select
+                        className="flex-1 bg-black border border-zinc-800 text-[10px] font-mono text-zinc-500 rounded px-1.5 py-1 focus:border-gold-500 outline-none"
+                        value={track.trackVisualMethod ?? ''}
+                        aria-label={`Visual method for ${track.name}`}
+                        onChange={(e) => updateTrack(track.id, 'trackVisualMethod', (e.target.value || undefined) as typeof track.trackVisualMethod)}
+                      >
+                        {VISUAL_METHOD_OPTIONS.map(opt => (
+                          <option key={String(opt.value)} value={opt.value ?? ''}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="flex-1 bg-black border border-zinc-800 text-[10px] font-mono text-zinc-500 rounded px-1.5 py-1 focus:border-gold-500 outline-none"
+                        value={track.trackMarkcssPreset ?? ''}
+                        aria-label={`Mark CSS for ${track.name}`}
+                        onChange={(e) => updateTrack(track.id, 'trackMarkcssPreset', (e.target.value || undefined) as typeof track.trackMarkcssPreset)}
+                      >
+                        {MARKCSS_OPTIONS.map(opt => (
+                          <option key={String(opt.value)} value={opt.value ?? ''}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {track.trackMarkcssPreset === 'custom' && (
+                      <input
+                        type="text"
+                        placeholder="CSS for this track..."
+                        value={track.trackMarkcssCustom ?? ''}
+                        onChange={(e) => updateTrack(track.id, 'trackMarkcssCustom', e.target.value)}
+                        className="w-full bg-black border border-zinc-800 text-[10px] font-mono text-zinc-300 rounded px-2 py-1 focus:border-gold-500 outline-none placeholder:text-zinc-700"
+                      />
+                    )}
+                  </div>
                 )}
             </div>
         )})}

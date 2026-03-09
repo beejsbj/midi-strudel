@@ -13,11 +13,17 @@ export interface Track {
   name: string;
   notes: Note[];
   instrumentFamily?: string;
-  
+
   // Metadata overrides
   sound?: string;
   hidden?: boolean;
-  
+  color?: string; // HSL hue 0-360 as string, e.g. "210"
+
+  // Per-track visual overrides (undefined = use global config)
+  trackVisualMethod?: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel';
+  trackMarkcssPreset?: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
+  trackMarkcssCustom?: string;
+
   // Drum specific
   isDrum: boolean;
   drumBank?: string;
@@ -51,8 +57,8 @@ export interface StrudelConfig {
   cycleUnit: 'bar' | 'beat';
   
   // Formatting
-  formatPerLineBy: 'measure'; // Simplified for this implementation
-  measuresPerLine: number;
+  formatPerLineBy: 'measure' | 'note';
+  measuresPerLine: number; // items per line (measures or notes depending on formatPerLineBy)
   
   // Sound
   useAutoMapping: boolean;
@@ -69,6 +75,20 @@ export interface StrudelConfig {
   
   // Precision
   durationPrecision: number;
+
+  // Source file metadata
+  fileName?: string;
+
+  // Visuals
+  durationTagStyle: 'sub' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
+  visualMethod: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel';
+  visualScope: 'global' | 'inline';
+  markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
+  markcssCustom: string;
+  isTrackColoringEnabled: boolean;
+  isNoteColoringEnabled: boolean;
+  isProgressiveFillEnabled: boolean;
+  isPatternTextColoringEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: StrudelConfig = {
@@ -79,8 +99,8 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   outputStyle: 'melody+harmony',
   notationType: 'absolute',
   cycleUnit: 'bar',
-  formatPerLineBy: 'measure',
-  measuresPerLine: 1,
+  formatPerLineBy: 'note',
+  measuresPerLine: 4,
   
   useAutoMapping: false,
   globalSound: 'triangle',
@@ -90,5 +110,15 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   isQuantized: false, 
   quantizationThreshold: 50,
   quantizationStrength: 100,
-  durationPrecision: 4
+  durationPrecision: 4,
+
+  durationTagStyle: 'sup',
+  visualMethod: 'none',
+  visualScope: 'inline',
+  markcssPreset: 'none',
+  markcssCustom: '',
+  isTrackColoringEnabled: false,
+  isNoteColoringEnabled: false,
+  isProgressiveFillEnabled: false,
+  isPatternTextColoringEnabled: false,
 };

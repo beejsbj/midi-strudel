@@ -4,7 +4,7 @@ const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.6
 const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 const PITCH_CLASSES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
-export const detectKey = (tracks: Track[]): KeySignature => {
+export const detectKey = (tracks: Track[]): KeySignature | null => {
   // 1. Build Chroma Vector (duration based)
   const chroma = new Array(12).fill(0);
   let totalDuration = 0;
@@ -20,7 +20,7 @@ export const detectKey = (tracks: Track[]): KeySignature => {
   });
 
   if (totalDuration === 0) {
-    return { root: 'C', type: 'major', confidence: 0, averageOctave: 4 };
+    return null;
   }
 
   // Correlation function (Pearson)
