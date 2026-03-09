@@ -1,6 +1,6 @@
 import { Track, StrudelConfig } from '../../types';
 import { DRUM_MAP } from '../../constants';
-import { prepareNotes, formatTrackName } from './NotationUtils';
+import { prepareNotes, formatTrackName, buildVisualSuffix } from './NotationUtils';
 import { renderSequence } from './MelodicRenderer';
 
 export function renderDrumTrack(track: Track, globalMaxDuration: number, config: StrudelConfig): string {
@@ -15,6 +15,7 @@ export function renderDrumTrack(track: Track, globalMaxDuration: number, config:
 
   const sequence = renderSequence(notes, globalMaxDuration, true, config, DRUM_MAP);
   const bank = track.drumBank || "RolandTR909";
+  const visualSuffix = buildVisualSuffix(config, track.color);
 
-  return `$${formatTrackName(track.name)}: \`<\n${sequence}\n>\`\n  .as("s");\n  // .bank("${bank}")\n\n`;
+  return `$${formatTrackName(track.name)}: \`<\n${sequence}\n>\`\n  .as("s")` + visualSuffix + `;\n  // .bank("${bank}")\n\n`;
 }

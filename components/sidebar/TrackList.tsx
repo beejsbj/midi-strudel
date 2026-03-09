@@ -84,6 +84,12 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
                     <div className="flex flex-col overflow-hidden mr-2">
                         <div className="flex items-center space-x-1.5">
                             {isDrum && <Drum size={10} className="text-gold-500" />}
+                            {config.isTrackColoringEnabled && track.color && (
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0 inline-block"
+                                style={{ background: `hsl(${track.color}, 60%, 50%)` }}
+                              />
+                            )}
                             <span className="text-xs font-mono truncate text-zinc-300" title={track.name}>{track.name}</span>
                         </div>
                         {isDrum ? (

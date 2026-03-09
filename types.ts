@@ -17,7 +17,8 @@ export interface Track {
   // Metadata overrides
   sound?: string;
   hidden?: boolean;
-  
+  color?: string; // HSL hue 0-360 as string, e.g. "210"
+
   // Drum specific
   isDrum: boolean;
   drumBank?: string;
@@ -72,6 +73,16 @@ export interface StrudelConfig {
 
   // Source file metadata
   fileName?: string;
+
+  // Visuals
+  durationTagStyle: 'sub' | 'sup' | 'ghost' | 'hidden' | 'badge' | 'hover';
+  visualMethod: 'none' | 'pianoroll' | 'punchcard' | 'scope' | 'pitchwheel' | 'spectrum';
+  visualScope: 'global' | 'inline';
+  markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill';
+  isTrackColoringEnabled: boolean;
+  isNoteColoringEnabled: boolean;
+  isProgressiveFillEnabled: boolean;
+  isPatternTextColoringEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: StrudelConfig = {
@@ -93,5 +104,14 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   isQuantized: false, 
   quantizationThreshold: 50,
   quantizationStrength: 100,
-  durationPrecision: 4
+  durationPrecision: 4,
+
+  durationTagStyle: 'sub',
+  visualMethod: 'none',
+  visualScope: 'global',
+  markcssPreset: 'none',
+  isTrackColoringEnabled: false,
+  isNoteColoringEnabled: false,
+  isProgressiveFillEnabled: false,
+  isPatternTextColoringEnabled: false,
 };

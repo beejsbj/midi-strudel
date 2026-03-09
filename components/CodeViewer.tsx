@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Check, Play, Square, Loader2, AlertTriangle } from 'lucide-react';
 import { StrudelMirror } from '@strudel/codemirror';
 import { MatchDecorator, ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
+import { StateEffect, Compartment } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
@@ -23,8 +23,38 @@ const durationPlugin = ViewPlugin.fromClass(
   { decorations: v => v.decorations }
 );
 
+// Pitch-class hue map for note text coloring
+const NOTE_HUES: Record<string, number> = {
+  'C': 0, 'C#': 30, 'Db': 30, 'D': 60, 'D#': 90, 'Eb': 90, 'E': 120,
+  'F': 150, 'F#': 180, 'Gb': 180, 'G': 210, 'G#': 240, 'Ab': 240,
+  'A': 270, 'A#': 300, 'Bb': 300, 'B': 330,
+};
+
+const noteDecorator = new MatchDecorator({
+  regexp: /\b([A-G][#b]?)(\d)\b/g,
+  decoration: (match) => {
+    const hue = NOTE_HUES[match[1]] ?? 0;
+    return Decoration.mark({ attributes: { style: `color: hsl(${hue}, 70%, 65%)` } });
+  },
+});
+
+const noteColorPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) { this.decorations = noteDecorator.createDeco(view); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    update(u: any) { this.decorations = noteDecorator.updateDeco(u, this.decorations); }
+  },
+  { decorations: v => v.decorations }
+);
+
+const noteColorCompartment = new Compartment();
+
 interface Props {
   code: string;
+  durationTagStyle?: string;
+  isPatternTextColoringEnabled?: boolean;
+  isNoteColoringEnabled?: boolean;
 }
 
 // Typed interface for the methods we actually call on the editor
@@ -54,7 +84,12 @@ const SAMPLE_JSON_FILES = [
   "mridangam.json",
 ];
 
-export const CodeViewer: React.FC<Props> = ({ code }) => {
+export const CodeViewer: React.FC<Props> = ({
+  code,
+  durationTagStyle,
+  isPatternTextColoringEnabled,
+  isNoteColoringEnabled,
+}) => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -65,6 +100,7 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<StrudelEditorInstance | null>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
 
   // Helper to safely access code from the editor instance
   const getEditorContent = () => {
@@ -171,11 +207,15 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
 
         editorRef.current = editor;
 
-        // Inject decoration extension to dim @duration annotations.
-        // StrudelMirror stores the CodeMirror EditorView as .editor (not .view)
+        // Inject decoration extensions
         const cmView = editor.editor ?? (editor.view as EditorView | undefined);
         if (cmView) {
-          cmView.dispatch({ effects: StateEffect.appendConfig.of(durationPlugin) });
+          cmView.dispatch({
+            effects: StateEffect.appendConfig.of([
+              durationPlugin,
+              noteColorCompartment.of([]),
+            ])
+          });
         }
       } catch (err) {
         console.error("Failed to init Strudel", err);
@@ -187,6 +227,10 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
     initStrudel();
 
     return () => {
+       if (observerRef.current) {
+           observerRef.current.disconnect();
+           observerRef.current = null;
+       }
        if (editorRef.current) {
            try {
              if (typeof editorRef.current.stop === 'function') {
@@ -200,6 +244,79 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
        }
     };
   }, []);
+
+  // Toggle note text coloring via Compartment reconfigure
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const cmView = editorRef.current.editor ?? (editorRef.current.view as EditorView | undefined);
+    if (!cmView) return;
+    cmView.dispatch({
+      effects: noteColorCompartment.reconfigure(isPatternTextColoringEnabled ? noteColorPlugin : [])
+    });
+  }, [isPatternTextColoringEnabled]);
+
+  // MutationObserver for runtime note coloring (sets --note-value on .strudel-mark)
+  useEffect(() => {
+    if (!editorContainerRef.current) return;
+
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    if (!isNoteColoringEnabled) return;
+
+    const NOTE_RE = /([A-G][#b]?)(\d)/;
+    const PITCH_CLASS: Record<string, number> = {
+      'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4,
+      'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8,
+      'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
+    };
+
+    const applyNoteProps = (el: HTMLElement) => {
+      const text = el.textContent || '';
+      const m = text.match(NOTE_RE);
+      if (m) {
+        const pc = PITCH_CLASS[m[1]] ?? 0;
+        const octave = parseInt(m[2], 10);
+        const midiNum = pc + octave * 12 + 12;
+        el.style.setProperty('--note-value', String(midiNum));
+      }
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLElement) {
+            if (node.classList.contains('strudel-mark')) {
+              applyNoteProps(node);
+            }
+            node.querySelectorAll<HTMLElement>('.strudel-mark').forEach(applyNoteProps);
+          }
+        }
+        if (
+          mutation.type === 'attributes' &&
+          mutation.target instanceof HTMLElement &&
+          mutation.target.classList.contains('strudel-mark')
+        ) {
+          applyNoteProps(mutation.target);
+        }
+      }
+    });
+
+    observer.observe(editorContainerRef.current, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    observerRef.current = observer;
+
+    return () => {
+      observer.disconnect();
+      observerRef.current = null;
+    };
+  }, [isNoteColoringEnabled]);
 
   // Sync code prop updates to editor
   useEffect(() => {
@@ -347,7 +464,11 @@ export const CodeViewer: React.FC<Props> = ({ code }) => {
       )}
 
       <div className="flex-1 relative bg-noir-900 overflow-hidden group">
-        <div ref={editorContainerRef} className="h-full w-full text-sm" />
+        <div
+          ref={editorContainerRef}
+          className="h-full w-full text-sm"
+          data-duration-style={durationTagStyle ?? 'sub'}
+        />
       </div>
     </div>
   );

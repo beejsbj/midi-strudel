@@ -6,6 +6,7 @@ import { PlaybackSettings } from './sidebar/PlaybackSettings';
 import { FormatSettings } from './sidebar/FormatSettings';
 import { QuantizationSettings } from './sidebar/QuantizationSettings';
 import { GeneralOptions } from './sidebar/GeneralOptions';
+import { VisualsSection } from './sidebar/VisualsSection';
 import { TrackList } from './sidebar/TrackList';
 
 interface Props {
@@ -104,6 +105,10 @@ export const Sidebar: React.FC<Props> = ({ config, setConfig, tracks, setTracks,
         <SectionDivider />
 
         <GeneralOptions config={config} setConfig={setConfig} />
+
+        <SectionDivider />
+
+        <VisualsSection config={config} setConfig={setConfig} />
 
         <SectionDivider />
 
