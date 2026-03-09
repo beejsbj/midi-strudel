@@ -33,10 +33,13 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
   };
 
   const VISUAL_METHOD_OPTIONS = [
-    { value: undefined as undefined, label: 'Global' },
-    { value: 'none' as const,        label: 'Off' },
-    { value: 'pianoroll' as const,   label: 'Piano' },
-    { value: 'punchcard' as const,   label: 'Punch' },
+    { value: undefined as undefined,  label: 'Global' },
+    { value: 'none' as const,         label: 'Off' },
+    { value: 'pianoroll' as const,    label: 'Piano' },
+    { value: 'punchcard' as const,    label: 'Punch' },
+    { value: 'spiral' as const,       label: 'Spiral' },
+    { value: 'pitchwheel' as const,   label: 'Wheel' },
+    { value: 'scope' as const,        label: 'Scope' },
   ];
 
   const MARKCSS_OPTIONS = [
