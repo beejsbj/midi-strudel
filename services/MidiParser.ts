@@ -37,7 +37,8 @@ export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm:
       notes: notes,
       hidden: notes.length === 0,
       isDrum: isDrum,
-      drumBank: isDrum ? "RolandTR909" : undefined // Default bank
+      drumBank: isDrum ? "RolandTR909" : undefined, // Default bank
+      color: String(Math.round((index * 360) / Math.max(midi.tracks.length, 8))),
     };
   });
 

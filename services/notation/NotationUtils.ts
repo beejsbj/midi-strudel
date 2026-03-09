@@ -1,5 +1,29 @@
 import { Note, StrudelConfig } from '../../types';
 
+export function resolveMarkcss(config: StrudelConfig, hue?: string): string {
+  if (config.markcssPreset === 'none' && config.isTrackColoringEnabled && hue) {
+    return `background:hsla(${hue},60%,45%,0.75);border-radius:2px`;
+  }
+  switch (config.markcssPreset) {
+    case 'track-color':      return hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : '';
+    case 'pitch-rainbow':    return `background:hsl(calc(var(--note-value,60)*2.8deg),70%,50%,0.8)`;
+    case 'velocity-glow':    return `box-shadow:0 0 calc(var(--velocity,0.7)*12px) hsl(calc(var(--note-value,180)*2.8deg),80%,60%,0.6)`;
+    case 'progressive-fill': return `animation:strudel-fill calc(var(--duration,0.5)*1s) linear forwards`;
+    default:                 return '';
+  }
+}
+
+export function buildVisualSuffix(config: StrudelConfig, trackHue?: string): string {
+  const parts: string[] = [];
+  if (config.visualMethod !== 'none') {
+    const fn = config.visualScope === 'inline' ? `_${config.visualMethod}` : config.visualMethod;
+    parts.push(`  .${fn}()`);
+  }
+  const css = resolveMarkcss(config, trackHue);
+  if (css) parts.push(`  .markcss(\`${css}\`)`);
+  return parts.length ? '\n' + parts.join('\n') : '';
+}
+
 // Scale constants
 export const PITCH_MAP: Record<string, number> = {
   'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4, 'F': 5,

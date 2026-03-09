@@ -323,7 +323,12 @@ const App: React.FC = () => {
         ) : (
             <div className="flex flex-col h-full p-6">
                <div className="flex-1 min-h-0">
-                 <CodeViewer code={code} />
+                 <CodeViewer
+                   code={code}
+                   durationTagStyle={config.durationTagStyle}
+                   isPatternTextColoringEnabled={config.isPatternTextColoringEnabled}
+                   isNoteColoringEnabled={config.isNoteColoringEnabled}
+                 />
                </div>
             </div>
         )}

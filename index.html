@@ -77,7 +77,28 @@
       .cm-at-duration {
         opacity: 0.25;
         font-size: 8px;
-        vertical-align: super;
+        vertical-align: sub;
+      }
+      /* Duration tag style presets — driven by data-duration-style on the editor container */
+      [data-duration-style="sup"]    .cm-at-duration { vertical-align: super; }
+      [data-duration-style="ghost"]  .cm-at-duration { opacity: 0.15; font-size: inherit; vertical-align: baseline; }
+      [data-duration-style="hidden"] .cm-at-duration { opacity: 0; font-size: 0; }
+      [data-duration-style="badge"]  .cm-at-duration {
+        opacity: 0.7; font-size: 9px; vertical-align: baseline;
+        background: rgba(245,158,11,0.12); border-radius: 3px; padding: 0 2px;
+        color: rgba(245,158,11,0.9);
+      }
+      [data-duration-style="hover"]       .cm-at-duration { opacity: 0; transition: opacity 0.2s; font-size: 8px; vertical-align: sub; }
+      [data-duration-style="hover"]:hover .cm-at-duration { opacity: 0.4; }
+
+      /* Progressive fill animation for markcss preset */
+      @keyframes strudel-fill {
+        from { background-size: 0% 100%; }
+        to   { background-size: 100% 100%; }
+      }
+      .strudel-mark {
+        background-repeat: no-repeat;
+        background-position: left center;
       }
     </style>
   <script type="importmap">

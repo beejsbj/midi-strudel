@@ -9,6 +9,7 @@ import {
   isRest,
   getRestDuration,
   getCycleDuration,
+  buildVisualSuffix,
 } from './NotationUtils';
 import { renderMeasureAbsolute, renderMeasureSubdivision } from './GridBuilder';
 
@@ -170,14 +171,16 @@ export function renderMelodicTrack(
   // Pass empty drumMap for melodic tracks
   const emptyDrumMap: Record<number, string> = {};
 
+  const visualSuffix = buildVisualSuffix(config, track.color);
+
   if (melody.length > 0) {
     const melodyCode = renderSequence(melody, globalMaxDuration, false, config, emptyDrumMap);
-    trackOutput += `$${formatTrackName(track.name)}_MELODY: \`<\n${melodyCode}\n>\`\n  .as("${getAsString(false, config)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
+    trackOutput += `$${formatTrackName(track.name)}_MELODY: \`<\n${melodyCode}\n>\`\n  .as("${getAsString(false, config)}")` + scaleSuffix + `\n  .sound("${sound}")` + visualSuffix + `;\n\n`;
   }
 
   if (harmony.length > 0) {
     const harmonyCode = renderSequence(harmony, globalMaxDuration, false, config, emptyDrumMap);
-    trackOutput += `$${formatTrackName(track.name)}_HARMONY: \`<\n${harmonyCode}\n>\`\n  .as("${getAsString(false, config)}")` + scaleSuffix + `\n  .sound("${sound}");\n\n`;
+    trackOutput += `$${formatTrackName(track.name)}_HARMONY: \`<\n${harmonyCode}\n>\`\n  .as("${getAsString(false, config)}")` + scaleSuffix + `\n  .sound("${sound}")` + visualSuffix + `;\n\n`;
   }
 
   return trackOutput;
