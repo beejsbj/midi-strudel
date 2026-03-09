@@ -255,6 +255,49 @@ export const CodeViewer: React.FC<Props> = ({
     });
   }, [isPatternTextColoringEnabled]);
 
+  // Per-note hover handler for duration tags (reveals .cm-at-duration on adjacent note hover)
+  useEffect(() => {
+    const container = editorContainerRef.current;
+    if (!container || durationTagStyle !== 'hover') return;
+
+    let lastShown: Element | null = null;
+
+    const clearLast = () => {
+      if (lastShown) {
+        lastShown.classList.remove('cm-duration-hovered');
+        lastShown = null;
+      }
+    };
+
+    const handleMouseOver = (e: MouseEvent) => {
+      clearLast();
+      const target = e.target as Element;
+      if (!target) return;
+
+      // If we hovered the duration tag itself, show it
+      if (target.classList?.contains('cm-at-duration')) {
+        target.classList.add('cm-duration-hovered');
+        lastShown = target;
+        return;
+      }
+      // Otherwise show the immediately following duration tag (if any)
+      const next = target.nextElementSibling;
+      if (next?.classList.contains('cm-at-duration')) {
+        next.classList.add('cm-duration-hovered');
+        lastShown = next;
+      }
+    };
+
+    const handleMouseLeave = () => clearLast();
+
+    container.addEventListener('mouseover', handleMouseOver);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      container.removeEventListener('mouseover', handleMouseOver);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [durationTagStyle]);
+
   // MutationObserver for runtime note coloring (sets --note-value on .strudel-mark)
   useEffect(() => {
     if (!editorContainerRef.current) return;
@@ -467,7 +510,7 @@ export const CodeViewer: React.FC<Props> = ({
         <div
           ref={editorContainerRef}
           className="h-full w-full text-sm"
-          data-duration-style={durationTagStyle ?? 'sub'}
+          data-duration-style={durationTagStyle ?? 'sup'}
         />
       </div>
     </div>

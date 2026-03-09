@@ -13,11 +13,16 @@ export interface Track {
   name: string;
   notes: Note[];
   instrumentFamily?: string;
-  
+
   // Metadata overrides
   sound?: string;
   hidden?: boolean;
   color?: string; // HSL hue 0-360 as string, e.g. "210"
+
+  // Per-track visual overrides (undefined = use global config)
+  trackVisualMethod?: 'none' | 'pianoroll' | 'punchcard';
+  trackMarkcssPreset?: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
+  trackMarkcssCustom?: string;
 
   // Drum specific
   isDrum: boolean;
@@ -75,10 +80,11 @@ export interface StrudelConfig {
   fileName?: string;
 
   // Visuals
-  durationTagStyle: 'sub' | 'sup' | 'ghost' | 'hidden' | 'badge' | 'hover';
-  visualMethod: 'none' | 'pianoroll' | 'punchcard' | 'scope' | 'pitchwheel' | 'spectrum';
+  durationTagStyle: 'sub' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
+  visualMethod: 'none' | 'pianoroll' | 'punchcard';
   visualScope: 'global' | 'inline';
-  markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill';
+  markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
+  markcssCustom: string;
   isTrackColoringEnabled: boolean;
   isNoteColoringEnabled: boolean;
   isProgressiveFillEnabled: boolean;
@@ -106,10 +112,11 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   quantizationStrength: 100,
   durationPrecision: 4,
 
-  durationTagStyle: 'sub',
+  durationTagStyle: 'sup',
   visualMethod: 'none',
-  visualScope: 'global',
+  visualScope: 'inline',
   markcssPreset: 'none',
+  markcssCustom: '',
   isTrackColoringEnabled: false,
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,

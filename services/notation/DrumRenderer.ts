@@ -15,7 +15,7 @@ export function renderDrumTrack(track: Track, globalMaxDuration: number, config:
 
   const sequence = renderSequence(notes, globalMaxDuration, true, config, DRUM_MAP);
   const bank = track.drumBank || "RolandTR909";
-  const visualSuffix = buildVisualSuffix(config, track.color);
+  const visualSuffix = buildVisualSuffix(config, track);
 
   return `$${formatTrackName(track.name)}: \`<\n${sequence}\n>\`\n  .as("s")` + visualSuffix + `;\n  // .bank("${bank}")\n\n`;
 }
