@@ -1,26 +1,50 @@
-import { Note, StrudelConfig } from '../../types';
+import { Note, Track, StrudelConfig } from '../../types';
 
-export function resolveMarkcss(config: StrudelConfig, hue?: string): string {
-  if (config.markcssPreset === 'none' && config.isTrackColoringEnabled && hue) {
-    return `background:hsla(${hue},60%,45%,0.75);border-radius:2px`;
+// presetOverride/customCssOverride allow per-track overrides of the global config
+export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverride?: string, customCssOverride?: string): string {
+  const preset = presetOverride ?? config.markcssPreset;
+  const customCss = customCssOverride ?? config.markcssCustom ?? '';
+
+  if (preset === 'none') {
+    // Only apply implicit track/fill coloring when there is no per-track preset override
+    if (presetOverride === undefined && config.isTrackColoringEnabled && hue) {
+      return `background:hsla(${hue},60%,45%,0.75);border-radius:2px`;
+    }
+    if (presetOverride === undefined && config.isProgressiveFillEnabled) {
+      return `animation:strudel-fill calc(var(--duration,0.5)*1s) linear forwards`;
+    }
+    return '';
   }
-  switch (config.markcssPreset) {
+  switch (preset) {
     case 'track-color':      return hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : '';
-    case 'pitch-rainbow':    return `background:hsl(calc(var(--note-value,60)*2.8deg),70%,50%,0.8)`;
-    case 'velocity-glow':    return `box-shadow:0 0 calc(var(--velocity,0.7)*12px) hsl(calc(var(--note-value,180)*2.8deg),80%,60%,0.6)`;
+    case 'pitch-rainbow':    return `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`;
+    case 'velocity-glow':    return `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`;
     case 'progressive-fill': return `animation:strudel-fill calc(var(--duration,0.5)*1s) linear forwards`;
+    case 'custom':           return customCss;
     default:                 return '';
   }
 }
 
-export function buildVisualSuffix(config: StrudelConfig, trackHue?: string): string {
+export function buildVisualSuffix(config: StrudelConfig, track?: Track): string {
   const parts: string[] = [];
-  if (config.visualMethod !== 'none') {
-    const fn = config.visualScope === 'inline' ? `_${config.visualMethod}` : config.visualMethod;
+  const trackHue = track?.color;
+
+  const method = track?.trackVisualMethod ?? config.visualMethod;
+  const scope = config.visualScope;
+
+  if (method && method !== 'none') {
+    const fn = scope === 'inline' ? `_${method}` : method;
     parts.push(`  .${fn}()`);
   }
-  const css = resolveMarkcss(config, trackHue);
-  if (css) parts.push(`  .markcss(\`${css}\`)`);
+
+  const css = resolveMarkcss(
+    config,
+    trackHue,
+    track?.trackMarkcssPreset,
+    track?.trackMarkcssCustom,
+  );
+  // Use single quotes so Strudel's transpiler doesn't mini-parse the CSS string
+  if (css) parts.push(`  .markcss('${css}')`);
   return parts.length ? '\n' + parts.join('\n') : '';
 }
 

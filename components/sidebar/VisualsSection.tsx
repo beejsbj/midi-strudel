@@ -9,21 +9,18 @@ interface Props {
 }
 
 const DURATION_STYLES = [
+  { value: 'sup',    label: 'Sup',    title: 'Superscript (above baseline) — default' },
   { value: 'sub',    label: 'Sub',    title: 'Subscript (below baseline)' },
-  { value: 'sup',    label: 'Sup',    title: 'Superscript (above baseline)' },
+  { value: 'normal', label: 'Sm',     title: 'Small, at baseline' },
   { value: 'ghost',  label: 'Ghost',  title: 'Full-size, very faint' },
-  { value: 'badge',  label: 'Badge',  title: 'Gold pill badge' },
-  { value: 'hover',  label: 'Hover',  title: 'Visible only on hover' },
+  { value: 'hover',  label: 'Hover',  title: 'Appears on note hover as gold badge' },
   { value: 'hidden', label: 'Hide',   title: 'Completely hidden' },
 ] as const;
 
 const VISUAL_METHODS = [
-  { value: 'none',       label: 'None' },
-  { value: 'pianoroll',  label: 'Piano' },
-  { value: 'punchcard',  label: 'Punch' },
-  { value: 'scope',      label: 'Scope' },
-  { value: 'pitchwheel', label: 'Wheel' },
-  { value: 'spectrum',   label: 'Spec' },
+  { value: 'none',      label: 'None' },
+  { value: 'pianoroll', label: 'Piano' },
+  { value: 'punchcard', label: 'Punch' },
 ] as const;
 
 const MARKCSS_PRESETS = [
@@ -32,6 +29,7 @@ const MARKCSS_PRESETS = [
   { value: 'pitch-rainbow',    label: 'Rainbow' },
   { value: 'velocity-glow',    label: 'Glow' },
   { value: 'progressive-fill', label: 'Fill' },
+  { value: 'custom',           label: 'Custom' },
 ] as const;
 
 export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
@@ -80,18 +78,21 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
             </button>
           ))}
         </div>
+
         {config.visualMethod !== 'none' && (
-          <div className="flex gap-1 mt-1">
-            {(['global', 'inline'] as const).map(scope => (
-              <button
-                key={scope}
-                type="button"
-                onClick={() => updateConfig('visualScope', scope)}
-                className={`${btnBase} capitalize ${config.visualScope === scope ? btnActive : btnInactive}`}
-              >
-                {scope}
-              </button>
-            ))}
+          <div
+            className="flex items-center justify-between cursor-pointer pt-0.5"
+            onClick={() => updateConfig('visualScope', config.visualScope === 'inline' ? 'global' : 'inline')}
+          >
+            <div className="flex flex-col">
+              <span className="text-xs text-zinc-300">Inline</span>
+              <span className="text-[9px] text-zinc-500">._pianoroll() vs .pianoroll()</span>
+            </div>
+            <ToggleSwitch
+              checked={config.visualScope === 'inline'}
+              onChange={(checked) => updateConfig('visualScope', checked ? 'inline' : 'global')}
+              aria-label="Inline visual scope"
+            />
           </div>
         )}
       </div>
@@ -111,17 +112,27 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
             </button>
           ))}
         </div>
+
+        {config.markcssPreset === 'custom' && (
+          <input
+            type="text"
+            placeholder="e.g. background:red;border-radius:3px"
+            value={config.markcssCustom}
+            onChange={(e) => updateConfig('markcssCustom', e.target.value)}
+            className="w-full bg-black border border-zinc-700 text-[10px] font-mono text-zinc-300 rounded px-2 py-1.5 focus:border-gold-500 outline-none placeholder:text-zinc-600"
+          />
+        )}
       </div>
 
       {/* Coloring Toggles */}
       <div className="space-y-2">
         <span className="text-xs text-zinc-300 font-medium">Coloring</span>
         {([
-          ['isTrackColoringEnabled', 'Track Colors', 'Distinct hue per track in markcss'],
-          ['isNoteColoringEnabled', 'Note Colors', 'Sets --note-value on highlights at runtime'],
-          ['isProgressiveFillEnabled', 'Progressive Fill', 'Animates note highlight fill over duration'],
-          ['isPatternTextColoringEnabled', 'Code Text', 'Colors note names in editor by pitch class'],
-        ] as const).map(([key, label, desc]) => (
+          ['isTrackColoringEnabled',       'Track Colors',   'Distinct hue per track in markcss + swatch in list'] as const,
+          ['isNoteColoringEnabled',         'Note Colors',    'Sets --note-value on highlights (for Rainbow/Glow)'] as const,
+          ['isProgressiveFillEnabled',      'Fill Animation', 'Animate fill over note duration (when no other preset)'] as const,
+          ['isPatternTextColoringEnabled',  'Code Text',      'Color note names in editor by pitch class'] as const,
+        ]).map(([key, label, desc]) => (
           <div
             key={key}
             className="flex items-center justify-between cursor-pointer"

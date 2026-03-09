@@ -171,7 +171,7 @@ export function renderMelodicTrack(
   // Pass empty drumMap for melodic tracks
   const emptyDrumMap: Record<number, string> = {};
 
-  const visualSuffix = buildVisualSuffix(config, track.color);
+  const visualSuffix = buildVisualSuffix(config, track);
 
   if (melody.length > 0) {
     const melodyCode = renderSequence(melody, globalMaxDuration, false, config, emptyDrumMap);
