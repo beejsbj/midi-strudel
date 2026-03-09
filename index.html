@@ -72,6 +72,37 @@
         z-index: 10;
         pointer-events: none;
       }
+      /* Dim @duration annotations (e.g. @0.25) so note names read more clearly */
+      /* Regex /@[\d.]+/ only matches the @xx part, so ~ in ~@0.5 stays full opacity */
+      .cm-at-duration {
+        opacity: 0.25;
+        font-size: 8px;
+        vertical-align: super;
+      }
+      /* Duration tag style presets — driven by data-duration-style on the editor container */
+      [data-duration-style="sub"]    .cm-at-duration { vertical-align: sub; }
+      [data-duration-style="normal"] .cm-at-duration { opacity: 0.4; font-size: 8px; vertical-align: baseline; }
+      [data-duration-style="ghost"]  .cm-at-duration { opacity: 0.15; font-size: inherit; vertical-align: baseline; }
+      [data-duration-style="hidden"] .cm-at-duration { opacity: 0; font-size: 0; }
+      /* hover: invisible by default, shown as gold badge on the note being hovered (via JS) */
+      [data-duration-style="hover"] .cm-at-duration {
+        opacity: 0; transition: opacity 0.15s; font-size: 9px; vertical-align: super;
+      }
+      [data-duration-style="hover"] .cm-at-duration.cm-duration-hovered {
+        opacity: 0.85;
+        background: rgba(245,158,11,0.12); border-radius: 3px; padding: 0 2px;
+        color: rgba(245,158,11,0.9);
+      }
+
+      /* Progressive fill animation for markcss preset */
+      @keyframes strudel-fill {
+        from { background-size: 0% 100%; }
+        to   { background-size: 100% 100%; }
+      }
+      .strudel-mark {
+        background-repeat: no-repeat;
+        background-position: left center;
+      }
     </style>
   <script type="importmap">
 {
@@ -91,7 +122,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-noir-900 text-gray-200 overflow-hidden">
     <div id="root"></div>

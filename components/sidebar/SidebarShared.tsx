@@ -1,17 +1,36 @@
 import React from 'react';
 
-export const ToggleSwitch: React.FC<{ checked: boolean; onChange: (checked: boolean) => void }> = ({ checked, onChange }) => (
-  <div 
-    className="relative inline-flex items-center cursor-pointer shrink-0" 
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  'aria-label'?: string;
+}
+
+export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, 'aria-label': ariaLabel }) => (
+  <div
+    role="switch"
+    aria-checked={checked}
+    aria-label={ariaLabel}
+    tabIndex={0}
+    className="relative inline-flex items-center cursor-pointer shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 rounded-full"
     onClick={(e) => {
         e.stopPropagation(); // Prevent bubbling if inside another clickable
         onChange(!checked);
     }}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(!checked);
+      }
+    }}
   >
-    <input 
-        type="checkbox" 
-        checked={checked} 
+    <input
+        type="checkbox"
+        checked={checked}
         readOnly
+        tabIndex={-1}
+        aria-hidden="true"
         className="sr-only peer"
     />
     <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gold-600 transition-colors"></div>

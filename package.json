@@ -6,12 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
-    "react-dom": "^19.2.0",
-    "react": "^19.2.0",
-    "lucide-react": "^0.554.0",
     "@strudel/codemirror": "1.2.2",
     "@strudel/core": "1.2.2",
     "@strudel/draw": "1.2.2",
@@ -19,12 +17,16 @@
     "@strudel/soundfonts": "1.2.2",
     "@strudel/tonal": "1.2.2",
     "@strudel/transpiler": "1.2.2",
-    "@strudel/webaudio": "1.2.2"
+    "@strudel/webaudio": "1.2.2",
+    "lucide-react": "^0.554.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.0.18"
   }
 }
