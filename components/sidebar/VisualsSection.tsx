@@ -18,20 +18,11 @@ const DURATION_STYLES = [
 ] as const;
 
 const VISUAL_METHODS = [
-  { value: 'none',       label: 'None' },
   { value: 'pianoroll',  label: 'Piano' },
   { value: 'punchcard',  label: 'Punch' },
   { value: 'spiral',     label: 'Spiral' },
   { value: 'pitchwheel', label: 'Wheel' },
-] as const;
-
-const MARKCSS_PRESETS = [
-  { value: 'none',             label: 'None' },
-  { value: 'track-color',      label: 'Track' },
-  { value: 'pitch-rainbow',    label: 'Rainbow' },
-  { value: 'velocity-glow',    label: 'Glow' },
-  { value: 'progressive-fill', label: 'Fill' },
-  { value: 'custom',           label: 'Custom' },
+  { value: 'spectrum',   label: 'Spectrum' },
 ] as const;
 
 export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
@@ -65,23 +56,31 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
         </div>
       </div>
 
-      {/* Playback Visual Method */}
+      {/* Playback Visual Method (multi-select) */}
       <div className="space-y-1.5">
         <span className="text-xs text-zinc-300 font-medium">Playback Visual</span>
         <div className="flex flex-wrap gap-1">
-          {VISUAL_METHODS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => updateConfig('visualMethod', value)}
-              className={`${btnBase} ${config.visualMethod === value ? btnActive : btnInactive}`}
-            >
-              {label}
-            </button>
-          ))}
+          {VISUAL_METHODS.map(({ value, label }) => {
+            const isActive = config.visualMethods.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  const next = isActive
+                    ? config.visualMethods.filter(m => m !== value)
+                    : [...config.visualMethods, value];
+                  updateConfig('visualMethods', next);
+                }}
+                className={`${btnBase} ${isActive ? btnActive : btnInactive}`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {config.visualMethod !== 'none' && (
+        {config.visualMethods.length > 0 && (
           <div
             className="flex items-center justify-between cursor-pointer pt-0.5"
             onClick={() => updateConfig('visualScope', config.visualScope === 'inline' ? 'global' : 'inline')}
@@ -96,33 +95,6 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
               aria-label="Inline visual scope"
             />
           </div>
-        )}
-      </div>
-
-      {/* Mark CSS Preset */}
-      <div className="space-y-1.5">
-        <span className="text-xs text-zinc-300 font-medium">Mark CSS</span>
-        <div className="flex flex-wrap gap-1">
-          {MARKCSS_PRESETS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => updateConfig('markcssPreset', value)}
-              className={`${btnBase} ${config.markcssPreset === value ? btnActive : btnInactive}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {config.markcssPreset === 'custom' && (
-          <input
-            type="text"
-            placeholder="e.g. background:red;border-radius:3px"
-            value={config.markcssCustom}
-            onChange={(e) => updateConfig('markcssCustom', e.target.value)}
-            className="w-full bg-black border border-zinc-700 text-[10px] font-mono text-zinc-300 rounded px-2 py-1.5 focus:border-gold-500 outline-none placeholder:text-zinc-600"
-          />
         )}
       </div>
 
@@ -146,9 +118,8 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
       <div className="space-y-2">
         <span className="text-xs text-zinc-300 font-medium">Mark Coloring</span>
         {([
-          ['isNoteColoringEnabled',         'Note Colors',    'Sets --note-value for Rainbow/Glow (must be on for those presets)'] as const,
-          ['isProgressiveFillEnabled',      'Auto Fill',      'Gold fill animation on active notes (when no mark preset)'] as const,
-          ['isPatternTextColoringEnabled',  'Code Text',      'Color note names in editor by pitch class'] as const,
+          ['isNoteColoringEnabled',         'Note Colors',           'Chromatic pitch-based coloring on active marks during playback'] as const,
+          ['isProgressiveFillEnabled',      'Animated Highlight',    'Progressive fill showing note duration during playback'] as const,
         ]).map(([key, label, desc]) => (
           <div
             key={key}

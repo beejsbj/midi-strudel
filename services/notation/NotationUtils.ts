@@ -1,52 +1,34 @@
 import { Note, Track, StrudelConfig } from '../../types';
 
-// presetOverride/customCssOverride allow per-track overrides of the global config
-export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverride?: string, customCssOverride?: string): string {
-  const preset = presetOverride ?? config.markcssPreset;
-  const customCss = customCssOverride ?? config.markcssCustom ?? '';
-
-  if (preset === 'none') {
-    // Only apply implicit fill when there is no per-track preset override
-    if (presetOverride === undefined && config.isProgressiveFillEnabled) {
-      return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
-    }
-    return '';
-  }
-  switch (preset) {
-    case 'track-color':      return hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : '';
-    case 'pitch-rainbow':    return `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`;
-    case 'velocity-glow':    return `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`;
-    case 'progressive-fill': return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
-    case 'custom':           return customCss;
-    default:                 return '';
-  }
-}
-
 export function buildVisualSuffix(config: StrudelConfig, track?: Track): string {
   const parts: string[] = [];
   const trackHue = track?.color;
-
-  const method = track?.trackVisualMethod ?? config.visualMethod;
   const scope = config.visualScope;
 
-  if (method && method !== 'none') {
-    const fn = scope === 'inline' ? `_${method}` : method;
-    parts.push(`  .${fn}()`);
-  }
-
-  // .color() for track color — affects highlights AND visual methods (pianoroll etc)
+  // 1. .color() FIRST — visual methods must see it to render correctly
   if (config.isTrackColoringEnabled && trackHue) {
     parts.push(`  .color("hsl(${trackHue},60%,60%)")`);
   }
 
-  const css = resolveMarkcss(
-    config,
-    trackHue,
-    track?.trackMarkcssPreset,
-    track?.trackMarkcssCustom,
-  );
-  // Use single quotes so Strudel's transpiler doesn't mini-parse the CSS string
-  if (css) parts.push(`  .markcss('${css}')`);
+  // 2. Visual method(s) — per-track single override takes precedence over global array
+  if (track?.trackVisualMethod !== undefined) {
+    // Per-track single-select override
+    if (track.trackVisualMethod !== 'none') {
+      const fn = scope === 'inline' ? `_${track.trackVisualMethod}` : track.trackVisualMethod;
+      parts.push(`  .${fn}()`);
+    }
+  } else {
+    // Global multi-select array
+    for (const method of config.visualMethods) {
+      const fn = scope === 'inline' ? `_${method}` : method;
+      parts.push(`  .${fn}()`);
+    }
+  }
+
+  // 3. .markcss() — sentinel for MutationObserver to apply note colors / animated highlight
+  if (config.isNoteColoringEnabled || config.isProgressiveFillEnabled) {
+    parts.push(`  .markcss('--sm:1')`);
+  }
   return parts.length ? '\n' + parts.join('\n') : '';
 }
 
