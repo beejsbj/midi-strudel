@@ -298,7 +298,14 @@ export const CodeViewer: React.FC<Props> = ({
     };
   }, [durationTagStyle]);
 
-  // MutationObserver for runtime note coloring (sets --note-value on .strudel-mark)
+  // MutationObserver for runtime note coloring.
+  //
+  // When isNoteColoringEnabled is on, the generated .markcss() includes '--sm:1' as a
+  // sentinel. The observer detects this sentinel on strudel's active mark spans and sets
+  // --sm-hue / --sm-light (and optionally --sm-text for contrast) from the span's note text.
+  //
+  // For pitch-rainbow / velocity-glow presets (which use var(--note-value)), the observer
+  // also continues to set --note-value as before.
   useEffect(() => {
     if (!editorContainerRef.current) return;
 
@@ -316,10 +323,29 @@ export const CodeViewer: React.FC<Props> = ({
       'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
     };
 
-    // Find elements whose style uses var(--note-value) and set the variable
-    // from their text content. Must run AFTER strudel sets the style attr.
     const applyNoteValue = (el: HTMLElement) => {
       const styleAttr = el.getAttribute('style') || '';
+
+      // --- sm sentinel path: note-color via CSS custom properties ---
+      if (styleAttr.includes('--sm:')) {
+        if (styleAttr.includes('--sm-applied:')) return; // prevent loop
+        const text = el.textContent || '';
+        const m = text.match(NOTE_RE);
+        if (!m) return;
+        const pc = PITCH_CLASS[m[1]] ?? 0;
+        const octave = parseInt(m[2], 10);
+        const hue = pc * 30; // C=0°, C#=30°, D=60°, … B=330°
+        const lightness = Math.max(20, Math.min(80, 20 + octave * 10));
+        el.style.setProperty('--sm-hue', String(hue));
+        el.style.setProperty('--sm-light', `${lightness}%`);
+        // Contrast text color: dark bg (low lightness) → light text, vice versa
+        const textLightness = lightness < 50 ? 85 : 15;
+        el.style.setProperty('--sm-text', `hsl(${hue},0%,${textLightness}%)`);
+        el.style.setProperty('--sm-applied', '1');
+        return;
+      }
+
+      // --- legacy path: pitch-rainbow / velocity-glow use var(--note-value) ---
       if (!styleAttr.includes('var(--note-value')) return;
       if (styleAttr.includes('--note-value:')) return; // already set, avoid loop
       const text = el.textContent || '';

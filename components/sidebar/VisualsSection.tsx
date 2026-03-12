@@ -18,11 +18,11 @@ const DURATION_STYLES = [
 ] as const;
 
 const VISUAL_METHODS = [
-  { value: 'none',       label: 'None' },
   { value: 'pianoroll',  label: 'Piano' },
   { value: 'punchcard',  label: 'Punch' },
   { value: 'spiral',     label: 'Spiral' },
   { value: 'pitchwheel', label: 'Wheel' },
+  { value: 'spectrum',   label: 'Spectrum' },
 ] as const;
 
 const MARKCSS_PRESETS = [
@@ -65,23 +65,31 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
         </div>
       </div>
 
-      {/* Playback Visual Method */}
+      {/* Playback Visual Method (multi-select) */}
       <div className="space-y-1.5">
         <span className="text-xs text-zinc-300 font-medium">Playback Visual</span>
         <div className="flex flex-wrap gap-1">
-          {VISUAL_METHODS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => updateConfig('visualMethod', value)}
-              className={`${btnBase} ${config.visualMethod === value ? btnActive : btnInactive}`}
-            >
-              {label}
-            </button>
-          ))}
+          {VISUAL_METHODS.map(({ value, label }) => {
+            const isActive = config.visualMethods.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  const next = isActive
+                    ? config.visualMethods.filter(m => m !== value)
+                    : [...config.visualMethods, value];
+                  updateConfig('visualMethods', next);
+                }}
+                className={`${btnBase} ${isActive ? btnActive : btnInactive}`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {config.visualMethod !== 'none' && (
+        {config.visualMethods.length > 0 && (
           <div
             className="flex items-center justify-between cursor-pointer pt-0.5"
             onClick={() => updateConfig('visualScope', config.visualScope === 'inline' ? 'global' : 'inline')}

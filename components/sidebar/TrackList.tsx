@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Music, Drum } from 'lucide-react';
 import { StrudelConfig, Track } from '../../types';
 import { INSTRUMENTS, DRUM_BANKS, getAutoSound } from '../../constants';
@@ -12,6 +12,8 @@ interface Props {
 }
 
 export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTracks }) => {
+  const [expandedColorTrackId, setExpandedColorTrackId] = useState<string | null>(null);
+
   const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
@@ -39,6 +41,7 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
     { value: 'punchcard' as const,    label: 'Punch' },
     { value: 'spiral' as const,       label: 'Spiral' },
     { value: 'pitchwheel' as const,   label: 'Wheel' },
+    { value: 'spectrum' as const,     label: 'Spectrum' },
   ];
 
   const MARKCSS_OPTIONS = [
@@ -108,13 +111,40 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
                         <div className="flex items-center space-x-1.5">
                             {isDrum && <Drum size={10} className="text-gold-500" />}
                             {config.isTrackColoringEnabled && track.color && (
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0 inline-block"
+                              <button
+                                type="button"
+                                title="Click to adjust hue"
+                                aria-label={`Adjust color for ${track.name}`}
+                                onClick={() => setExpandedColorTrackId(
+                                  expandedColorTrackId === track.id ? null : track.id
+                                )}
+                                className="w-3 h-3 rounded-full shrink-0 cursor-pointer border border-transparent hover:border-white/30 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                                 style={{ background: `hsl(${track.color}, 60%, 50%)` }}
                               />
                             )}
                             <span className="text-xs font-mono truncate text-zinc-300" title={track.name}>{track.name}</span>
                         </div>
+                        {config.isTrackColoringEnabled && track.color && expandedColorTrackId === track.id && (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <div
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ background: `hsl(${track.color}, 60%, 50%)` }}
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="360"
+                              value={parseInt(track.color)}
+                              onChange={(e) => updateTrack(track.id, 'color', e.target.value)}
+                              className="flex-1 h-1 accent-gold-500 cursor-pointer"
+                              style={{
+                                background: `linear-gradient(to right, hsl(0,60%,50%), hsl(60,60%,50%), hsl(120,60%,50%), hsl(180,60%,50%), hsl(240,60%,50%), hsl(300,60%,50%), hsl(360,60%,50%))`,
+                              }}
+                              aria-label={`Hue for ${track.name}`}
+                            />
+                            <span className="text-[9px] font-mono text-zinc-500 w-6 text-right">{track.color}°</span>
+                          </div>
+                        )}
                         {isDrum ? (
                             <span className="text-[10px] text-gold-500/80 truncate font-mono mt-0.5">Drum Track</span>
                         ) : (

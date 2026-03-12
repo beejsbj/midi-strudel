@@ -20,7 +20,7 @@ export interface Track {
   color?: string; // HSL hue 0-360 as string, e.g. "210"
 
   // Per-track visual overrides (undefined = use global config)
-  trackVisualMethod?: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel';
+  trackVisualMethod?: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel' | 'spectrum';
   trackMarkcssPreset?: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
   trackMarkcssCustom?: string;
 
@@ -81,7 +81,7 @@ export interface StrudelConfig {
 
   // Visuals
   durationTagStyle: 'sub' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
-  visualMethod: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel';
+  visualMethods: ('pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel' | 'spectrum')[];
   visualScope: 'global' | 'inline';
   markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
   markcssCustom: string;
@@ -113,7 +113,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   durationPrecision: 4,
 
   durationTagStyle: 'sup',
-  visualMethod: 'none',
+  visualMethods: [],
   visualScope: 'inline',
   markcssPreset: 'none',
   markcssCustom: '',
