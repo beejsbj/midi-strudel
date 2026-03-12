@@ -326,8 +326,13 @@ const App: React.FC = () => {
                  <CodeViewer
                    code={code}
                    durationTagStyle={config.durationTagStyle}
-                   isPatternTextColoringEnabled={config.isPatternTextColoringEnabled}
                    isNoteColoringEnabled={config.isNoteColoringEnabled}
+                   isProgressiveFillEnabled={config.isProgressiveFillEnabled}
+                   cycleDurationMs={(() => {
+                     const beatDur = 60 / config.bpm;
+                     const cycleDur = config.cycleUnit === 'beat' ? beatDur : beatDur * (config.timeSignature.numerator || 4);
+                     return cycleDur * 1000;
+                   })()}
                  />
                </div>
             </div>

@@ -25,15 +25,6 @@ const VISUAL_METHODS = [
   { value: 'spectrum',   label: 'Spectrum' },
 ] as const;
 
-const MARKCSS_PRESETS = [
-  { value: 'none',             label: 'None' },
-  { value: 'track-color',      label: 'Track' },
-  { value: 'pitch-rainbow',    label: 'Rainbow' },
-  { value: 'velocity-glow',    label: 'Glow' },
-  { value: 'progressive-fill', label: 'Fill' },
-  { value: 'custom',           label: 'Custom' },
-] as const;
-
 export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
   const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -107,33 +98,6 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
         )}
       </div>
 
-      {/* Mark CSS Preset */}
-      <div className="space-y-1.5">
-        <span className="text-xs text-zinc-300 font-medium">Mark CSS</span>
-        <div className="flex flex-wrap gap-1">
-          {MARKCSS_PRESETS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => updateConfig('markcssPreset', value)}
-              className={`${btnBase} ${config.markcssPreset === value ? btnActive : btnInactive}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {config.markcssPreset === 'custom' && (
-          <input
-            type="text"
-            placeholder="e.g. background:red;border-radius:3px"
-            value={config.markcssCustom}
-            onChange={(e) => updateConfig('markcssCustom', e.target.value)}
-            className="w-full bg-black border border-zinc-700 text-[10px] font-mono text-zinc-300 rounded px-2 py-1.5 focus:border-gold-500 outline-none placeholder:text-zinc-600"
-          />
-        )}
-      </div>
-
       {/* Track Color Toggle — uses .color() in generated code */}
       <div
         className="flex items-center justify-between cursor-pointer"
@@ -154,9 +118,8 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
       <div className="space-y-2">
         <span className="text-xs text-zinc-300 font-medium">Mark Coloring</span>
         {([
-          ['isNoteColoringEnabled',         'Note Colors',    'Sets --note-value for Rainbow/Glow (must be on for those presets)'] as const,
-          ['isProgressiveFillEnabled',      'Auto Fill',      'Gold fill animation on active notes (when no mark preset)'] as const,
-          ['isPatternTextColoringEnabled',  'Code Text',      'Color note names in editor by pitch class'] as const,
+          ['isNoteColoringEnabled',         'Note Colors',           'Chromatic pitch-based coloring on active marks during playback'] as const,
+          ['isProgressiveFillEnabled',      'Animated Highlight',    'Progressive fill showing note duration during playback'] as const,
         ]).map(([key, label, desc]) => (
           <div
             key={key}

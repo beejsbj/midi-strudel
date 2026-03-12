@@ -21,8 +21,6 @@ export interface Track {
 
   // Per-track visual overrides (undefined = use global config)
   trackVisualMethod?: 'none' | 'pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel' | 'spectrum';
-  trackMarkcssPreset?: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
-  trackMarkcssCustom?: string;
 
   // Drum specific
   isDrum: boolean;
@@ -83,12 +81,9 @@ export interface StrudelConfig {
   durationTagStyle: 'sub' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
   visualMethods: ('pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel' | 'spectrum')[];
   visualScope: 'global' | 'inline';
-  markcssPreset: 'none' | 'track-color' | 'pitch-rainbow' | 'velocity-glow' | 'progressive-fill' | 'custom';
-  markcssCustom: string;
   isTrackColoringEnabled: boolean;
   isNoteColoringEnabled: boolean;
   isProgressiveFillEnabled: boolean;
-  isPatternTextColoringEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: StrudelConfig = {
@@ -115,10 +110,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   durationTagStyle: 'sup',
   visualMethods: [],
   visualScope: 'inline',
-  markcssPreset: 'none',
-  markcssCustom: '',
   isTrackColoringEnabled: false,
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,
-  isPatternTextColoringEnabled: false,
 };
