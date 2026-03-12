@@ -1,51 +1,5 @@
 import { Note, Track, StrudelConfig } from '../../types';
 
-// presetOverride/customCssOverride allow per-track overrides of the global config
-export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverride?: string, customCssOverride?: string): string {
-  const preset = presetOverride ?? config.markcssPreset;
-  const customCss = customCssOverride ?? config.markcssCustom ?? '';
-  const nc = config.isNoteColoringEnabled;
-  const tc = config.isPatternTextColoringEnabled;
-  // Sentinel injected when note-coloring is on — lets the MutationObserver identify our marks
-  const smSentinel = '--sm:1';
-  const textPart = tc ? ';color:var(--sm-text,inherit)' : '';
-
-  if (preset === 'none') {
-    // Only apply implicit effects when there is no per-track preset override
-    if (presetOverride === undefined) {
-      const fill = config.isProgressiveFillEnabled;
-      if (nc && fill) {
-        // Note color outline + fill animation using note-based hue
-        return `${smSentinel};outline:solid 2px hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.9);background-image:linear-gradient(to right,hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.5),transparent);background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards${textPart}`;
-      }
-      if (nc) {
-        // Note color background only
-        return `${smSentinel};background:hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.75);border-radius:2px${textPart}`;
-      }
-      if (fill) {
-        return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
-      }
-    }
-    return '';
-  }
-
-  let css = '';
-  switch (preset) {
-    case 'track-color':      css = hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : ''; break;
-    case 'pitch-rainbow':    css = `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`; break;
-    case 'velocity-glow':    css = `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`; break;
-    case 'progressive-fill': css = `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`; break;
-    case 'custom':           css = customCss; break;
-    default:                 css = ''; break;
-  }
-
-  // Add sentinel when note coloring is on so the MutationObserver can detect these marks
-  if (nc && css && !css.startsWith(smSentinel)) {
-    css = `${smSentinel};${css}`;
-  }
-  return css;
-}
-
 export function buildVisualSuffix(config: StrudelConfig, track?: Track): string {
   const parts: string[] = [];
   const trackHue = track?.color;
@@ -71,15 +25,10 @@ export function buildVisualSuffix(config: StrudelConfig, track?: Track): string 
     }
   }
 
-  // 3. .markcss() LAST
-  const css = resolveMarkcss(
-    config,
-    trackHue,
-    track?.trackMarkcssPreset,
-    track?.trackMarkcssCustom,
-  );
-  // Use single quotes so Strudel's transpiler doesn't mini-parse the CSS string
-  if (css) parts.push(`  .markcss('${css}')`);
+  // 3. .markcss() — sentinel for MutationObserver to apply note colors / animated highlight
+  if (config.isNoteColoringEnabled || config.isProgressiveFillEnabled) {
+    parts.push(`  .markcss('--sm:1')`);
+  }
   return parts.length ? '\n' + parts.join('\n') : '';
 }
 

@@ -44,16 +44,6 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
     { value: 'spectrum' as const,     label: 'Spectrum' },
   ];
 
-  const MARKCSS_OPTIONS = [
-    { value: undefined as undefined,               label: 'Global' },
-    { value: 'none' as const,                      label: 'None' },
-    { value: 'track-color' as const,               label: 'Track' },
-    { value: 'pitch-rainbow' as const,             label: 'Rainbow' },
-    { value: 'velocity-glow' as const,             label: 'Glow' },
-    { value: 'progressive-fill' as const,          label: 'Fill' },
-    { value: 'custom' as const,                    label: 'Custom' },
-  ];
-
   const getEffectiveSound = (track: Track) => {
     if (track.sound) return track.sound;
     if (config.useAutoMapping) return getAutoSound(track) || config.globalSound;
@@ -197,38 +187,16 @@ export const TrackList: React.FC<Props> = ({ config, setConfig, tracks, setTrack
                     )}
 
                     {/* Per-track visuals */}
-                    <div className="flex gap-1.5">
-                      <select
-                        className="flex-1 bg-black border border-zinc-800 text-[10px] font-mono text-zinc-500 rounded px-1.5 py-1 focus:border-gold-500 outline-none"
-                        value={track.trackVisualMethod ?? ''}
-                        aria-label={`Visual method for ${track.name}`}
-                        onChange={(e) => updateTrack(track.id, 'trackVisualMethod', (e.target.value || undefined) as typeof track.trackVisualMethod)}
-                      >
-                        {VISUAL_METHOD_OPTIONS.map(opt => (
-                          <option key={String(opt.value)} value={opt.value ?? ''}>{opt.label}</option>
-                        ))}
-                      </select>
-                      <select
-                        className="flex-1 bg-black border border-zinc-800 text-[10px] font-mono text-zinc-500 rounded px-1.5 py-1 focus:border-gold-500 outline-none"
-                        value={track.trackMarkcssPreset ?? ''}
-                        aria-label={`Mark CSS for ${track.name}`}
-                        onChange={(e) => updateTrack(track.id, 'trackMarkcssPreset', (e.target.value || undefined) as typeof track.trackMarkcssPreset)}
-                      >
-                        {MARKCSS_OPTIONS.map(opt => (
-                          <option key={String(opt.value)} value={opt.value ?? ''}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {track.trackMarkcssPreset === 'custom' && (
-                      <input
-                        type="text"
-                        placeholder="CSS for this track..."
-                        value={track.trackMarkcssCustom ?? ''}
-                        onChange={(e) => updateTrack(track.id, 'trackMarkcssCustom', e.target.value)}
-                        className="w-full bg-black border border-zinc-800 text-[10px] font-mono text-zinc-300 rounded px-2 py-1 focus:border-gold-500 outline-none placeholder:text-zinc-700"
-                      />
-                    )}
+                    <select
+                      className="w-full bg-black border border-zinc-800 text-[10px] font-mono text-zinc-500 rounded px-1.5 py-1 focus:border-gold-500 outline-none"
+                      value={track.trackVisualMethod ?? ''}
+                      aria-label={`Visual method for ${track.name}`}
+                      onChange={(e) => updateTrack(track.id, 'trackVisualMethod', (e.target.value || undefined) as typeof track.trackVisualMethod)}
+                    >
+                      {VISUAL_METHOD_OPTIONS.map(opt => (
+                        <option key={String(opt.value)} value={opt.value ?? ''}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
             </div>

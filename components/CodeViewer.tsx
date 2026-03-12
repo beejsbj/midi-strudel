@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Check, Play, Square, Loader2, AlertTriangle } from 'lucide-react';
 import { StrudelMirror } from '@strudel/codemirror';
 import { MatchDecorator, ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
-import { StateEffect, Compartment } from '@codemirror/state';
+import { StateEffect } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
@@ -23,38 +23,12 @@ const durationPlugin = ViewPlugin.fromClass(
   { decorations: v => v.decorations }
 );
 
-// Pitch-class hue map for note text coloring
-const NOTE_HUES: Record<string, number> = {
-  'C': 0, 'C#': 30, 'Db': 30, 'D': 60, 'D#': 90, 'Eb': 90, 'E': 120,
-  'F': 150, 'F#': 180, 'Gb': 180, 'G': 210, 'G#': 240, 'Ab': 240,
-  'A': 270, 'A#': 300, 'Bb': 300, 'B': 330,
-};
-
-const noteDecorator = new MatchDecorator({
-  regexp: /\b([A-G][#b]?)(\d)\b/g,
-  decoration: (match) => {
-    const hue = NOTE_HUES[match[1]] ?? 0;
-    return Decoration.mark({ attributes: { style: `color: hsl(${hue}, 70%, 65%)` } });
-  },
-});
-
-const noteColorPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) { this.decorations = noteDecorator.createDeco(view); }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    update(u: any) { this.decorations = noteDecorator.updateDeco(u, this.decorations); }
-  },
-  { decorations: v => v.decorations }
-);
-
-const noteColorCompartment = new Compartment();
-
 interface Props {
   code: string;
   durationTagStyle?: string;
-  isPatternTextColoringEnabled?: boolean;
   isNoteColoringEnabled?: boolean;
+  isProgressiveFillEnabled?: boolean;
+  cycleDurationMs?: number;
 }
 
 // Typed interface for the methods we actually call on the editor
@@ -87,8 +61,9 @@ const SAMPLE_JSON_FILES = [
 export const CodeViewer: React.FC<Props> = ({
   code,
   durationTagStyle,
-  isPatternTextColoringEnabled,
   isNoteColoringEnabled,
+  isProgressiveFillEnabled,
+  cycleDurationMs,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -213,7 +188,6 @@ export const CodeViewer: React.FC<Props> = ({
           cmView.dispatch({
             effects: StateEffect.appendConfig.of([
               durationPlugin,
-              noteColorCompartment.of([]),
             ])
           });
         }
@@ -244,16 +218,6 @@ export const CodeViewer: React.FC<Props> = ({
        }
     };
   }, []);
-
-  // Toggle note text coloring via Compartment reconfigure
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const cmView = editorRef.current.editor ?? (editorRef.current.view as EditorView | undefined);
-    if (!cmView) return;
-    cmView.dispatch({
-      effects: noteColorCompartment.reconfigure(isPatternTextColoringEnabled ? noteColorPlugin : [])
-    });
-  }, [isPatternTextColoringEnabled]);
 
   // Per-note hover handler for duration tags (reveals .cm-at-duration on adjacent note hover)
   useEffect(() => {
@@ -298,14 +262,14 @@ export const CodeViewer: React.FC<Props> = ({
     };
   }, [durationTagStyle]);
 
-  // MutationObserver for runtime note coloring.
+  // MutationObserver for runtime note coloring and animated highlight.
   //
-  // When isNoteColoringEnabled is on, the generated .markcss() includes '--sm:1' as a
-  // sentinel. The observer detects this sentinel on strudel's active mark spans and sets
-  // --sm-hue / --sm-light (and optionally --sm-text for contrast) from the span's note text.
+  // When isNoteColoringEnabled or isProgressiveFillEnabled is on, the generated .markcss()
+  // includes '--sm:1' as a sentinel. The observer detects this on strudel's active mark spans
+  // and applies note-based colors and/or progress-based fill animation.
   //
-  // For pitch-rainbow / velocity-glow presets (which use var(--note-value)), the observer
-  // also continues to set --note-value as before.
+  // Strudel resets inline styles each frame, clearing --sm-applied, so the observer refires.
+  // WeakMap entries are GC'd automatically when DOM elements are removed by strudel.
   useEffect(() => {
     if (!editorContainerRef.current) return;
 
@@ -314,7 +278,7 @@ export const CodeViewer: React.FC<Props> = ({
       observerRef.current = null;
     }
 
-    if (!isNoteColoringEnabled) return;
+    if (!isNoteColoringEnabled && !isProgressiveFillEnabled) return;
 
     const NOTE_RE = /([A-G][#b]?)(\d)/;
     const PITCH_CLASS: Record<string, number> = {
@@ -323,38 +287,48 @@ export const CodeViewer: React.FC<Props> = ({
       'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
     };
 
+    const elementStartTimes = new WeakMap<HTMLElement, { start: number; dur: number }>();
+
     const applyNoteValue = (el: HTMLElement) => {
       const styleAttr = el.getAttribute('style') || '';
+      if (!styleAttr.includes('--sm:')) return;
+      if (styleAttr.includes('--sm-applied:')) return;
 
-      // --- sm sentinel path: note-color via CSS custom properties ---
-      if (styleAttr.includes('--sm:')) {
-        if (styleAttr.includes('--sm-applied:')) return; // prevent loop
-        const text = el.textContent || '';
-        const m = text.match(NOTE_RE);
-        if (!m) return;
-        const pc = PITCH_CLASS[m[1]] ?? 0;
-        const octave = parseInt(m[2], 10);
-        const hue = pc * 30; // C=0°, C#=30°, D=60°, … B=330°
-        const lightness = Math.max(20, Math.min(80, 20 + octave * 10));
-        el.style.setProperty('--sm-hue', String(hue));
-        el.style.setProperty('--sm-light', `${lightness}%`);
-        // Contrast text color: dark bg (low lightness) → light text, vice versa
-        const textLightness = lightness < 50 ? 85 : 15;
-        el.style.setProperty('--sm-text', `hsl(${hue},0%,${textLightness}%)`);
-        el.style.setProperty('--sm-applied', '1');
-        return;
-      }
-
-      // --- legacy path: pitch-rainbow / velocity-glow use var(--note-value) ---
-      if (!styleAttr.includes('var(--note-value')) return;
-      if (styleAttr.includes('--note-value:')) return; // already set, avoid loop
       const text = el.textContent || '';
-      const m = text.match(NOTE_RE);
-      if (m) {
-        const pc = PITCH_CLASS[m[1]] ?? 0;
-        const octave = parseInt(m[2], 10);
-        el.style.setProperty('--note-value', String(pc + octave * 12 + 12));
+      const noteMatch = text.match(NOTE_RE);
+      const durMatch = text.match(/@([\d.]+)/);
+
+      // Note coloring — chromatic 360/12 hue from pitch class
+      if (isNoteColoringEnabled && noteMatch) {
+        const pc = PITCH_CLASS[noteMatch[1]] ?? 0;
+        const octave = parseInt(noteMatch[2], 10);
+        const hue = pc * 30;
+        const lightness = Math.max(20, Math.min(80, 20 + octave * 10));
+        el.style.backgroundColor = `hsla(${hue},70%,${lightness}%,0.75)`;
       }
+
+      // Animated highlight — progressive fill showing note duration
+      if (isProgressiveFillEnabled && cycleDurationMs) {
+        if (!elementStartTimes.has(el)) {
+          const durCycles = durMatch ? parseFloat(durMatch[1]) : 1;
+          elementStartTimes.set(el, {
+            start: performance.now(),
+            dur: durCycles * cycleDurationMs,
+          });
+        }
+        const entry = elementStartTimes.get(el)!;
+        const progress = Math.min(1, (performance.now() - entry.start) / entry.dur);
+        const fillColor = isNoteColoringEnabled && noteMatch
+          ? `hsla(${PITCH_CLASS[noteMatch[1]!] * 30},70%,${Math.min(90, 20 + parseInt(noteMatch[2], 10) * 10 + 15)}%,0.5)`
+          : 'rgba(255,255,255,0.6)';
+        el.style.backgroundImage = `linear-gradient(to right,${fillColor},transparent)`;
+        el.style.backgroundSize = `${progress * 100}% 100%`;
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.backgroundPosition = 'left center';
+      }
+
+      el.style.borderRadius = '2px';
+      el.style.setProperty('--sm-applied', '1');
     };
 
     const observer = new MutationObserver((mutations) => {
@@ -387,7 +361,7 @@ export const CodeViewer: React.FC<Props> = ({
       observer.disconnect();
       observerRef.current = null;
     };
-  }, [isNoteColoringEnabled]);
+  }, [isNoteColoringEnabled, isProgressiveFillEnabled, cycleDurationMs]);
 
   // Sync code prop updates to editor
   useEffect(() => {
