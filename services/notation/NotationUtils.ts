@@ -4,41 +4,74 @@ import { Note, Track, StrudelConfig } from '../../types';
 export function resolveMarkcss(config: StrudelConfig, hue?: string, presetOverride?: string, customCssOverride?: string): string {
   const preset = presetOverride ?? config.markcssPreset;
   const customCss = customCssOverride ?? config.markcssCustom ?? '';
+  const nc = config.isNoteColoringEnabled;
+  const tc = config.isPatternTextColoringEnabled;
+  // Sentinel injected when note-coloring is on — lets the MutationObserver identify our marks
+  const smSentinel = '--sm:1';
+  const textPart = tc ? ';color:var(--sm-text,inherit)' : '';
 
   if (preset === 'none') {
-    // Only apply implicit fill when there is no per-track preset override
-    if (presetOverride === undefined && config.isProgressiveFillEnabled) {
-      return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
+    // Only apply implicit effects when there is no per-track preset override
+    if (presetOverride === undefined) {
+      const fill = config.isProgressiveFillEnabled;
+      if (nc && fill) {
+        // Note color outline + fill animation using note-based hue
+        return `${smSentinel};outline:solid 2px hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.9);background-image:linear-gradient(to right,hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.5),transparent);background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards${textPart}`;
+      }
+      if (nc) {
+        // Note color background only
+        return `${smSentinel};background:hsla(var(--sm-hue,0),70%,var(--sm-light,50%),0.75);border-radius:2px${textPart}`;
+      }
+      if (fill) {
+        return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
+      }
     }
     return '';
   }
+
+  let css = '';
   switch (preset) {
-    case 'track-color':      return hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : '';
-    case 'pitch-rainbow':    return `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`;
-    case 'velocity-glow':    return `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`;
-    case 'progressive-fill': return `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`;
-    case 'custom':           return customCss;
-    default:                 return '';
+    case 'track-color':      css = hue ? `background:hsla(${hue},60%,45%,0.75);border-radius:2px` : ''; break;
+    case 'pitch-rainbow':    css = `background:hsla(calc(var(--note-value,60)*2.8),70%,50%,0.8)`; break;
+    case 'velocity-glow':    css = `box-shadow:0 0 8px hsla(calc(var(--note-value,180)*2.8),80%,60%,0.6)`; break;
+    case 'progressive-fill': css = `background-image:linear-gradient(to right,rgba(245,158,11,0.65),rgba(245,158,11,0.2));background-size:0% 100%;background-repeat:no-repeat;background-position:left center;border-radius:2px;animation:strudel-fill 1s linear forwards`; break;
+    case 'custom':           css = customCss; break;
+    default:                 css = ''; break;
   }
+
+  // Add sentinel when note coloring is on so the MutationObserver can detect these marks
+  if (nc && css && !css.startsWith(smSentinel)) {
+    css = `${smSentinel};${css}`;
+  }
+  return css;
 }
 
 export function buildVisualSuffix(config: StrudelConfig, track?: Track): string {
   const parts: string[] = [];
   const trackHue = track?.color;
-
-  const method = track?.trackVisualMethod ?? config.visualMethod;
   const scope = config.visualScope;
 
-  if (method && method !== 'none') {
-    const fn = scope === 'inline' ? `_${method}` : method;
-    parts.push(`  .${fn}()`);
-  }
-
-  // .color() for track color — affects highlights AND visual methods (pianoroll etc)
+  // 1. .color() FIRST — visual methods must see it to render correctly
   if (config.isTrackColoringEnabled && trackHue) {
     parts.push(`  .color("hsl(${trackHue},60%,60%)")`);
   }
 
+  // 2. Visual method(s) — per-track single override takes precedence over global array
+  if (track?.trackVisualMethod !== undefined) {
+    // Per-track single-select override
+    if (track.trackVisualMethod !== 'none') {
+      const fn = scope === 'inline' ? `_${track.trackVisualMethod}` : track.trackVisualMethod;
+      parts.push(`  .${fn}()`);
+    }
+  } else {
+    // Global multi-select array
+    for (const method of config.visualMethods) {
+      const fn = scope === 'inline' ? `_${method}` : method;
+      parts.push(`  .${fn}()`);
+    }
+  }
+
+  // 3. .markcss() LAST
   const css = resolveMarkcss(
     config,
     trackHue,
