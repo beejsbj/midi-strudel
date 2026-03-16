@@ -78,10 +78,9 @@ const EXAMPLE_MIDIS = [
 ] as const;
 
 const RUTHLESSNESS_EXAMPLE_SNIPPET = `$EXAMPLE_MELODY: \`<
-~@0 E6@0.0833 D6@0.0833 C6@0.0833
-D6@0.0833 C6@0.0833 B5@0.0833 C6@0.0833
-B5@0.0833 A5@0.0833 B5@0.0833 A5@0.0833
-G5@0.0833
+E6@0.0833 D6@0.0833 C6@0.0833 D6@0.0833
+C6@0.0833 B5@0.0833 C6@0.0833 B5@0.0833
+A5@0.0833 B5@0.0833 A5@0.0833 G5@0.0833
 >\`
   .as("note")
   .sound("triangle").cps(135 / 60 / 4)
@@ -111,6 +110,16 @@ function sanitizeTimeSignature(
   };
 }
 
+function sanitizeDurationTagStyle(
+  value: unknown,
+  fallback: StrudelConfig['durationTagStyle'],
+): StrudelConfig['durationTagStyle'] {
+  const validStyles: StrudelConfig['durationTagStyle'][] = ['default', 'sup', 'normal', 'ghost', 'hidden', 'hover'];
+  return typeof value === 'string' && validStyles.includes(value as StrudelConfig['durationTagStyle'])
+    ? (value as StrudelConfig['durationTagStyle'])
+    : fallback;
+}
+
 function sanitizeConfig(config: StrudelConfig): StrudelConfig {
   const defaultSourceTimeSignature =
     DEFAULT_CONFIG.sourceTimeSignature ?? DEFAULT_CONFIG.timeSignature;
@@ -125,6 +134,7 @@ function sanitizeConfig(config: StrudelConfig): StrudelConfig {
     quantizationThreshold: sanitizeWholeNumber(config.quantizationThreshold, DEFAULT_CONFIG.quantizationThreshold, 0, 200),
     quantizationStrength: sanitizeWholeNumber(config.quantizationStrength, DEFAULT_CONFIG.quantizationStrength, 0, 100),
     durationPrecision: sanitizeWholeNumber(config.durationPrecision, DEFAULT_CONFIG.durationPrecision, 1, 8),
+    durationTagStyle: sanitizeDurationTagStyle(config.durationTagStyle, DEFAULT_CONFIG.durationTagStyle),
     key: config.key
       ? {
           ...config.key,
@@ -365,14 +375,14 @@ const App: React.FC = () => {
         {tracks.length === 0 ? (
             <div className="flex-1 overflow-y-auto bg-noir-900 p-6 md:p-10">
                 <div className="mx-auto grid min-h-full max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                    <section className="relative overflow-hidden rounded-[28px] border border-gold-500/20 bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.99))] p-7 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:p-10">
+                    <section className="relative overflow-hidden rounded-[8px] border border-[rgba(245,158,11,0.18)] bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.99))] p-7 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.1),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.04),transparent_28%)] pointer-events-none" />
                         <div className="relative space-y-8">
                             <div className="space-y-4">
-                                <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-gold-500/75">
+                                <p className="font-display text-[11px] font-medium uppercase tracking-[0.28em] text-gold-500/75">
                                     midi-strudel
                                 </p>
-                                <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
+                                <h1 className="max-w-2xl font-display text-4xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
                                     i got too obsessed with Epic: The Musical and wanted to see the melodies as strudel code.
                                 </h1>
                                 <div className="max-w-2xl space-y-4 text-[15px] leading-7 text-zinc-400">
@@ -398,8 +408,8 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
-                                <div className="rounded-2xl border border-gold-500/12 bg-black/25 p-4">
-                                    <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.22em] text-gold-500/70">what strudel is</p>
+                                <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
+                                    <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">what strudel is</p>
                                     <p className="text-sm leading-6 text-zinc-300">
                                         strudel is a browser-based live coding environment for music. instead of a piano roll, you describe repeating patterns and cycles in code.
                                     </p>
@@ -424,8 +434,8 @@ const App: React.FC = () => {
                                         </a>
                                     </div>
                                 </div>
-                                <div className="rounded-2xl border border-gold-500/12 bg-black/25 p-4">
-                                    <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.22em] text-gold-500/70">what this project does</p>
+                                <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
+                                    <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">what this project does</p>
                                     <p className="text-sm leading-6 text-zinc-300">
                                         it takes a midi file, parses the tracks, and gives you strudel-ish code you can read, tweak, and send into the repl without starting from scratch.
                                     </p>
@@ -436,8 +446,8 @@ const App: React.FC = () => {
                     </section>
 
                     <section className="flex flex-col gap-6">
-                        <div className="rounded-[24px] border border-gold-500/14 bg-black/30 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-                            <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.22em] text-gold-500/70">quick start</p>
+                        <div className="rounded-[8px] border border-[rgba(245,158,11,0.16)] bg-black/30 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+                            <p className="mb-3 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">quick start</p>
                             <div className="space-y-2 text-sm leading-6 text-zinc-300">
                                 <p>1. drop a `.mid` or `.midi` file into the upload box.</p>
                                 <p>2. or hit one of the examples if you want to hear the vibe first.</p>
@@ -445,10 +455,10 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="relative rounded-[24px] border border-gold-500/14 bg-zinc-950/75 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+                        <div className="relative rounded-[8px] border border-[rgba(245,158,11,0.16)] bg-zinc-950/75 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
                             <div className="mb-4 flex items-center justify-between gap-4">
                                 <div>
-                                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-gold-500/75">upload your own midi</p>
+                                    <p className="font-display text-[11px] font-medium uppercase tracking-[0.24em] text-gold-500/75">upload your own midi</p>
                                     <p className="mt-1 text-sm text-zinc-400">drop a file in here and it opens straight into the editor.</p>
                                 </div>
                             </div>
@@ -456,28 +466,28 @@ const App: React.FC = () => {
                             <div className="relative">
                                 <DropZone onFileLoaded={handleFileLoaded} />
                                 {isProcessing && (
-                                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-noir-900/82 backdrop-blur-sm">
-                                        <p className="font-mono text-gold-500 animate-pulse">Parsing MIDI Data...</p>
+                                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-noir-900/82 backdrop-blur-sm">
+                                        <p className="font-display text-sm font-medium uppercase tracking-[0.18em] text-gold-500 animate-pulse">Parsing MIDI Data...</p>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <div className="relative overflow-hidden rounded-[24px] border border-gold-500/14 bg-[linear-gradient(180deg,rgba(22,22,22,0.96),rgba(12,12,12,0.98))] p-5">
+                        <div className="relative overflow-hidden rounded-[8px] border border-[rgba(245,158,11,0.16)] bg-[linear-gradient(180deg,rgba(22,22,22,0.96),rgba(12,12,12,0.98))] p-5">
                             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold-500/40 to-transparent" />
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-gold-500/75">example</p>
+                                    <p className="font-display text-[11px] font-medium uppercase tracking-[0.24em] text-gold-500/75">example</p>
                                     <p className="text-sm leading-6 text-zinc-400">
                                         this is one loop from the first Ruthlessness track, shown as a real little strudel player instead of a fake code block.
                                     </p>
                                 </div>
 
-                                <div className="h-[360px] overflow-hidden rounded-[20px] border border-zinc-800 bg-noir-900/70">
+                                <div className="h-[360px] overflow-hidden rounded-[6px] border border-[rgba(245,158,11,0.18)] bg-noir-900/70">
                                     <Suspense
                                       fallback={
                                         <div className="flex h-full items-center justify-center bg-noir-900 text-zinc-400">
-                                          <div className="flex items-center gap-2 text-sm font-mono">
+                                          <div className="flex items-center gap-2 font-display text-sm font-medium uppercase tracking-[0.14em]">
                                             <Loader2 size={16} className="animate-spin text-gold-500" />
                                             <span>Loading example player...</span>
                                           </div>
@@ -512,17 +522,17 @@ const App: React.FC = () => {
                                           type="button"
                                           onClick={() => handleExampleLoad(example.id)}
                                           disabled={isDisabled}
-                                          className={`inline-flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
+                                          className={`inline-flex items-center justify-between gap-3 rounded-[6px] border px-4 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
                                             isDisabled
-                                              ? 'cursor-not-allowed border-gold-500/10 bg-gold-500/5 text-gold-300/60'
-                                              : 'border-zinc-800 bg-black/30 text-zinc-100 hover:border-gold-500/30 hover:bg-zinc-900'
+                                              ? 'cursor-not-allowed border-[rgba(245,158,11,0.10)] bg-gold-500/5 text-gold-300/60'
+                                              : 'border-[rgba(245,158,11,0.16)] bg-black/30 text-zinc-100 hover:border-[rgba(245,158,11,0.28)] hover:bg-zinc-900'
                                           }`}
                                         >
                                           <div className="min-w-0">
                                             <p className="text-sm font-semibold text-zinc-100">{primaryLabel}</p>
                                             <p className="mt-0.5 text-[12px] leading-5 text-zinc-500">{example.detail}</p>
                                           </div>
-                                          <span className="shrink-0 rounded-full border border-zinc-700 bg-zinc-900/80 p-2 text-gold-400">
+                                          <span className="shrink-0 rounded-full border border-[rgba(245,158,11,0.18)] bg-zinc-900/80 p-2 text-gold-400">
                                             {isProcessing && isActive ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
                                           </span>
                                         </button>
@@ -551,16 +561,16 @@ const App: React.FC = () => {
             </div>
         ) : (
             <div className="flex flex-col h-full">
-               <div className="flex items-center justify-between border-b border-zinc-800 bg-noir-900/95 px-4 py-3 lg:hidden">
+               <div className="flex items-center justify-between border-b border-[rgba(245,158,11,0.14)] bg-noir-900/95 px-4 py-3 lg:hidden">
                  <button
                    type="button"
                    onClick={() => setIsMobileSidebarOpen(true)}
-                   className="inline-flex items-center gap-2 rounded-full border border-gold-500/30 bg-gold-500/10 px-3 py-1.5 text-xs font-mono uppercase tracking-[0.22em] text-gold-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                   className="inline-flex items-center gap-2 rounded-full border border-gold-500/30 bg-gold-500/10 px-3 py-1.5 text-xs font-display font-medium uppercase tracking-[0.22em] text-gold-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                  >
                    <Menu size={14} />
                    Controls
                  </button>
-                 <span className="max-w-[58vw] truncate text-right text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                 <span className="max-w-[58vw] truncate text-right font-display text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
                    {config.fileName ?? 'Loaded MIDI'}
                  </span>
                </div>
@@ -568,8 +578,8 @@ const App: React.FC = () => {
                <div className="flex-1 min-h-0">
                  <Suspense
                    fallback={
-                     <div className="flex h-full items-center justify-center rounded-lg border border-zinc-800 bg-noir-800 text-zinc-400">
-                       <div className="flex items-center gap-2 text-sm font-mono">
+                     <div className="flex h-full items-center justify-center rounded-lg border border-[rgba(245,158,11,0.16)] bg-noir-800 text-zinc-400">
+                       <div className="flex items-center gap-2 font-display text-sm font-medium uppercase tracking-[0.14em]">
                          <Loader2 size={16} className="animate-spin text-gold-500" />
                          <span>Loading editor...</span>
                        </div>

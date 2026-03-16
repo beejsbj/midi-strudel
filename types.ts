@@ -78,7 +78,7 @@ export interface StrudelConfig {
   fileName?: string;
 
   // Visuals
-  durationTagStyle: 'sub' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
+  durationTagStyle: 'default' | 'sup' | 'normal' | 'ghost' | 'hidden' | 'hover';
   visualMethods: ('pianoroll' | 'punchcard' | 'spiral' | 'pitchwheel' | 'spectrum')[];
   visualScope: 'global' | 'inline';
   isTrackColoringEnabled: boolean;

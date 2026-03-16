@@ -23,15 +23,45 @@
               }
             },
             fontFamily: {
-              mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-              sans: ['Inter', 'system-ui', 'sans-serif']
+              mono: ['var(--font-mono)'],
+              sans: ['var(--font-ui)'],
+              display: ['var(--font-display)']
             }
           }
         }
       }
     </script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+      :root {
+        --font-display: 'Space Grotesk', sans-serif;
+        --font-ui: 'Space Grotesk', sans-serif;
+        --font-mono: 'IBM Plex Mono', monospace;
+      }
+
+      html,
+      body,
+      #root {
+        height: 100%;
+      }
+
+      body {
+        font-family: var(--font-ui);
+        text-rendering: optimizeLegibility;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      ::selection {
+        background: rgba(245, 158, 11, 0.22);
+        color: #fef3c7;
+      }
       
       /* Custom Scrollbar for Noir Theme */
       ::-webkit-scrollbar {
@@ -54,14 +84,14 @@
         height: 100% !important;
         background-color: #0a0a0a !important;
         color: #e4e4e7 !important;
-        font-family: 'JetBrains Mono', monospace !important;
+        font-family: var(--font-mono) !important;
       }
       .cm-scroller {
         overflow: auto;
       }
       .cm-gutters {
         background-color: #121212 !important;
-        border-right: 1px solid #27272a !important;
+        border-right: 1px solid rgba(245, 158, 11, 0.16) !important;
         color: #52525b !important;
       }
       .cm-activeLine, .cm-activeLineGutter {
@@ -74,13 +104,17 @@
       }
       /* Inline duration / velocity metadata (e.g. @0.25, :0.82) */
       .cm-inline-meta {
-        opacity: 0.25;
-        font-size: 8px;
-        vertical-align: super;
+        opacity: inherit;
+        font-size: inherit;
+        vertical-align: baseline;
+        color: inherit;
+        background: transparent;
+        border-radius: 0;
+        padding: 0;
         transition: opacity 0.12s ease, background-color 0.12s ease, font-size 0.12s ease;
       }
       /* Shared tag style presets — driven by data-duration-style on the editor container */
-      [data-duration-style="sub"]    .cm-inline-meta { vertical-align: sub; }
+      [data-duration-style="sup"]    .cm-inline-meta { opacity: 0.25; font-size: 8px; vertical-align: super; }
       [data-duration-style="normal"] .cm-inline-meta { opacity: 0.4; font-size: 8px; vertical-align: baseline; }
       [data-duration-style="ghost"]  .cm-inline-meta { opacity: 0.15; font-size: inherit; vertical-align: baseline; }
       [data-duration-style="hidden"] .cm-inline-meta { opacity: 0; font-size: 0; }
@@ -92,7 +126,11 @@
         background: rgba(245,158,11,0.12); border-radius: 3px; padding: 0 2px;
         color: rgba(245,158,11,0.9);
       }
-      .cm-inline-meta.cm-inline-meta-active {
+      [data-duration-style="sup"] .cm-inline-meta.cm-inline-meta-active,
+      [data-duration-style="normal"] .cm-inline-meta.cm-inline-meta-active,
+      [data-duration-style="ghost"] .cm-inline-meta.cm-inline-meta-active,
+      [data-duration-style="hidden"] .cm-inline-meta.cm-inline-meta-active,
+      [data-duration-style="hover"] .cm-inline-meta.cm-inline-meta-active {
         opacity: 0.95 !important;
         font-size: inherit !important;
         vertical-align: baseline !important;
@@ -136,7 +174,7 @@
 }
 </script>
 </head>
-  <body class="bg-noir-900 text-gray-200 overflow-hidden">
+  <body class="bg-noir-900 text-gray-200 overflow-hidden font-sans">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>

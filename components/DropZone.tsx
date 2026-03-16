@@ -85,16 +85,16 @@ export const DropZone: React.FC<Props> = ({ onFileLoaded }) => {
       onDrop={handleDrop}
       onKeyDown={handleKeyDown}
       onClick={() => inputRef.current?.click()}
-      className={`border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-8 transition-all cursor-pointer group h-48 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-500 ${
+      className={`border-2 border-dashed rounded-md flex flex-col items-center justify-center p-8 transition-all cursor-pointer group h-48 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-500 ${
         isDragOver
           ? 'border-gold-500 bg-gold-500/10'
           : typeError
           ? 'border-red-500/70 bg-red-500/5'
-          : 'border-zinc-800 hover:border-gold-500/50 bg-noir-800/50'
+          : 'border-[rgba(245,158,11,0.14)] hover:border-gold-500/50 bg-noir-800/50'
       }`}
     >
       <div className={`bg-noir-900 p-3 rounded-full mb-4 border transition-transform ${
-        isDragOver ? 'border-gold-500 scale-110' : 'border-zinc-800 group-hover:scale-110'
+        isDragOver ? 'border-gold-500 scale-110' : 'border-[rgba(245,158,11,0.14)] group-hover:scale-110'
       }`}>
         <UploadCloud
           className={`transition-colors ${isDragOver ? 'text-gold-500' : 'text-zinc-400 group-hover:text-gold-500'}`}

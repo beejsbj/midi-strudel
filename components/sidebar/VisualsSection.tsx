@@ -1,16 +1,25 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import { StrudelConfig } from '../../types';
-import { SectionHeader, ToggleSwitch } from './SidebarShared';
+import {
+  SidebarSection,
+  SegmentedControl,
+  MultiSegmentedControl,
+  SwitchRow,
+  HelpText,
+  fieldLabelClass,
+} from './SidebarShared';
 
 interface Props {
   config: StrudelConfig;
   setConfig: React.Dispatch<React.SetStateAction<StrudelConfig>>;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const DURATION_STYLES = [
-  { value: 'sup',    label: 'Sup',    title: 'Superscript (above baseline) — default' },
-  { value: 'sub',    label: 'Sub',    title: 'Subscript (below baseline)' },
+  { value: 'default', label: 'Default', title: 'Show editor text with no custom metadata styling' },
+  { value: 'sup',    label: 'Sup',    title: 'Superscript (above baseline)' },
   { value: 'normal', label: 'Sm',     title: 'Small, at baseline' },
   { value: 'ghost',  label: 'Ghost',  title: 'Full-size, very faint' },
   { value: 'hover',  label: 'Hover',  title: 'Appears on note hover as gold badge' },
@@ -25,120 +34,80 @@ const VISUAL_METHODS = [
   { value: 'spectrum',   label: 'Spectrum' },
 ] as const;
 
-export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
+export const VisualsSection: React.FC<Props> = ({
+  config,
+  setConfig,
+  isCollapsed = false,
+  onToggleCollapse,
+}) => {
   const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
-  const btnBase = 'px-2 py-1 text-[10px] font-mono rounded border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500';
-  const btnActive = 'bg-gold-500/20 border-gold-500/60 text-gold-400';
-  const btnInactive = 'bg-transparent border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300';
-
   return (
-    <div className="space-y-4">
-      <SectionHeader icon={<Eye size={14} />} title="Visuals" />
-
-      {/* Duration Tag Style */}
+    <SidebarSection
+      icon={<Eye size={14} />}
+      title="Visuals"
+      isCollapsed={isCollapsed}
+      onToggleCollapse={onToggleCollapse}
+    >
       <div className="space-y-1.5">
-        <span className="text-xs text-zinc-300 font-medium">@Duration Tags</span>
-        <div className="flex flex-wrap gap-1">
-          {DURATION_STYLES.map(({ value, label, title }) => (
-            <button
-              key={value}
-              type="button"
-              title={title}
-              onClick={() => updateConfig('durationTagStyle', value)}
-              className={`${btnBase} ${config.durationTagStyle === value ? btnActive : btnInactive}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <span className={fieldLabelClass}>@duration + :velocity tags</span>
+        <SegmentedControl
+          aria-label="Inline metadata style"
+          value={config.durationTagStyle}
+          onChange={(value) => updateConfig('durationTagStyle', value as StrudelConfig['durationTagStyle'])}
+          columns={3}
+          options={DURATION_STYLES.map(({ value, label }) => ({ value, label }))}
+        />
+        <HelpText>Styles both inline duration values and velocity values when velocity is included.</HelpText>
       </div>
 
-      {/* Playback Visual Method (multi-select) */}
       <div className="space-y-1.5">
-        <span className="text-xs text-zinc-300 font-medium">Playback Visual</span>
-        <div className="flex flex-wrap gap-1">
-          {VISUAL_METHODS.map(({ value, label }) => {
-            const isActive = config.visualMethods.includes(value);
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  const next = isActive
-                    ? config.visualMethods.filter(m => m !== value)
-                    : [...config.visualMethods, value];
-                  updateConfig('visualMethods', next);
-                }}
-                className={`${btnBase} ${isActive ? btnActive : btnInactive}`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <span className={fieldLabelClass}>Playback Visual</span>
+        <MultiSegmentedControl
+          aria-label="Playback visual methods"
+          values={config.visualMethods}
+          onChange={(values) => updateConfig('visualMethods', values as StrudelConfig['visualMethods'])}
+          options={VISUAL_METHODS}
+        />
 
         {config.visualMethods.length > 0 && (
-          <div
-            className="flex items-center justify-between cursor-pointer pt-0.5"
-            onClick={() => updateConfig('visualScope', config.visualScope === 'inline' ? 'global' : 'inline')}
-          >
-            <div className="flex flex-col">
-              <span className="text-xs text-zinc-300">Inline</span>
-              <span className="text-[9px] text-zinc-500">._pianoroll() vs .pianoroll()</span>
-            </div>
-            <ToggleSwitch
-              checked={config.visualScope === 'inline'}
-              onChange={(checked) => updateConfig('visualScope', checked ? 'inline' : 'global')}
-              aria-label="Inline visual scope"
-            />
-          </div>
+          <SwitchRow
+            label="Inline Scope"
+            description="Uses `._pianoroll()` instead of `.pianoroll()`."
+            checked={config.visualScope === 'inline'}
+            onChange={(checked) => updateConfig('visualScope', checked ? 'inline' : 'global')}
+            aria-label="Inline visual scope"
+          />
         )}
       </div>
 
-      {/* Track Color Toggle — uses .color() in generated code */}
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => updateConfig('isTrackColoringEnabled', !config.isTrackColoringEnabled)}
-      >
-        <div className="flex flex-col">
-          <span className="text-xs text-zinc-300">Track Colors</span>
-          <span className="text-[9px] text-zinc-500">Adds .color() per track — affects highlights + visuals</span>
-        </div>
-        <ToggleSwitch
-          checked={config.isTrackColoringEnabled}
-          onChange={(checked) => updateConfig('isTrackColoringEnabled', checked)}
-          aria-label="Track Colors"
-        />
-      </div>
+      <SwitchRow
+        label="Track Colors"
+        description="Adds `.color()` per track and affects highlights plus visuals."
+        checked={config.isTrackColoringEnabled}
+        onChange={(checked) => updateConfig('isTrackColoringEnabled', checked)}
+        aria-label="Track Colors"
+      />
 
-      {/* Coloring Toggles */}
       <div className="space-y-2">
-        <span className="text-xs text-zinc-300 font-medium">Mark Coloring</span>
+        <span className={fieldLabelClass}>Mark Coloring</span>
         {([
           ['isNoteColoringEnabled',         'Note Colors',           'Chromatic pitch-based coloring on active marks during playback'] as const,
           ['isProgressiveFillEnabled',      'Animated Highlight',    'Progressive fill showing note duration during playback'] as const,
           ['isPatternTextColoringEnabled',  'Text Contrast',         'Adjust active note text for readability against note-based fills'] as const,
         ]).map(([key, label, desc]) => (
-          <div
+          <SwitchRow
             key={key}
-            className="flex items-center justify-between cursor-pointer"
-            onClick={() => updateConfig(key, !config[key])}
-          >
-            <div className="flex flex-col">
-              <span className="text-xs text-zinc-300">{label}</span>
-              <span className="text-[9px] text-zinc-500">{desc}</span>
-            </div>
-            <ToggleSwitch
-              checked={config[key]}
-              onChange={(checked) => updateConfig(key, checked)}
-              aria-label={label}
-            />
-          </div>
+            label={label}
+            description={desc}
+            checked={config[key]}
+            onChange={(checked) => updateConfig(key, checked)}
+            aria-label={label}
+          />
         ))}
       </div>
-    </div>
+    </SidebarSection>
   );
 };

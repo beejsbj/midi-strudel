@@ -1,14 +1,27 @@
 import React from 'react';
 import { Sliders } from 'lucide-react';
 import { StrudelConfig } from '../../types';
-import { getBoundedNumberInputValue, SectionHeader, ToggleSwitch } from './SidebarShared';
+import {
+  SidebarSection,
+  SwitchRow,
+  fieldHintClass,
+  compactInputClass,
+  getBoundedNumberInputValue,
+} from './SidebarShared';
 
 interface Props {
   config: StrudelConfig;
   setConfig: React.Dispatch<React.SetStateAction<StrudelConfig>>;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
+export const GeneralOptions: React.FC<Props> = ({
+  config,
+  setConfig,
+  isCollapsed = false,
+  onToggleCollapse,
+}) => {
   const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
@@ -25,58 +38,61 @@ export const GeneralOptions: React.FC<Props> = ({ config, setConfig }) => {
   const isByNote = config.formatPerLineBy === 'note';
 
   return (
-    <div className="space-y-4">
-        <SectionHeader
-            icon={<Sliders size={14} />}
-            title="Options"
+    <SidebarSection
+      icon={<Sliders size={14} />}
+      title="Options"
+      isCollapsed={isCollapsed}
+      onToggleCollapse={onToggleCollapse}
+    >
+      <SwitchRow
+        label="Include Velocity"
+        description="Adds :velocity to notes."
+        checked={config.includeVelocity}
+        onChange={(checked) => updateConfig('includeVelocity', checked)}
+        aria-label="Include velocity"
+      />
+
+      <div className="flex items-center justify-between gap-3 rounded-md border border-[rgba(245,158,11,0.10)] bg-black/18 px-3 py-2.5">
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-zinc-200">
+            <button
+              type="button"
+              onClick={toggleLineMode}
+              className="text-gold-500 underline decoration-dotted underline-offset-4 transition-colors hover:text-gold-300 focus:outline-none"
+              title={`Switch to ${isByNote ? 'measures' : 'notes'} per line`}
+            >
+              {isByNote ? 'Notes' : 'Measures'}
+            </button>
+            {' Per Line'}
+          </span>
+          <p className={fieldHintClass}>Controls line wrapping.</p>
+        </div>
+        <input
+          type="number"
+          min="1"
+          max="64"
+          aria-label={`${isByNote ? 'Notes' : 'Measures'} per line`}
+          value={config.measuresPerLine}
+          onChange={(e) => updateConfig('measuresPerLine', getBoundedNumberInputValue(e, config.measuresPerLine, 1, 64))}
+          className={`w-16 text-center ${compactInputClass}`}
         />
-            <div className="px-1 space-y-3">
-            <div className="flex items-center justify-between cursor-pointer" onClick={() => updateConfig('includeVelocity', !config.includeVelocity)}>
-                <div className="flex flex-col">
-                    <span className="text-xs text-zinc-300 font-medium">Include Velocity</span>
-                    <span className="text-[9px] text-zinc-500">Adds :velocity to notes</span>
-                </div>
-                <ToggleSwitch
-                    checked={config.includeVelocity}
-                    onChange={(checked) => updateConfig('includeVelocity', checked)}
-                    aria-label="Include velocity"
-                />
-            </div>
-                <label className="flex items-center justify-between cursor-pointer">
-                <div className="flex flex-col">
-                    <span className="text-xs text-zinc-300 font-medium">
-                        <button
-                            type="button"
-                            onClick={toggleLineMode}
-                            className="text-gold-500 hover:text-gold-400 underline decoration-dotted focus:outline-none"
-                            title={`Switch to ${isByNote ? 'measures' : 'notes'} per line`}
-                        >{isByNote ? 'Notes' : 'Measures'}</button>
-                        {' Per Line'}
-                    </span>
-                    <span className="text-[9px] text-zinc-500">Controls line wrapping</span>
-                </div>
-                <input
-                    type="number" min="1" max="64"
-                    aria-label={`${isByNote ? 'Notes' : 'Measures'} per line`}
-                    value={config.measuresPerLine}
-                    onChange={(e) => updateConfig('measuresPerLine', getBoundedNumberInputValue(e, config.measuresPerLine, 1, 64))}
-                    className="w-12 bg-black border border-zinc-800 text-xs text-center rounded py-1 focus:border-gold-500 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                />
-            </label>
-            <label className="flex items-center justify-between cursor-pointer">
-                <div className="flex flex-col">
-                    <span className="text-xs text-zinc-300 font-medium">Duration Precision</span>
-                    <span className="text-[9px] text-zinc-500">Decimal places on @durations</span>
-                </div>
-                <input
-                    type="number" min="1" max="8"
-                    aria-label="Duration precision"
-                    value={config.durationPrecision}
-                    onChange={(e) => updateConfig('durationPrecision', getBoundedNumberInputValue(e, config.durationPrecision, 1, 8))}
-                    className="w-12 bg-black border border-zinc-800 text-xs text-center rounded py-1 focus:border-gold-500 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                />
-            </label>
-            </div>
-    </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-md border border-[rgba(245,158,11,0.10)] bg-black/18 px-3 py-2.5">
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-zinc-200">Duration Precision</span>
+          <p className={fieldHintClass}>Decimal places on `@durations`.</p>
+        </div>
+        <input
+          type="number"
+          min="1"
+          max="8"
+          aria-label="Duration precision"
+          value={config.durationPrecision}
+          onChange={(e) => updateConfig('durationPrecision', getBoundedNumberInputValue(e, config.durationPrecision, 1, 8))}
+          className={`w-16 text-center ${compactInputClass}`}
+        />
+      </div>
+    </SidebarSection>
   );
 };
