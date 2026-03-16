@@ -1,36 +1,60 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # midi-strudel
 
-`midi-strudel` converts MIDI files into [Strudel](https://strudel.cc/) live-coding notation, lets you preview the generated code in an embedded Strudel player, and gives you a fast path into the Strudel REPL for further tweaking.
+i got too obsessed with Epic: The Musical and wanted to see the melodies as strudel code.
 
-Version `1.0.0` is the first cleanup-and-release pass: the app behavior is largely the same, but the repo structure, tests, tooling, and docs are now meant to be stable enough to maintain.
+that was honestly the whole spark for this. i was on a high from Epic, discovered [strudel](https://strudel.cc/), and really wanted to look at those melodies in this code-shaped notation instead of just a piano roll.
 
-> Complex MIDI files still need human taste. Treat the generated output as a strong starting point, not a final score.
+then vibe coding made it very easy to keep poking at it. it stopped being a one-off experiment and slowly became a fun little tool for turning midi into strudel-ish code so i could study melodies, inspect patterns, and hear them back in a different way.
 
-## What It Does
+along the way it also became a useful excuse to play with gemini, claude, and gpt as ai dev tools and see what kind of workflow they were actually good for.
 
-- Parses `.mid` and `.midi` files in the browser
-- Detects tempo, time signature, drum tracks, and a likely musical key
-- Converts tracks into Strudel-friendly melody/harmony output
-- Supports absolute notes or relative scale-degree notation
-- Lets you tune playback, quantization, formatting, visuals, and per-track mapping
-- Embeds a Strudel editor/player so you can hear and inspect the result immediately
+## what strudel is
 
-## Getting Started
+strudel is a browser-based live coding environment for music. instead of a piano roll, you describe repeating patterns and cycles in code.
 
-### Local development
+- main site: [strudel.cc](https://strudel.cc/)
+- getting started: [strudel docs](https://strudel.cc/learn/getting-started/)
+
+## what this project is doing
+
+this project takes a midi file, parses the tracks, and turns them into strudel-ish code you can read, tweak, and send into the repl without starting from scratch.
+
+the notation idea here came out of me trying to figure out how to represent melody, harmony, overlap, rests, and timing in a way that felt usable for this converter.
+
+so this app is not trying to be a perfect or official representation of strudel syntax theory. it is more like: i had a notation idea, kept iterating on it, and built a tool around that idea so i could feed midi in and get something musical and readable back out.
+
+very briefly, some of the notation ideas in here work like this:
+
+- `C4@0.5` means play `C4` for half a cycle
+- `~` means rest
+- `{C4, E4, G4}` is being used for overlapping / stacked material
+- relative mode turns notes into scale degrees like `0 2 4` instead of raw note names
+
+if you want the deeper background:
+
+- [strudel-notation-history.md](strudel-notation-history.md) is the history file where i worked through the notation ideas
+- [strudel-notation-project-prompt.md](strudel-notation-project-prompt.md) is the extracted project prompt/spec that came out of that process
+
+## what you can do with it
+
+- drop in a `.mid` or `.midi` file
+- detect tempo, time signature, drum tracks, and a likely key
+- convert tracks into melody / harmony strudel output
+- switch between absolute note names and relative scale degrees
+- adjust playback, quantization, formatting, visuals, and per-track mapping
+- preview the result in the embedded strudel player
+- open the generated code in strudel and keep messing with it there
+
+## local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-The Vite dev server runs on [http://localhost:3000](http://localhost:3000).
+the dev server runs on [http://localhost:3000](http://localhost:3000).
 
-### Quality checks
+if you want to run the checks:
 
 ```bash
 npm test
@@ -38,42 +62,3 @@ npm run build
 npm run typecheck
 npm run lint
 ```
-
-## Project Structure
-
-- `App.tsx` handles the top-level app shell and screen orchestration.
-- `hooks/useProjectState.ts` owns project loading, persistence, and generated-code recomputation.
-- `components/Sidebar.tsx` and `components/sidebar/` contain the settings UI.
-- `components/CodeViewer.tsx` and `components/codeViewer/` contain the embedded Strudel editor/player.
-- `services/StrudelNotation.ts` is the public notation entry point; detailed rendering lives under `services/notation/`.
-
-## Notes On Output
-
-The converter is built around Strudel’s cycle-based timing model.
-
-- `@0.25` means one quarter of a cycle
-- `~` is a rest
-- melody and harmony are emitted as separate patterns when overlap requires it
-- relative mode uses `n(...).scale(...)`
-- absolute mode uses `.as("note")`
-
-The historical markdown files in the repo are still intentionally kept:
-
-- `Working out strudel notation and prompt.md` is the original notation-history/workshopping document.
-- `strudel-reference.md` is a Strudel syntax/reference note used during development.
-
-## Known Limitations
-
-- Dense polyphony can still need manual cleanup after conversion
-- Drum mapping is intentionally conservative and only covers known mappings
-- Multi-tempo MIDI files are flattened to a single playback tempo
-- Quantization is useful, but aggressive settings can make output feel less musical
-- The embedded Strudel/audio bundle is still heavy relative to the rest of the app
-
-## v1.0.0 Release Notes
-
-- Normalized key-confidence handling and removed duplicate persisted key state
-- Split the top-level app flow into smaller screen/state pieces
-- Split the Strudel editor into a hook plus smaller UI components
-- Replaced the CDN-style MIDI parser import with a package-managed dependency
-- Added `lint` and `typecheck` scripts and refreshed the repo docs
