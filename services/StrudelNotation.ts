@@ -9,9 +9,10 @@
  */
 
 import { StrudelConfig, Track } from '../types';
+import { DRUM_MAP } from '../constants';
 import { renderDrumTrack } from './notation/DrumRenderer';
 import { renderMelodicTrack } from './notation/MelodicRenderer';
-import { gcd, getMeasureDuration } from './notation/NotationUtils';
+import { gcd, getMeasureDuration, prepareNotes } from './notation/NotationUtils';
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -21,9 +22,17 @@ export class StrudelNotation {
   }
 
   public generate(tracks: Track[]): string {
+    const preparedTracks = tracks.map((track) => {
+      const preparedNotes = track.isDrum
+        ? prepareNotes(track.notes.filter((note) => DRUM_MAP[note.midi]), this.config)
+        : prepareNotes(track.notes, this.config);
+
+      return { track, preparedNotes };
+    });
+
     // 1. Calculate Global Song Duration
-    let maxDuration = tracks.reduce((max, t) => {
-      const trackMax = t.notes.reduce((m, n) => Math.max(m, n.noteOff), 0);
+    let maxDuration = preparedTracks.reduce((max, entry) => {
+      const trackMax = entry.preparedNotes.reduce((m, n) => Math.max(m, n.noteOff), 0);
       return Math.max(max, trackMax);
     }, 0);
 
@@ -46,14 +55,14 @@ export class StrudelNotation {
       ``,
     ].join('\n');
 
-    tracks.forEach(track => {
+    preparedTracks.forEach(({ track, preparedNotes }) => {
       if (track.hidden) return;
-      if (!track.notes.length) return;
+      if (!preparedNotes.length) return;
 
       if (track.isDrum) {
-        output += renderDrumTrack(track, maxDuration, this.config);
+        output += renderDrumTrack(track, maxDuration, this.config, preparedNotes);
       } else {
-        output += renderMelodicTrack(track, maxDuration, this.config);
+        output += renderMelodicTrack(track, maxDuration, this.config, preparedNotes);
       }
       output += '\n';
     });

@@ -109,4 +109,16 @@ describe('renderMelodicTrack', () => {
     const result = renderMelodicTrack(track, beatDur, config);
     expect(result).toContain('gm_piano');
   });
+
+  it('uses quantized timing when quantization is enabled', () => {
+    const notes = [makeNote(60, 'C4', 0.02, 0.48)];
+    const track = makeTrack(notes);
+    const result = renderMelodicTrack(track, beatDur, {
+      ...config,
+      isQuantized: true,
+      quantizationThreshold: 50,
+      quantizationStrength: 100,
+    });
+    expect(result).toContain('C4@0.25');
+  });
 });

@@ -3,9 +3,9 @@ import {
   StateEffect,
   StateField,
   Text,
-} from "@codemirror/state";
-import { Decoration, EditorView } from "@codemirror/view";
-import { isNote, tokenizeNote } from "@strudel/core";
+} from '@codemirror/state';
+import { Decoration, EditorView } from '@codemirror/view';
+import { isNote, tokenizeNote } from '@strudel/core';
 
 type NumericLike = number | { valueOf(): number };
 
@@ -32,6 +32,13 @@ type NoteToken = {
   color: string;
 };
 
+export type ActivePlaybackRange = {
+  start: number;
+  end: number;
+  begin?: NumericLike;
+  duration?: NumericLike;
+};
+
 const defaultOptions: PlaybackHighlightOptions = {
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,
@@ -42,7 +49,7 @@ const setPlaybackOptions =
   StateEffect.define<Partial<PlaybackHighlightOptions>>();
 const setActivePlayback = StateEffect.define<{
   atTime: NumericLike;
-  haps: HapLike[];
+  ranges: ActivePlaybackRange[];
 }>();
 
 export const updatePlaybackHighlightOptions = (
@@ -52,19 +59,33 @@ export const updatePlaybackHighlightOptions = (
   view.dispatch({ effects: setPlaybackOptions.of(options) });
 };
 
+export const collectActivePlaybackRanges = (haps: HapLike[]): ActivePlaybackRange[] => {
+  const ranges: ActivePlaybackRange[] = [];
+
+  for (const hap of haps) {
+    if (!hap.context?.locations?.length) {
+      continue;
+    }
+
+    for (const location of hap.context.locations) {
+      ranges.push({
+        start: location.start,
+        end: location.end,
+        begin: hap.whole?.begin,
+        duration: hap.whole?.duration,
+      });
+    }
+  }
+
+  return ranges.sort((left, right) => left.start - right.start || left.end - right.end);
+};
+
 export const highlightPlaybackLocations = (
   view: EditorView,
   atTime: NumericLike,
-  haps: HapLike[],
+  ranges: ActivePlaybackRange[],
 ) => {
-  view.dispatch({ effects: setActivePlayback.of({ atTime, haps }) });
-};
-
-export const updatePlaybackLocations = (
-  _view: EditorView,
-  _locations: Array<[number, number]>,
-) => {
-  // We only style note-token spans, so we rely on the current active hap locations from onDraw.
+  view.dispatch({ effects: setActivePlayback.of({ atTime, ranges }) });
 };
 
 const playbackOptions = StateField.define<PlaybackHighlightOptions>({
@@ -84,10 +105,10 @@ const playbackOptions = StateField.define<PlaybackHighlightOptions>({
 
 const activePlayback = StateField.define<{
   atTime: NumericLike;
-  haps: HapLike[];
+  ranges: ActivePlaybackRange[];
 }>({
   create() {
-    return { atTime: 0, haps: [] };
+    return { atTime: 0, ranges: [] };
   },
   update(active, tr) {
     for (const effect of tr.effects) {
@@ -126,7 +147,7 @@ const passiveNoteDecorations = EditorView.decorations.compute(
         token.to,
         Decoration.mark({
           attributes: {
-            "data-strudel-note-color": token.color,
+            'data-strudel-note-color': token.color,
             style: `--strudel-note-color: ${token.color}; color: ${token.color};`,
           },
         }),
@@ -142,38 +163,51 @@ const activeNoteDecorations = EditorView.decorations.compute(
   (state) => {
     const tokens = state.field(noteTokens);
     const options = state.field(playbackOptions);
-    const { atTime, haps } = state.field(activePlayback);
+    const { atTime, ranges } = state.field(activePlayback);
     const builder = new RangeSetBuilder<Decoration>();
+    const decoratedTokens = new Set<string>();
+    let tokenIndex = 0;
 
-    for (const token of tokens) {
-      const matchingHap = haps.find((hap) => isTokenActive(token, hap));
-
-      if (!matchingHap) {
-        continue;
+    for (const range of ranges) {
+      while (tokenIndex < tokens.length && tokens[tokenIndex].to <= range.start) {
+        tokenIndex++;
       }
 
-      const color = options.isNoteColoringEnabled
-        ? token.color
-        : "var(--foreground)";
-      const style = buildActiveNoteStyle(
-        color,
-        atTime,
-        matchingHap,
-        options.isProgressiveFillEnabled,
-        options.isPatternTextColoringEnabled,
-      );
+      let scanIndex = tokenIndex;
+      while (scanIndex < tokens.length && tokens[scanIndex].from < range.end) {
+        const token = tokens[scanIndex];
+        if (token.to > range.start) {
+          const key = `${token.from}:${token.to}`;
+          if (!decoratedTokens.has(key)) {
+            decoratedTokens.add(key);
 
-      builder.add(
-        token.from,
-        token.to,
-        Decoration.mark({
-          attributes: {
-            class: "cm-note-playing",
-            "data-strudel-active-note": "true",
-            style,
-          },
-        }),
-      );
+            const color = options.isNoteColoringEnabled
+              ? token.color
+              : 'var(--foreground)';
+            const style = buildActiveNoteStyle(
+              color,
+              atTime,
+              range,
+              options.isProgressiveFillEnabled,
+              options.isPatternTextColoringEnabled,
+            );
+
+            builder.add(
+              token.from,
+              token.to,
+              Decoration.mark({
+                attributes: {
+                  class: 'cm-note-playing',
+                  'data-strudel-active-note': 'true',
+                  style,
+                },
+              }),
+            );
+          }
+        }
+
+        scanIndex++;
+      }
     }
 
     return builder.finish();
@@ -218,25 +252,15 @@ function extractNoteTokens(doc: Text) {
   return tokens;
 }
 
-function isTokenActive(token: NoteToken, hap: HapLike) {
-  if (!hap.context?.locations?.length) {
-    return false;
-  }
-
-  return hap.context.locations.some(
-    ({ start, end }) => start < token.to && end > token.from,
-  );
-}
-
 function buildActiveNoteStyle(
   color: string,
   atTime: NumericLike,
-  hap: HapLike,
+  range: ActivePlaybackRange,
   isProgressiveFillEnabled: boolean,
   isPatternTextColoringEnabled: boolean,
 ) {
   const progressDegrees = isProgressiveFillEnabled
-    ? getProgressDegrees(atTime, hap)
+    ? getProgressDegrees(atTime, range)
     : 360;
   const fillStyle = isProgressiveFillEnabled
     ? `background-image: conic-gradient(from 0deg at 50% 50%, ${toTransparentColor(
@@ -246,39 +270,34 @@ function buildActiveNoteStyle(
 
   const textColorStyle = isPatternTextColoringEnabled
     ? buildContrastTextStyle(color)
-    : "";
+    : '';
 
   return [
     `--strudel-note-color: ${color}`,
     fillStyle,
     `box-shadow: inset 0 0 0 1px ${toOutlineColor(color)}`,
-    "background-repeat: no-repeat",
-    "background-position: center",
+    'background-repeat: no-repeat',
+    'background-position: center',
     textColorStyle,
   ]
     .filter(Boolean)
-    .join("; ");
+    .join('; ');
 }
 
-function getProgressDegrees(atTime: NumericLike, hap: HapLike) {
-  if (!hap.whole) {
-    return 360;
-  }
-
-  const currentTime = getTimeValue(atTime);
-  const start = getTimeValue(hap.whole.begin);
-  const duration = getTimeValue(hap.whole.duration);
-
+function getProgressDegrees(atTime: NumericLike, range: ActivePlaybackRange) {
+  const duration = getTimeValue(range.duration);
   if (!duration) {
     return 360;
   }
 
+  const currentTime = getTimeValue(atTime);
+  const start = getTimeValue(range.begin);
   const progress = Math.max(0, Math.min(1, (currentTime - start) / duration));
   return Math.round(progress * 360);
 }
 
 function getTimeValue(value: NumericLike | undefined) {
-  return typeof value === "number" ? value : (value?.valueOf() ?? 0);
+  return typeof value === 'number' ? value : (value?.valueOf() ?? 0);
 }
 
 function noteToHslColor(note: string) {
@@ -298,10 +317,10 @@ function noteToHslColor(note: string) {
       a: 9,
       b: 11,
     };
-    const accidentals: Record<string, number> = { "#": 1, b: -1, s: 1, f: -1 };
+    const accidentals: Record<string, number> = { '#': 1, b: -1, s: 1, f: -1 };
     const chroma = chromas[pc.toLowerCase()];
     const accidentalOffset =
-      acc?.split("").reduce((sum, char) => sum + (accidentals[char] ?? 0), 0) ??
+      acc?.split('').reduce((sum, char) => sum + (accidentals[char] ?? 0), 0) ??
       0;
     const chromaticStep = (((chroma + accidentalOffset) % 12) + 12) % 12;
     const octave = oct ?? 3;
@@ -328,10 +347,10 @@ function buildContrastTextStyle(color: string) {
     lightness == null ? 0.82 : lightness >= 64 ? 0.96 : lightness >= 52 ? 0.88 : 0.76;
 
   return [
-    "--strudel-active-text-color: white",
-    "color: var(--strudel-active-text-color) !important",
+    '--strudel-active-text-color: white',
+    'color: var(--strudel-active-text-color) !important',
     `text-shadow: 0 0 1px rgba(0, 0, 0, ${shadowAlpha}), 0 0 2px rgba(0, 0, 0, ${Math.min(1, shadowAlpha + 0.08)}), 0 0 4px rgba(0, 0, 0, 0.35)`,
-  ].join("; ");
+  ].join('; ');
 }
 
 function getColorLightness(color: string) {

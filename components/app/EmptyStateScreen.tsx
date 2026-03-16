@@ -13,14 +13,15 @@ interface Props {
   onFileLoaded: (file: File) => void;
 }
 
-export const EmptyStateScreen: React.FC<Props> = ({
+export function EmptyStateScreen({
   activeExampleId,
   config,
   isProcessing,
   onExampleLoad,
   onFileLoaded,
-}) => (
-  <div className="flex-1 overflow-y-auto bg-noir-900 p-6 md:p-10">
+}: Props) {
+  return (
+    <div className="flex-1 overflow-y-auto bg-noir-900 p-6 md:p-10">
     <div className="mx-auto grid min-h-full max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
       <section className="relative overflow-hidden rounded-[8px] border border-[rgba(245,158,11,0.18)] bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.99))] p-7 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:p-10">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.1),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.04),transparent_28%)]" />
@@ -222,5 +223,6 @@ export const EmptyStateScreen: React.FC<Props> = ({
         </div>
       </section>
     </div>
-  </div>
-);
+    </div>
+  );
+}

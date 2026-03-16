@@ -17,6 +17,7 @@ const VALID_DURATION_TAG_STYLES: StrudelConfig['durationTagStyle'][] = [
   'hidden',
   'hover',
 ];
+const DEFAULT_CONFIG_SERIALIZED = JSON.stringify(DEFAULT_CONFIG);
 
 function resolveStorage(storage?: StorageLike): StorageLike | undefined {
   if (storage) return storage;
@@ -139,7 +140,15 @@ export function saveConfigToStorage(config: StrudelConfig, storage?: StorageLike
   const resolvedStorage = resolveStorage(storage);
 
   try {
-    resolvedStorage?.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+    if (!resolvedStorage) return;
+
+    const serializedConfig = JSON.stringify(config);
+    if (serializedConfig === DEFAULT_CONFIG_SERIALIZED) {
+      resolvedStorage.removeItem(CONFIG_STORAGE_KEY);
+      return;
+    }
+
+    resolvedStorage.setItem(CONFIG_STORAGE_KEY, serializedConfig);
   } catch {
     // Storage quota exceeded or unavailable.
   }

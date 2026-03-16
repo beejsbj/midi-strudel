@@ -200,6 +200,7 @@ export function renderMeasureSubdivision(
 ): string {
   const cycles = measureDur / cycleDur;
   const cyclesRounded = round(cycles, 4);
+  const EPSILON = 0.001;
 
   if (notes.length === 0) {
     const suffix = cyclesRounded === 1 ? "" : `@${cyclesRounded}`;
@@ -209,21 +210,43 @@ export function renderMeasureSubdivision(
   const numerator = config.timeSignature.numerator || 4;
   const beatDur = measureDur / numerator;
   const beatGrids: string[][] = [];
+  const sustainedNotes: Note[] = [];
+  let noteIndex = 0;
 
   for (let i = 0; i < numerator; i++) {
     const beatStart = measureStart + (i * beatDur);
     const beatEnd = beatStart + beatDur;
+    const beatNotes: Note[] = [];
 
-    let beatNotes = notes.filter(n => n.noteOn >= beatStart - 0.001 && n.noteOn < beatEnd - 0.001);
-    let sustainedNotes = notes.filter(n => n.noteOn < beatStart - 0.001 && n.noteOff > beatStart + 0.001);
-
-    if (i === 0 && sustainedNotes.length > 0) {
-      const retriggered = sustainedNotes.map(n => ({ ...n, noteOn: beatStart }));
-      beatNotes = [...beatNotes, ...retriggered];
-      sustainedNotes = [];
+    while (noteIndex < notes.length && notes[noteIndex].noteOff <= beatStart + EPSILON) {
+      noteIndex++;
     }
 
-    beatGrids.push(getBeatGrid(beatNotes, sustainedNotes, beatStart, beatDur, isDrum, config, drumMap));
+    while (sustainedNotes.length > 0 && sustainedNotes[0].noteOff <= beatStart + EPSILON) {
+      sustainedNotes.shift();
+    }
+
+    while (noteIndex < notes.length && notes[noteIndex].noteOn < beatEnd - EPSILON) {
+      beatNotes.push(notes[noteIndex]);
+      noteIndex++;
+    }
+
+    const activeSustains = sustainedNotes.filter(
+      (note) => note.noteOn < beatStart - EPSILON && note.noteOff > beatStart + EPSILON,
+    );
+
+    if (i === 0 && activeSustains.length > 0) {
+      const retriggered = activeSustains.map(n => ({ ...n, noteOn: beatStart }));
+      beatGrids.push(getBeatGrid([...beatNotes, ...retriggered], [], beatStart, beatDur, isDrum, config, drumMap));
+    } else {
+      beatGrids.push(getBeatGrid(beatNotes, activeSustains, beatStart, beatDur, isDrum, config, drumMap));
+    }
+
+    for (const note of beatNotes) {
+      if (note.noteOff > beatEnd + EPSILON) {
+        sustainedNotes.push(note);
+      }
+    }
   }
 
   const fullGrid = flattenGrid(beatGrids);
@@ -250,10 +273,8 @@ export function renderMeasureAbsolute(
   let cursor = measureStart;
   let output = "";
 
-  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn);
-
-  for (let i = 0; i < sorted.length; i++) {
-    const note = sorted[i];
+  for (let i = 0; i < notes.length; i++) {
+    const note = notes[i];
     if (note.noteOn > cursor + EPSILON) {
       const gap = note.noteOn - cursor;
       if (gap > EPSILON) {
@@ -266,8 +287,8 @@ export function renderMeasureAbsolute(
 
     const chordNotes = [note];
     let j = i + 1;
-    while (j < sorted.length && Math.abs(sorted[j].noteOn - note.noteOn) < EPSILON) {
-      chordNotes.push(sorted[j]);
+    while (j < notes.length && Math.abs(notes[j].noteOn - note.noteOn) < EPSILON) {
+      chordNotes.push(notes[j]);
       j++;
     }
     i = j - 1;

@@ -11,6 +11,7 @@ import {
 } from '../services/projectStorage';
 import { StrudelNotation } from '../services/StrudelNotation';
 import { DEFAULT_CONFIG, StrudelConfig, Track } from '../types';
+import { useDebouncedValue } from './useDebouncedValue';
 
 export interface ExampleMidi {
   id: string;
@@ -23,40 +24,123 @@ export interface ExampleMidi {
 
 interface UseProjectStateOptions {
   examples: readonly ExampleMidi[];
+  dependencies?: Partial<ProjectStateDependencies>;
 }
 
-export function useProjectState({ examples }: UseProjectStateOptions) {
-  const [config, setConfig] = useState<StrudelConfig>(() => loadConfigFromStorage());
-  const [tracks, setTracks] = useState<Track[]>(() => loadTracksFromStorage());
+interface ProjectStateDependencies {
+  clearStorage: typeof clearProjectStorage;
+  createNotation: (config: StrudelConfig) => { generate: (tracks: Track[]) => string };
+  debounceMs: number;
+  detectKeySignature: typeof detectKey;
+  loadConfig: typeof loadConfigFromStorage;
+  loadTracks: typeof loadTracksFromStorage;
+  parseMidi: typeof parseMidiFile;
+  saveConfig: typeof saveConfigToStorage;
+  saveTracks: typeof saveTracksToStorage;
+}
+
+const DEFAULT_DEBOUNCE_MS = 120;
+
+export function getNotationConfig(config: StrudelConfig): StrudelConfig {
+  return {
+    ...config,
+    durationTagStyle: DEFAULT_CONFIG.durationTagStyle,
+    isNoteColoringEnabled: DEFAULT_CONFIG.isNoteColoringEnabled,
+    isProgressiveFillEnabled: DEFAULT_CONFIG.isProgressiveFillEnabled,
+    isPatternTextColoringEnabled: DEFAULT_CONFIG.isPatternTextColoringEnabled,
+  };
+}
+
+export function getNotationConfigKey(config: StrudelConfig): string {
+  return JSON.stringify({
+    bpm: config.bpm,
+    cycleUnit: config.cycleUnit,
+    durationPrecision: config.durationPrecision,
+    fileName: config.fileName,
+    formatPerLineBy: config.formatPerLineBy,
+    globalSound: config.globalSound,
+    includeVelocity: config.includeVelocity,
+    isQuantized: config.isQuantized,
+    isTrackColoringEnabled: config.isTrackColoringEnabled,
+    key: config.key,
+    measuresPerLine: config.measuresPerLine,
+    notationType: config.notationType,
+    outputStyle: config.outputStyle,
+    playbackKey: config.playbackKey,
+    quantizationStrength: config.quantizationStrength,
+    quantizationThreshold: config.quantizationThreshold,
+    sourceBpm: config.sourceBpm,
+    sourceTimeSignature: config.sourceTimeSignature,
+    timeSignature: config.timeSignature,
+    timingStyle: config.timingStyle,
+    useAutoMapping: config.useAutoMapping,
+    visualMethods: config.visualMethods,
+    visualScope: config.visualScope,
+  });
+}
+
+function getProjectStateDependencies(
+  overrides?: Partial<ProjectStateDependencies>,
+): ProjectStateDependencies {
+  return {
+    clearStorage: clearProjectStorage,
+    createNotation: (config) => new StrudelNotation(config),
+    debounceMs: DEFAULT_DEBOUNCE_MS,
+    detectKeySignature: detectKey,
+    loadConfig: loadConfigFromStorage,
+    loadTracks: loadTracksFromStorage,
+    parseMidi: parseMidiFile,
+    saveConfig: saveConfigToStorage,
+    saveTracks: saveTracksToStorage,
+    ...overrides,
+  };
+}
+
+export function useProjectState({ examples, dependencies }: UseProjectStateOptions) {
+  const deps = useMemo(
+    () => getProjectStateDependencies(dependencies),
+    [dependencies],
+  );
+  const [config, setConfig] = useState<StrudelConfig>(() => deps.loadConfig());
+  const [tracks, setTracks] = useState<Track[]>(() => deps.loadTracks());
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const notationConfigKey = getNotationConfigKey(config);
+  const notationConfig = useMemo(
+    () => getNotationConfig(config),
+    [notationConfigKey],
+  );
+  const debouncedConfig = useDebouncedValue(config, deps.debounceMs);
+  const debouncedTracks = useDebouncedValue(tracks, deps.debounceMs);
+  const debouncedNotationConfig = useDebouncedValue(notationConfig, deps.debounceMs);
 
   const code = useMemo(() => {
     if (tracks.length === 0) {
       return '';
     }
 
-    const service = new StrudelNotation(config);
-    return service.generate(tracks);
-  }, [config, tracks]);
+    const service = deps.createNotation(debouncedNotationConfig);
+    return service.generate(debouncedTracks);
+  }, [debouncedNotationConfig, debouncedTracks, deps, tracks.length]);
 
   useEffect(() => {
-    saveConfigToStorage(config);
-  }, [config]);
+    deps.saveConfig(debouncedConfig);
+  }, [debouncedConfig, deps]);
 
   useEffect(() => {
-    saveTracksToStorage(tracks);
-  }, [tracks]);
+    deps.saveTracks(debouncedTracks);
+  }, [debouncedTracks, deps]);
 
   const loadProjectFile = async (file: File) => {
     setIsProcessing(true);
     setError(null);
 
     try {
-      const result = await parseMidiFile(file);
-      const detectedKey = detectKey(result.tracks);
+      const result = await deps.parseMidi(file);
+      const detectedKey = deps.detectKeySignature(result.tracks);
 
       setTracks(result.tracks);
       setConfig((prev) => ({
@@ -136,7 +220,7 @@ export function useProjectState({ examples }: UseProjectStateOptions) {
     setConfig(DEFAULT_CONFIG);
     setError(null);
     setActiveExampleId(null);
-    clearProjectStorage();
+    deps.clearStorage();
   };
 
   return {

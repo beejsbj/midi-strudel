@@ -49,6 +49,13 @@ describe('renderDrumTrack', () => {
     expect(result).toContain('.as("s")');
   });
 
+  it('emits the selected drum bank in the output chain', () => {
+    const notes = [makeNote(36, 0, beatDur)];
+    const track = makeTrack(notes, { drumBank: 'RhythmAce' });
+    const result = renderDrumTrack(track, beatDur, config);
+    expect(result).toContain('.bank("RhythmAce")');
+  });
+
   it('warns for unmapped MIDI drum notes via console.warn', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

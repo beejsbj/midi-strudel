@@ -15,13 +15,16 @@ import {
 import { renderMeasureAbsolute, renderMeasureSubdivision } from './GridBuilder';
 
 export function splitMelodyHarmony(notes: Note[]): { melody: Note[]; harmony: Note[] } {
+  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn || b.midi - a.midi);
+  return splitMelodyHarmonySorted(sorted);
+}
+
+function splitMelodyHarmonySorted(notes: Note[]): { melody: Note[]; harmony: Note[] } {
   const melody: Note[] = [];
   const harmony: Note[] = [];
   let lastEnd = 0;
 
-  const sorted = [...notes].sort((a, b) => a.noteOn - b.noteOn || b.midi - a.midi);
-
-  sorted.forEach(note => {
+  notes.forEach(note => {
     if (note.noteOn >= lastEnd - 0.01) {
       melody.push(note);
       lastEnd = note.noteOff;
@@ -40,25 +43,32 @@ export function renderSequence(
   config: StrudelConfig,
   drumMap: Record<number, string>
 ): string {
+  if (notes.length === 0) {
+    return '';
+  }
+
   const cycleDur = getCycleDuration(config);
   const measureDur = getMeasureDuration(config);
 
   const tokens: string[] = [];
   let cursor = 0;
+  let nextNoteIndex = 0;
   const EPSILON = 0.01;
 
   const restTokenFn = (dur: number, cd: number) => createRestToken(dur, cd, config);
 
   while (cursor < totalDuration - EPSILON) {
-    const nextNotes = notes.filter(n => n.noteOn >= cursor - EPSILON).sort((a, b) => a.noteOn - b.noteOn);
+    while (nextNoteIndex < notes.length && notes[nextNoteIndex].noteOn < cursor - EPSILON) {
+      nextNoteIndex++;
+    }
 
-    if (nextNotes.length === 0) {
+    if (nextNoteIndex >= notes.length) {
       const restDur = totalDuration - cursor;
       tokens.push(createRestToken(restDur, cycleDur, config));
       break;
     }
 
-    const nextNote = nextNotes[0];
+    const nextNote = notes[nextNoteIndex];
 
     if (nextNote.noteOn > cursor + EPSILON) {
       const gap = nextNote.noteOn - cursor;
@@ -67,17 +77,24 @@ export function renderSequence(
     }
 
     let blockEnd = cursor + measureDur;
-    let blockNotes = notes.filter(n => n.noteOn >= cursor - EPSILON && n.noteOn < blockEnd - EPSILON);
+    let blockEndIndex = nextNoteIndex;
+    let blockMaxEnd = blockEnd;
 
-    if (blockNotes.length > 0) {
-      const maxEnd = Math.max(...blockNotes.map(n => n.noteOff));
-      if (maxEnd > blockEnd + EPSILON) {
-        blockEnd = Math.ceil((maxEnd + EPSILON) / measureDur) * measureDur;
-        blockNotes = notes.filter(n => n.noteOn >= cursor - EPSILON && n.noteOn < blockEnd - EPSILON);
+    while (blockEndIndex < notes.length && notes[blockEndIndex].noteOn < blockEnd - EPSILON) {
+      blockMaxEnd = Math.max(blockMaxEnd, notes[blockEndIndex].noteOff);
+      blockEndIndex++;
+    }
+
+    if (blockMaxEnd > blockEnd + EPSILON) {
+      blockEnd = Math.ceil((blockMaxEnd + EPSILON) / measureDur) * measureDur;
+
+      while (blockEndIndex < notes.length && notes[blockEndIndex].noteOn < blockEnd - EPSILON) {
+        blockEndIndex++;
       }
     }
 
     const blockDur = blockEnd - cursor;
+    const blockNotes = notes.slice(nextNoteIndex, blockEndIndex);
 
     let blockString = "";
     if (config.timingStyle === 'relativeDivision') {
@@ -88,6 +105,7 @@ export function renderSequence(
 
     if (blockString) tokens.push(blockString);
     cursor = blockEnd;
+    nextNoteIndex = blockEndIndex;
   }
 
   // POST PROCESSING: MERGE RESTS
@@ -147,9 +165,10 @@ export function renderSequence(
 export function renderMelodicTrack(
   track: Track,
   globalMaxDuration: number,
-  config: StrudelConfig
+  config: StrudelConfig,
+  preparedNotes?: Note[],
 ): string {
-  const notes = prepareNotes(track.notes, config);
+  const notes = preparedNotes ?? prepareNotes(track.notes, config);
 
   let sound = config.globalSound;
 
@@ -166,7 +185,7 @@ export function renderMelodicTrack(
     scaleSuffix = `\n  .scale("${k.root}${k.averageOctave}:${k.type}")`;
   }
 
-  const { melody, harmony } = splitMelodyHarmony(notes);
+  const { melody, harmony } = splitMelodyHarmonySorted(notes);
   let trackOutput = "";
 
   // Pass empty drumMap for melodic tracks

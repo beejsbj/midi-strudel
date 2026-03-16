@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StrudelMirror } from '@strudel/codemirror';
 import { EditorView, Decoration, DecorationSet, ViewPlugin } from '@codemirror/view';
-import { RangeSetBuilder, StateEffect } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect, Text } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
 import * as StrudelDraw from '@strudel/draw';
 import * as StrudelMini from '@strudel/mini';
@@ -16,10 +16,10 @@ import {
 import { registerSoundfonts } from '@strudel/soundfonts';
 import { transpiler } from '@strudel/transpiler';
 import {
+  collectActivePlaybackRanges,
   highlightPlaybackLocations,
   strudelPlaybackHighlightExtension,
   updatePlaybackHighlightOptions,
-  updatePlaybackLocations,
 } from '../strudelPlaybackHighlight';
 
 const DATA_SOURCES_BASE = 'https://raw.githubusercontent.com/felixroos/dough-samples/main/';
@@ -58,23 +58,44 @@ interface UseStrudelEditorOptions {
   isPatternTextColoringEnabled?: boolean;
 }
 
-function buildInlineMetaDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const content = view.state.doc.toString();
-  const selection = view.state.selection.main;
+type InlineMetaToken = {
+  from: number;
+  to: number;
+};
+
+type HapLike = Parameters<typeof collectActivePlaybackRanges>[0][number];
+
+function extractInlineMetaTokens(doc: Text): InlineMetaToken[] {
+  const tokens: InlineMetaToken[] = [];
+  const content = doc.toString();
 
   for (const match of content.matchAll(INLINE_META_REGEX)) {
     const from = match.index;
     if (from == null) continue;
 
-    const to = from + match[0].length;
+    tokens.push({
+      from,
+      to: from + match[0].length,
+    });
+  }
+
+  return tokens;
+}
+
+function buildInlineMetaDecorations(
+  tokens: InlineMetaToken[],
+  selection: EditorView['state']['selection']['main'],
+): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+
+  for (const token of tokens) {
     const isActive = selection.empty
-      ? selection.head >= from && selection.head <= to
-      : selection.from < to && selection.to > from;
+      ? selection.head >= token.from && selection.head <= token.to
+      : selection.from < token.to && selection.to > token.from;
 
     builder.add(
-      from,
-      to,
+      token.from,
+      token.to,
       Decoration.mark({
         class: isActive ? 'cm-inline-meta cm-inline-meta-active' : 'cm-inline-meta',
       }),
@@ -87,19 +108,64 @@ function buildInlineMetaDecorations(view: EditorView): DecorationSet {
 const inlineMetaPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    tokens: InlineMetaToken[];
 
     constructor(view: EditorView) {
-      this.decorations = buildInlineMetaDecorations(view);
+      this.tokens = extractInlineMetaTokens(view.state.doc);
+      this.decorations = buildInlineMetaDecorations(this.tokens, view.state.selection.main);
     }
 
     update(update: { docChanged: boolean; selectionSet: boolean; view: EditorView }) {
+      if (update.docChanged) {
+        this.tokens = extractInlineMetaTokens(update.view.state.doc);
+      }
+
       if (update.docChanged || update.selectionSet) {
-        this.decorations = buildInlineMetaDecorations(update.view);
+        this.decorations = buildInlineMetaDecorations(this.tokens, update.view.state.selection.main);
       }
     }
   },
   { decorations: (view) => view.decorations },
 );
+
+function getTimeValue(value: number | { valueOf(): number } | undefined) {
+  return typeof value === 'number' ? value : (value?.valueOf() ?? 0);
+}
+
+function getPlaybackSignature(
+  atTime: number | { valueOf(): number },
+  haps: HapLike[],
+  isProgressiveFillEnabled: boolean,
+) {
+  const ranges = collectActivePlaybackRanges(haps);
+
+  if (!ranges.length) {
+    return {
+      ranges,
+      signature: 'empty',
+    };
+  }
+
+  const currentTime = getTimeValue(atTime);
+  const signature = ranges
+    .map((range) => {
+      if (!isProgressiveFillEnabled) {
+        return `${range.start}:${range.end}`;
+      }
+
+      const duration = getTimeValue(range.duration);
+      if (!duration) {
+        return `${range.start}:${range.end}:360`;
+      }
+
+      const begin = getTimeValue(range.begin);
+      const progress = Math.max(0, Math.min(1, (currentTime - begin) / duration));
+      return `${range.start}:${range.end}:${Math.round(progress * 360)}`;
+    })
+    .join('|');
+
+  return { ranges, signature };
+}
 
 export function useStrudelEditor({
   code,
@@ -116,6 +182,7 @@ export function useStrudelEditor({
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<StrudelEditorInstance | null>(null);
+  const audioReadyPromiseRef = useRef<Promise<void> | null>(null);
   const highlightOptionsRef = useRef({
     isNoteColoringEnabled: Boolean(isNoteColoringEnabled),
     isProgressiveFillEnabled: Boolean(isProgressiveFillEnabled),
@@ -124,6 +191,7 @@ export function useStrudelEditor({
   const latestCodeRef = useRef(code);
   const previousCodeRef = useRef(code);
   const isPlayingRef = useRef(false);
+  const playbackSignatureRef = useRef('uninitialized');
 
   useEffect(() => {
     latestCodeRef.current = code;
@@ -168,6 +236,56 @@ export function useStrudelEditor({
     }
   }, [getEditorContent]);
 
+  const ensureAudioReady = useCallback(async () => {
+    if (isReady) {
+      return;
+    }
+
+    if (audioReadyPromiseRef.current) {
+      await audioReadyPromiseRef.current;
+      return;
+    }
+
+    const initPromise = (async () => {
+      setAudioError(null);
+
+      try {
+        initAudioOnFirstClick();
+        const maybeSamples = Reflect.get(StrudelCore as object, 'samples');
+        const promises: Promise<unknown>[] = [
+          StrudelCore.evalScope(
+            Promise.resolve(StrudelCore),
+            Promise.resolve(StrudelDraw),
+            Promise.resolve(StrudelMini),
+            Promise.resolve(StrudelTonal),
+            Promise.resolve(StrudelWebAudio),
+          ),
+          registerSynthSounds(),
+          registerSoundfonts(),
+        ];
+
+        if (typeof maybeSamples === 'function') {
+          for (const file of SAMPLE_JSON_FILES) {
+            promises.push((maybeSamples as (url: string) => Promise<unknown>)(`${DATA_SOURCES_BASE}${file}`));
+          }
+        }
+
+        await Promise.all(promises);
+        setIsReady(true);
+        setIsLoading(false);
+      } catch (err) {
+        audioReadyPromiseRef.current = null;
+        console.error('Prebake error:', err);
+        setAudioError('Audio failed to initialize. Try refreshing.');
+        setIsLoading(false);
+        throw err;
+      }
+    })();
+
+    audioReadyPromiseRef.current = initPromise;
+    await initPromise;
+  }, [isReady]);
+
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container || editorRef.current) return;
@@ -179,6 +297,7 @@ export function useStrudelEditor({
         const editor = new StrudelMirror({
           defaultOutput: webaudioOutput,
           getTime: () => getAudioContext().currentTime,
+          prebake: ensureAudioReady,
           transpiler,
           root: container,
           initialCode: latestCodeRef.current || '// Waiting for MIDI...',
@@ -190,16 +309,11 @@ export function useStrudelEditor({
             setStrudelError(String(error));
             setIsPlaying(false);
           },
-          afterEval: (options: { meta?: { miniLocations?: [number, number][] } }) => {
-            const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
-            if (cmView) {
-              updatePlaybackLocations(cmView, options.meta?.miniLocations ?? []);
-            }
-          },
           onDraw: (
             haps: Array<{
               isActive?: (time: unknown) => boolean;
               context?: { locations?: Array<{ start: number; end: number }> };
+              whole?: { begin: number | { valueOf(): number }; duration: number | { valueOf(): number } };
             }>,
             time: unknown,
             painters?: Array<(context: unknown, drawTime: unknown, drawHaps: unknown[], range: [number, number]) => void>,
@@ -208,7 +322,16 @@ export function useStrudelEditor({
             const mirror = editorRef.current;
             const cmView = mirror?.editor ?? (mirror?.view as EditorView | undefined);
             if (cmView) {
-              highlightPlaybackLocations(cmView, time as number | { valueOf(): number }, activeHaps);
+              const { ranges, signature } = getPlaybackSignature(
+                time as number | { valueOf(): number },
+                activeHaps,
+                highlightOptionsRef.current.isProgressiveFillEnabled,
+              );
+
+              if (signature !== playbackSignatureRef.current) {
+                playbackSignatureRef.current = signature;
+                highlightPlaybackLocations(cmView, time as number | { valueOf(): number }, ranges);
+              }
             }
 
             painters?.forEach((painter) =>
@@ -217,42 +340,11 @@ export function useStrudelEditor({
           },
           onToggle: (started: boolean) => {
             if (!started) {
+              playbackSignatureRef.current = 'stopped';
               const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
               if (cmView) {
                 highlightPlaybackLocations(cmView, 0, []);
               }
-            }
-          },
-          prebake: async () => {
-            try {
-              initAudioOnFirstClick();
-              const maybeSamples = Reflect.get(StrudelCore as object, 'samples');
-
-              const promises: Promise<unknown>[] = [
-                StrudelCore.evalScope(
-                  Promise.resolve(StrudelCore),
-                  Promise.resolve(StrudelDraw),
-                  Promise.resolve(StrudelMini),
-                  Promise.resolve(StrudelTonal),
-                  Promise.resolve(StrudelWebAudio),
-                ),
-                registerSynthSounds(),
-                registerSoundfonts(),
-              ];
-
-              if (typeof maybeSamples === 'function') {
-                for (const file of SAMPLE_JSON_FILES) {
-                  promises.push((maybeSamples as (url: string) => Promise<unknown>)(`${DATA_SOURCES_BASE}${file}`));
-                }
-              }
-
-              await Promise.all(promises);
-              setIsReady(true);
-              setIsLoading(false);
-            } catch (err) {
-              console.error('Prebake error:', err);
-              setAudioError('Audio failed to initialize. Try refreshing.');
-              setIsLoading(false);
             }
           },
         }) as StrudelEditorInstance;
@@ -382,6 +474,7 @@ export function useStrudelEditor({
 
     if (!editorRef.current || !code || previousCode === code) return;
 
+    playbackSignatureRef.current = 'code-updated';
     setEditorContent(code);
 
     if (isPlayingRef.current) {
@@ -393,24 +486,29 @@ export function useStrudelEditor({
     }
   }, [code, setEditorContent]);
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (!editorRef.current) return;
 
-    try {
-      if (isPlaying) {
-        editorRef.current.stop?.();
-        setIsPlaying(false);
-        return;
-      }
+    const runToggle = async () => {
+      try {
+        if (isPlayingRef.current) {
+          editorRef.current?.stop?.();
+          setIsPlaying(false);
+          return;
+        }
 
-      setStrudelError(null);
-      editorRef.current.evaluate?.();
-      setIsPlaying(true);
-    } catch (err) {
-      console.error('Playback error:', err);
-      setIsPlaying(false);
-    }
-  };
+        setStrudelError(null);
+        await ensureAudioReady();
+        editorRef.current?.evaluate?.();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Playback error:', err);
+        setIsPlaying(false);
+      }
+    };
+
+    void runToggle();
+  }, [ensureAudioReady]);
 
   return {
     audioError,

@@ -108,4 +108,12 @@ describe('project storage', () => {
     expect(storage.getItem(CONFIG_STORAGE_KEY)).toBeNull();
     expect(storage.getItem(TRACKS_STORAGE_KEY)).toBeNull();
   });
+
+  it('does not persist a pristine default config', () => {
+    const storage = createMemoryStorage();
+
+    saveConfigToStorage(DEFAULT_CONFIG, storage);
+
+    expect(storage.getItem(CONFIG_STORAGE_KEY)).toBeNull();
+  });
 });
