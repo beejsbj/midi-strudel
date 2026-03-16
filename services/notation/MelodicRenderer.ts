@@ -9,6 +9,7 @@ import {
   isRest,
   getRestDuration,
   getCycleDuration,
+  getMeasureDuration,
   buildVisualSuffix,
 } from './NotationUtils';
 import { renderMeasureAbsolute, renderMeasureSubdivision } from './GridBuilder';
@@ -40,7 +41,7 @@ export function renderSequence(
   drumMap: Record<number, string>
 ): string {
   const cycleDur = getCycleDuration(config);
-  const measureDur = (60 / config.sourceBpm) * (config.timeSignature.numerator || 4);
+  const measureDur = getMeasureDuration(config);
 
   const tokens: string[] = [];
   let cursor = 0;

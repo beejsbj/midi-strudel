@@ -2,7 +2,7 @@ import React from 'react';
 import { Activity, RotateCcw } from 'lucide-react';
 import { StrudelConfig, KeySignature } from '../../types';
 import { PITCH_CLASSES } from '../../constants';
-import { SectionHeader } from './SidebarShared';
+import { getBoundedNumberInputValue, SectionHeader } from './SidebarShared';
 
 interface Props {
   config: StrudelConfig;
@@ -63,7 +63,7 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                         type="range" min="20" max="300"
                         value={config.bpm}
                         aria-label={`Tempo ${config.bpm} BPM`}
-                        onChange={(e) => updateConfig('bpm', parseInt(e.target.value))}
+                        onChange={(e) => updateConfig('bpm', getBoundedNumberInputValue(e, config.bpm, 20, 300))}
                         className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                 </div>
@@ -80,7 +80,10 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                 </div>
 
                 <div className="flex flex-col items-center w-full max-w-[60px] relative mt-1">
-                        {(config.timeSignature.numerator !== config.sourceTimeSignature?.numerator) && (
+                        {(
+                          config.timeSignature.numerator !== config.sourceTimeSignature?.numerator ||
+                          config.timeSignature.denominator !== config.sourceTimeSignature?.denominator
+                        ) && (
                         <button
                             onClick={() => updateConfig('timeSignature', config.sourceTimeSignature!)}
                             aria-label="Reset time signature"
@@ -97,7 +100,7 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                             max="16"
                             aria-label="Time signature numerator (beats per bar)"
                             value={config.timeSignature.numerator}
-                            onChange={(e) => updateTimeSig('numerator', parseInt(e.target.value))}
+                            onChange={(e) => updateTimeSig('numerator', getBoundedNumberInputValue(e, config.timeSignature.numerator, 1, 16))}
                             className="bg-transparent text-xl font-bold text-white outline-none w-8 text-right p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                         />
                         <span className="text-zinc-500 text-[9px] font-bold uppercase ml-1 translate-y-[1px]">Beats</span>
@@ -151,7 +154,7 @@ export const PlaybackSettings: React.FC<Props> = ({ config, setConfig }) => {
                         type="range" min="0" max="8"
                         value={config.playbackKey.averageOctave}
                         aria-label={`Relative root octave ${config.playbackKey.averageOctave}`}
-                        onChange={(e) => updatePlaybackKey('averageOctave', parseInt(e.target.value))}
+                        onChange={(e) => updatePlaybackKey('averageOctave', getBoundedNumberInputValue(e, config.playbackKey.averageOctave, 0, 8))}
                         disabled={config.notationType !== 'relative'}
                         className="w-full accent-gold-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed disabled:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />

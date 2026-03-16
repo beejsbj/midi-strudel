@@ -52,3 +52,17 @@ export const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; act
         {action}
     </div>
 );
+
+export function getBoundedNumberInputValue(
+  event: React.ChangeEvent<HTMLInputElement>,
+  currentValue: number,
+  min: number,
+  max: number,
+): number {
+  const nextValue = event.currentTarget.valueAsNumber;
+  if (!Number.isFinite(nextValue)) {
+    return currentValue;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(nextValue)));
+}

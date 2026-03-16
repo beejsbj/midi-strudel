@@ -4,6 +4,9 @@ import {
   lcm,
   isRest,
   getRestDuration,
+  getCycleDuration,
+  getMeasureDuration,
+  getMeterBeatDuration,
   round,
   formatTrackName,
   buildVisualSuffix,
@@ -95,6 +98,33 @@ describe('createRestToken', () => {
     const cycleDur = 2;
     const token = createRestToken(1, cycleDur, config); // 0.5 cycles
     expect(token).toBe('~@0.5');
+  });
+});
+
+describe('meter durations', () => {
+  it('uses denominator-aware beat and bar lengths for 6/8', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      sourceBpm: 120,
+      cycleUnit: 'bar' as const,
+      timeSignature: { numerator: 6, denominator: 8 },
+    };
+
+    expect(getMeterBeatDuration(config)).toBe(0.25);
+    expect(getMeasureDuration(config)).toBe(1.5);
+    expect(getCycleDuration(config)).toBe(1.5);
+  });
+
+  it('uses denominator-aware beat cycles for non-quarter meters', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      sourceBpm: 120,
+      cycleUnit: 'beat' as const,
+      timeSignature: { numerator: 3, denominator: 2 },
+    };
+
+    expect(getMeterBeatDuration(config)).toBe(1);
+    expect(getCycleDuration(config)).toBe(1);
   });
 });
 

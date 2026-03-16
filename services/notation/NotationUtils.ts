@@ -69,10 +69,20 @@ export function getRestDuration(token: string): number {
   return 1;
 }
 
+export function getMeterBeatDuration(config: StrudelConfig): number {
+  const denominator = config.timeSignature.denominator || 4;
+  const quarterNoteDuration = 60 / config.sourceBpm;
+  return quarterNoteDuration * (4 / denominator);
+}
+
+export function getMeasureDuration(config: StrudelConfig): number {
+  const numerator = config.timeSignature.numerator || 4;
+  return getMeterBeatDuration(config) * numerator;
+}
+
 export function getCycleDuration(config: StrudelConfig): number {
-  const beatDur = 60 / config.sourceBpm;
-  if (config.cycleUnit === 'beat') return beatDur;
-  return beatDur * (config.timeSignature.numerator || 4);
+  if (config.cycleUnit === 'beat') return getMeterBeatDuration(config);
+  return getMeasureDuration(config);
 }
 
 /** Creates a rest token from a duration in seconds */

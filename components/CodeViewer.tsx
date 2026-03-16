@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Check, Play, Square, Loader2, AlertTriangle } from 'lucide-react';
 import { StrudelMirror } from '@strudel/codemirror';
-import { MatchDecorator, ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
+import { ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
+import { RangeSetBuilder, StateEffect } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
+import * as StrudelDraw from '@strudel/draw';
+import * as StrudelMini from '@strudel/mini';
+import * as StrudelTonal from '@strudel/tonal';
+import * as StrudelWebAudio from '@strudel/webaudio';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
 import { registerSoundfonts } from "@strudel/soundfonts";
@@ -14,17 +18,45 @@ import {
   updatePlaybackLocations,
 } from './strudelPlaybackHighlight';
 
-// CodeMirror decoration that dims @duration annotations (e.g. @0.25, @1.5)
-const durationDecorator = new MatchDecorator({
-  regexp: /@[\d.]+/g,
-  decoration: Decoration.mark({ class: 'cm-at-duration' }),
-});
-const durationPlugin = ViewPlugin.fromClass(
+const INLINE_META_REGEX = /(?:@[\d.]+|:(?:\d+(?:\.\d+)?))/g;
+
+function buildInlineMetaDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const content = view.state.doc.toString();
+  const selection = view.state.selection.main;
+
+  for (const match of content.matchAll(INLINE_META_REGEX)) {
+    const from = match.index;
+    if (from == null) continue;
+
+    const to = from + match[0].length;
+    const isActive = selection.empty
+      ? selection.head >= from && selection.head <= to
+      : selection.from < to && selection.to > from;
+
+    builder.add(
+      from,
+      to,
+      Decoration.mark({
+        class: isActive ? 'cm-inline-meta cm-inline-meta-active' : 'cm-inline-meta',
+      }),
+    );
+  }
+
+  return builder.finish();
+}
+
+const inlineMetaPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
-    constructor(view: EditorView) { this.decorations = durationDecorator.createDeco(view); }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    update(u: any) { this.decorations = durationDecorator.updateDeco(u, this.decorations); }
+    constructor(view: EditorView) {
+      this.decorations = buildInlineMetaDecorations(view);
+    }
+    update(update: { docChanged: boolean; selectionSet: boolean; view: EditorView }) {
+      if (update.docChanged || update.selectionSet) {
+        this.decorations = buildInlineMetaDecorations(update.view);
+      }
+    }
   },
   { decorations: v => v.decorations }
 );
@@ -35,6 +67,9 @@ interface Props {
   isNoteColoringEnabled?: boolean;
   isProgressiveFillEnabled?: boolean;
   isPatternTextColoringEnabled?: boolean;
+  showCopyButton?: boolean;
+  showOpenExternalButton?: boolean;
+  playerLabel?: string;
 }
 
 // Typed interface for the methods we actually call on the editor
@@ -73,6 +108,9 @@ export const CodeViewer: React.FC<Props> = ({
   isNoteColoringEnabled,
   isProgressiveFillEnabled,
   isPatternTextColoringEnabled,
+  showCopyButton = true,
+  showOpenExternalButton = true,
+  playerLabel = 'Strudel Player',
 }) => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -175,15 +213,14 @@ export const CodeViewer: React.FC<Props> = ({
           prebake: async () => {
             try {
               initAudioOnFirstClick();
-              const coreModule = await import('@strudel/core');
-              const maybeSamples = (coreModule as Record<string, unknown>).samples;
+              const maybeSamples = Reflect.get(StrudelCore as object, 'samples');
 
               const loadModules = StrudelCore.evalScope(
-                Promise.resolve(coreModule),
-                import('@strudel/draw'),
-                import('@strudel/mini'),
-                import('@strudel/tonal'),
-                import('@strudel/webaudio'),
+                Promise.resolve(StrudelCore),
+                Promise.resolve(StrudelDraw),
+                Promise.resolve(StrudelMini),
+                Promise.resolve(StrudelTonal),
+                Promise.resolve(StrudelWebAudio),
               );
 
               const promises: Promise<unknown>[] = [loadModules, registerSynthSounds(), registerSoundfonts()];
@@ -231,7 +268,7 @@ export const CodeViewer: React.FC<Props> = ({
         if (cmView) {
           cmView.dispatch({
             effects: StateEffect.appendConfig.of([
-              durationPlugin,
+              inlineMetaPlugin,
               strudelPlaybackHighlightExtension,
             ])
           });
@@ -274,7 +311,7 @@ export const CodeViewer: React.FC<Props> = ({
     };
   }, []);
 
-  // Per-note hover handler for duration tags (reveals .cm-at-duration on adjacent note hover)
+  // Per-note hover handler for inline meta tags (duration + velocity)
   useEffect(() => {
     const container = editorContainerRef.current;
     if (!container || durationTagStyle !== 'hover') return;
@@ -283,7 +320,7 @@ export const CodeViewer: React.FC<Props> = ({
 
     const clearLast = () => {
       if (lastShown) {
-        lastShown.classList.remove('cm-duration-hovered');
+        lastShown.classList.remove('cm-inline-meta-hovered');
         lastShown = null;
       }
     };
@@ -293,16 +330,14 @@ export const CodeViewer: React.FC<Props> = ({
       const target = e.target as Element;
       if (!target) return;
 
-      // If we hovered the duration tag itself, show it
-      if (target.classList?.contains('cm-at-duration')) {
-        target.classList.add('cm-duration-hovered');
+      if (target.classList?.contains('cm-inline-meta')) {
+        target.classList.add('cm-inline-meta-hovered');
         lastShown = target;
         return;
       }
-      // Otherwise show the immediately following duration tag (if any)
       const next = target.nextElementSibling;
-      if (next?.classList.contains('cm-at-duration')) {
-        next.classList.add('cm-duration-hovered');
+      if (next?.classList.contains('cm-inline-meta')) {
+        next.classList.add('cm-inline-meta-hovered');
         lastShown = next;
       }
     };
@@ -414,64 +449,75 @@ export const CodeViewer: React.FC<Props> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-noir-800 border border-zinc-800 rounded-lg overflow-hidden shadow-2xl">
-      <div className="flex items-center justify-between px-4 py-2 bg-noir-900 border-b border-zinc-800">
-        <div className="flex space-x-2 items-center">
-          <div className="flex space-x-1.5 mr-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50" />
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500/50" />
+    <div className="flex h-full flex-col overflow-hidden rounded-[22px] border border-gold-500/12 bg-[linear-gradient(180deg,rgba(20,20,20,0.98),rgba(10,10,10,1))] shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
+      <div className="border-b border-gold-500/12 bg-[linear-gradient(180deg,rgba(28,28,28,0.96),rgba(16,16,16,0.98))] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.26em] text-gold-500/70">
+              strudel editor
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-semibold text-zinc-100">{playerLabel}</span>
+              {isLoading ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-gold-500/30 bg-gold-500/10 px-2 py-0.5 text-[11px] text-gold-300 animate-pulse">
+                  <Loader2 size={11} className="animate-spin" />
+                  Loading engine
+                </span>
+              ) : audioError ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300">
+                  <AlertTriangle size={11} />
+                  Audio error
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                  Ready
+                </span>
+              )}
+            </div>
           </div>
-          <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest hidden sm:block">Strudel Player</span>
 
-          {isLoading ? (
-             <span className="flex items-center space-x-1 text-xs text-gold-500 animate-pulse ml-2">
-                <Loader2 size={12} className="animate-spin" />
-                <span>Loading Engine...</span>
-             </span>
-          ) : audioError ? (
-             <span className="flex items-center space-x-1 text-xs text-red-400 ml-2">
-                <AlertTriangle size={12} />
-                <span>Audio Error</span>
-             </span>
-          ) : (
-             <span className="text-xs text-green-500/80 ml-2">Ready</span>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
-                onClick={togglePlay}
-                disabled={!isReady}
-                aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold uppercase rounded transition-all shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${
-                    isPlaying
-                    ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/50 focus-visible:outline-red-500'
-                    : 'bg-green-500/10 text-green-500 hover:bg-green-500/20 border border-green-500/50 focus-visible:outline-green-500'
-                } ${!isReady ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={togglePlay}
+              disabled={!isReady}
+              aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${
+                isPlaying
+                  ? 'border-red-500/50 bg-red-500/12 text-red-300 hover:bg-red-500/18 focus-visible:outline-red-500'
+                  : 'border-emerald-500/50 bg-emerald-500/12 text-emerald-300 hover:bg-emerald-500/18 focus-visible:outline-emerald-500'
+              } ${!isReady ? 'cursor-not-allowed opacity-50' : ''}`}
             >
-                {isPlaying ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
-                <span>{isPlaying ? 'Stop' : 'Play'}</span>
+              {isPlaying ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+              <span>{isPlaying ? 'Stop' : 'Play'}</span>
             </button>
 
-            <div className="w-px h-4 bg-zinc-800 mx-1" />
-
-            <button
+            {showCopyButton && (
+              <button
                 onClick={handleCopy}
                 aria-label={copyError ? 'Copy failed — text selected' : copied ? 'Copied!' : 'Copy to clipboard'}
-                className={`p-1.5 transition-colors rounded hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${copyError ? 'text-red-400' : 'text-zinc-400 hover:text-gold-400'}`}
+                className={`inline-flex items-center justify-center rounded-full border px-2.5 py-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500 ${
+                  copyError
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                    : 'border-zinc-700 bg-zinc-900/80 text-zinc-400 hover:border-gold-500/35 hover:text-gold-300'
+                }`}
                 title={copyError ? 'Copy failed' : 'Copy to clipboard'}
-            >
+              >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-            <button
+              </button>
+            )}
+
+            {showOpenExternalButton && (
+              <button
                 onClick={handleOpenStrudel}
                 aria-label="Open in Strudel editor"
-                className="flex items-center space-x-1 px-3 py-1.5 bg-gold-600 text-white text-xs font-bold uppercase rounded hover:bg-gold-500 transition-all shadow-lg shadow-gold-600/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-400"
-            >
-                <span>Open External</span>
+                className="inline-flex items-center gap-1 rounded-full border border-gold-500/45 bg-gold-500/12 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-gold-200 transition-all hover:bg-gold-500/18 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-400"
+              >
+                <span>Open in Strudel</span>
                 <ExternalLink size={12} />
-            </button>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -491,7 +537,8 @@ export const CodeViewer: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex-1 relative bg-noir-900 overflow-hidden group">
+      <div className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.06),transparent_30%),linear-gradient(180deg,rgba(9,9,9,0.98),rgba(6,6,6,1))] group">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-gold-500/5 to-transparent" />
         <div
           ref={editorContainerRef}
           className="h-full w-full text-sm"

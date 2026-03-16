@@ -244,10 +244,8 @@ function buildActiveNoteStyle(
       )} 0deg ${progressDegrees}deg, transparent ${progressDegrees}deg 360deg);`
     : `background-color: ${toTransparentColor(color)};`;
 
-  const shouldUseContrastText =
-    isPatternTextColoringEnabled || isNoteColor(color);
-  const textColorStyle = shouldUseContrastText
-    ? `--strudel-active-text-color: ${toContrastTextColor(color)}; color: var(--strudel-active-text-color) !important;`
+  const textColorStyle = isPatternTextColoringEnabled
+    ? buildContrastTextStyle(color)
     : "";
 
   return [
@@ -260,10 +258,6 @@ function buildActiveNoteStyle(
   ]
     .filter(Boolean)
     .join("; ");
-}
-
-function isNoteColor(color: string) {
-  return color.trim().startsWith("hsl(");
 }
 
 function getProgressDegrees(atTime: NumericLike, hap: HapLike) {
@@ -328,15 +322,24 @@ function toOutlineColor(color: string) {
   return `color-mix(in srgb, ${color} 90%, transparent)`;
 }
 
-// Returns dark or light text depending on the background lightness.
-// Parses the HSL lightness from noteToHslColor's output format.
-function toContrastTextColor(color: string) {
+function buildContrastTextStyle(color: string) {
+  const lightness = getColorLightness(color);
+  const shadowAlpha =
+    lightness == null ? 0.82 : lightness >= 64 ? 0.96 : lightness >= 52 ? 0.88 : 0.76;
+
+  return [
+    "--strudel-active-text-color: white",
+    "color: var(--strudel-active-text-color) !important",
+    `text-shadow: 0 0 1px rgba(0, 0, 0, ${shadowAlpha}), 0 0 2px rgba(0, 0, 0, ${Math.min(1, shadowAlpha + 0.08)}), 0 0 4px rgba(0, 0, 0, 0.35)`,
+  ].join("; ");
+}
+
+function getColorLightness(color: string) {
   const match = color.match(
     /hsl\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*([\d.]+)%\s*\)/,
   );
   if (!match) {
-    return "var(--background)";
+    return null;
   }
-  const lightness = parseFloat(match[1]);
-  return lightness >= 64 ? "white" : "white";
+  return parseFloat(match[1]);
 }

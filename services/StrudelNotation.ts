@@ -11,6 +11,7 @@
 import { StrudelConfig, Track } from '../types';
 import { renderDrumTrack } from './notation/DrumRenderer';
 import { renderMelodicTrack } from './notation/MelodicRenderer';
+import { gcd, getMeasureDuration } from './notation/NotationUtils';
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -26,17 +27,11 @@ export class StrudelNotation {
       return Math.max(max, trackMax);
     }, 0);
 
-    const barDur = (60 / this.config.sourceBpm) * this.config.timeSignature.numerator;
+    const barDur = getMeasureDuration(this.config);
     if (maxDuration === 0) maxDuration = barDur;
 
     // 2. Generate CPS setup
-    let cpsFormula = "";
-    if (this.config.cycleUnit === 'bar') {
-      const numerator = this.config.timeSignature.numerator || 4;
-      cpsFormula = `BPM / 60 / ${numerator}`;
-    } else {
-      cpsFormula = `BPM / 60`;
-    }
+    const cpsFormula = this.getCpsFormula();
 
     const timeSig = `${this.config.timeSignature.numerator}/${this.config.timeSignature.denominator}`;
     const title = this.config.fileName ?? 'MIDI Conversion';
@@ -64,5 +59,26 @@ export class StrudelNotation {
     });
 
     return output;
+  }
+
+  private getCpsFormula(): string {
+    const numerator = this.config.timeSignature.numerator || 4;
+    const denominator = this.config.timeSignature.denominator || 4;
+    const quarterNotesPerCycle =
+      this.config.cycleUnit === 'bar' ? numerator * 4 : 4;
+    const commonFactor = gcd(denominator, quarterNotesPerCycle);
+    const scaledNumerator = denominator / commonFactor;
+    const scaledDenominator = quarterNotesPerCycle / commonFactor;
+
+    if (scaledNumerator === 1 && scaledDenominator === 1) {
+      return 'BPM / 60';
+    }
+    if (scaledNumerator === 1) {
+      return `BPM / 60 / ${scaledDenominator}`;
+    }
+    if (scaledDenominator === 1) {
+      return `BPM / 60 * ${scaledNumerator}`;
+    }
+    return `BPM / 60 * ${scaledNumerator} / ${scaledDenominator}`;
   }
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
 import { StrudelConfig } from '../../types';
-import { SectionHeader, HelpText, ToggleSwitch } from './SidebarShared';
+import { getBoundedNumberInputValue, SectionHeader, HelpText, ToggleSwitch } from './SidebarShared';
 
 interface Props {
   config: StrudelConfig;
@@ -38,7 +38,7 @@ export const QuantizationSettings: React.FC<Props> = ({ config, setConfig }) => 
                         type="range" min="0" max="100"
                         value={config.quantizationStrength}
                         aria-label={`Quantization strength ${config.quantizationStrength}%`}
-                        onChange={(e) => updateConfig('quantizationStrength', parseInt(e.target.value))}
+                        onChange={(e) => updateConfig('quantizationStrength', getBoundedNumberInputValue(e, config.quantizationStrength, 0, 100))}
                         className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                 </div>
@@ -51,7 +51,7 @@ export const QuantizationSettings: React.FC<Props> = ({ config, setConfig }) => 
                         type="range" min="0" max="200" step="10"
                         value={config.quantizationThreshold}
                         aria-label={`Quantization threshold ${config.quantizationThreshold} milliseconds`}
-                        onChange={(e) => updateConfig('quantizationThreshold', parseInt(e.target.value))}
+                        onChange={(e) => updateConfig('quantizationThreshold', getBoundedNumberInputValue(e, config.quantizationThreshold, 0, 200))}
                         className="w-full accent-gold-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
                     />
                     <HelpText>Snaps notes to the nearest grid line if they are close enough.</HelpText>

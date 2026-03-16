@@ -17,9 +17,21 @@ interface Props {
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   onClear: () => void;
   onUpload: () => void;
+  isMobileOpen: boolean;
+  onCloseMobile: () => void;
 }
 
-export const Sidebar: React.FC<Props> = ({ config, setConfig, tracks, setTracks, keySignature, onClear, onUpload }) => {
+export const Sidebar: React.FC<Props> = ({
+  config,
+  setConfig,
+  tracks,
+  setTracks,
+  keySignature,
+  onClear,
+  onUpload,
+  isMobileOpen,
+  onCloseMobile,
+}) => {
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   const handleClearClick = () => {
@@ -36,7 +48,17 @@ export const Sidebar: React.FC<Props> = ({ config, setConfig, tracks, setTracks,
   };
 
   return (
-    <aside className="w-80 bg-noir-900 border-r border-zinc-800 flex flex-col h-full overflow-hidden shrink-0 z-20 shadow-xl">
+    <>
+    <div
+      className={`fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity lg:hidden ${
+        isMobileOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+      }`}
+      onClick={onCloseMobile}
+      aria-hidden="true"
+    />
+    <aside className={`fixed inset-y-0 left-0 z-40 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-zinc-800 bg-noir-900 shadow-xl transition-transform duration-200 ease-out lg:static lg:z-20 lg:w-80 lg:shrink-0 lg:translate-x-0 ${
+      isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+    }`}>
       <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-noir-900">
         <div>
             <h1 className="text-xl font-bold text-white tracking-tight font-mono">
@@ -46,6 +68,13 @@ export const Sidebar: React.FC<Props> = ({ config, setConfig, tracks, setTracks,
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            onClick={onCloseMobile}
+            aria-label="Close sidebar"
+            className="p-2 text-zinc-500 transition-colors hover:text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 lg:hidden"
+          >
+            <X size={16} />
+          </button>
           {confirmingClear ? (
             <div className="flex items-center space-x-1 bg-red-900/30 border border-red-700/50 rounded-md px-2 py-1">
               <span className="text-xs text-red-300 mr-1">Clear?</span>
@@ -120,5 +149,6 @@ export const Sidebar: React.FC<Props> = ({ config, setConfig, tracks, setTracks,
         />
       </div>
     </aside>
+    </>
   );
 };

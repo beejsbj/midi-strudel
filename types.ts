@@ -109,10 +109,10 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   durationPrecision: 4,
 
   durationTagStyle: 'sup',
-  visualMethods: [],
+  visualMethods: ['pianoroll'],
   visualScope: 'inline',
-  isTrackColoringEnabled: false,
+  isTrackColoringEnabled: true,
   isNoteColoringEnabled: false,
-  isProgressiveFillEnabled: false,
-  isPatternTextColoringEnabled: false,
+  isProgressiveFillEnabled: true,
+  isPatternTextColoringEnabled: true,
 };
