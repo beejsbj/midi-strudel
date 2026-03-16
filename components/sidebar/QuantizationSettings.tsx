@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
 import { StrudelConfig } from '../../types';
+import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   HelpText,
@@ -23,10 +24,6 @@ export const QuantizationSettings: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
-
   return (
     <SidebarSection
       icon={<Clock size={14} />}
@@ -36,7 +33,7 @@ export const QuantizationSettings: React.FC<Props> = ({
       action={
         <ToggleSwitch
           checked={config.isQuantized}
-          onChange={(checked) => updateConfig('isQuantized', checked)}
+          onChange={(checked) => updateConfigValue(setConfig, 'isQuantized', checked)}
           aria-label="Enable quantization"
         />
       }
@@ -54,7 +51,7 @@ export const QuantizationSettings: React.FC<Props> = ({
               max="100"
               value={config.quantizationStrength}
               aria-label={`Quantization strength ${config.quantizationStrength}%`}
-              onChange={(e) => updateConfig('quantizationStrength', getBoundedNumberInputValue(e, config.quantizationStrength, 0, 100))}
+              onChange={(e) => updateConfigValue(setConfig, 'quantizationStrength', getBoundedNumberInputValue(e, config.quantizationStrength, 0, 100))}
               className={`h-1.5 bg-zinc-800 ${sliderClass}`}
             />
           </div>
@@ -71,7 +68,7 @@ export const QuantizationSettings: React.FC<Props> = ({
               step="10"
               value={config.quantizationThreshold}
               aria-label={`Quantization threshold ${config.quantizationThreshold} milliseconds`}
-              onChange={(e) => updateConfig('quantizationThreshold', getBoundedNumberInputValue(e, config.quantizationThreshold, 0, 200))}
+              onChange={(e) => updateConfigValue(setConfig, 'quantizationThreshold', getBoundedNumberInputValue(e, config.quantizationThreshold, 0, 200))}
               className={`h-1.5 bg-zinc-800 ${sliderClass}`}
             />
             <HelpText>Snaps notes to the nearest grid line if they are close enough.</HelpText>

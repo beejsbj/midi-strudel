@@ -30,7 +30,7 @@ export interface Track {
 export interface KeySignature {
   root: string;
   type: 'major' | 'minor';
-  confidence: number;
+  confidence: number; // Normalized 0..1 confidence score
   averageOctave: number;
 }
 

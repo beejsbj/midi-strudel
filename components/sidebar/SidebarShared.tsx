@@ -1,4 +1,5 @@
 import React from 'react';
+import type { ChangeEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 interface ToggleSwitchProps {
@@ -312,7 +313,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
 );
 
 export function getBoundedNumberInputValue(
-  event: React.ChangeEvent<HTMLInputElement>,
+  event: ChangeEvent<HTMLInputElement>,
   currentValue: number,
   min: number,
   max: number,

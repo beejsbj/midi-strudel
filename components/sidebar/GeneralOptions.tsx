@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sliders } from 'lucide-react';
 import { StrudelConfig } from '../../types';
+import { patchConfig, updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   SwitchRow,
@@ -22,20 +23,17 @@ export const GeneralOptions: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
-
   const toggleLineMode = () => {
     const next = config.formatPerLineBy === 'note' ? 'measure' : 'note';
-    setConfig(prev => ({
-      ...prev,
+    patchConfig(setConfig, {
       formatPerLineBy: next,
       measuresPerLine: next === 'note' ? 4 : 1,
-    }));
+    });
   };
 
   const isByNote = config.formatPerLineBy === 'note';
+  const lineModeLabel = isByNote ? 'Notes' : 'Measures';
+  const lineModeHint = 'Controls line wrapping.';
 
   return (
     <SidebarSection
@@ -48,7 +46,7 @@ export const GeneralOptions: React.FC<Props> = ({
         label="Include Velocity"
         description="Adds :velocity to notes."
         checked={config.includeVelocity}
-        onChange={(checked) => updateConfig('includeVelocity', checked)}
+        onChange={(checked) => updateConfigValue(setConfig, 'includeVelocity', checked)}
         aria-label="Include velocity"
       />
 
@@ -61,19 +59,19 @@ export const GeneralOptions: React.FC<Props> = ({
               className="text-gold-500 underline decoration-dotted underline-offset-4 transition-colors hover:text-gold-300 focus:outline-none"
               title={`Switch to ${isByNote ? 'measures' : 'notes'} per line`}
             >
-              {isByNote ? 'Notes' : 'Measures'}
+              {lineModeLabel}
             </button>
             {' Per Line'}
           </span>
-          <p className={fieldHintClass}>Controls line wrapping.</p>
+          <p className={fieldHintClass}>{lineModeHint}</p>
         </div>
         <input
           type="number"
           min="1"
           max="64"
-          aria-label={`${isByNote ? 'Notes' : 'Measures'} per line`}
+          aria-label={`${lineModeLabel} per line`}
           value={config.measuresPerLine}
-          onChange={(e) => updateConfig('measuresPerLine', getBoundedNumberInputValue(e, config.measuresPerLine, 1, 64))}
+          onChange={(e) => updateConfigValue(setConfig, 'measuresPerLine', getBoundedNumberInputValue(e, config.measuresPerLine, 1, 64))}
           className={`w-16 text-center ${compactInputClass}`}
         />
       </div>
@@ -89,7 +87,7 @@ export const GeneralOptions: React.FC<Props> = ({
           max="8"
           aria-label="Duration precision"
           value={config.durationPrecision}
-          onChange={(e) => updateConfig('durationPrecision', getBoundedNumberInputValue(e, config.durationPrecision, 1, 8))}
+          onChange={(e) => updateConfigValue(setConfig, 'durationPrecision', getBoundedNumberInputValue(e, config.durationPrecision, 1, 8))}
           className={`w-16 text-center ${compactInputClass}`}
         />
       </div>

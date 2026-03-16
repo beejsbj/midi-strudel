@@ -1,6 +1,5 @@
 
-
-import { Midi } from 'https://esm.sh/@tonejs/midi@2.0.28';
+import { Midi } from '@tonejs/midi';
 import { Track, Note } from '../types';
 
 export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm: number, timeSignature: {numerator: number, denominator: number} }> => {
@@ -8,7 +7,7 @@ export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm:
   let midi;
   try {
     midi = new Midi(arrayBuffer);
-  } catch (e) {
+  } catch {
     throw new Error("Failed to parse MIDI file. The file may be corrupt or in an unsupported format.");
   }
 

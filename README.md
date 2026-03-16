@@ -4,82 +4,76 @@
 
 # midi-strudel
 
-A web tool for converting MIDI files into [Strudel](https://strudel.cc/) live-coding notation. Strudel is a browser-based live-coding environment that uses a cycle-based pattern language to make and perform music.
+`midi-strudel` converts MIDI files into [Strudel](https://strudel.cc/) live-coding notation, lets you preview the generated code in an embedded Strudel player, and gives you a fast path into the Strudel REPL for further tweaking.
 
-> **Early-stage / experimental.** Complex MIDI files may not convert perfectly. Treat the output as a starting point, not a finished score.
+Version `1.0.0` is the first cleanup-and-release pass: the app behavior is largely the same, but the repo structure, tests, tooling, and docs are now meant to be stable enough to maintain.
 
----
+> Complex MIDI files still need human taste. Treat the generated output as a strong starting point, not a final score.
 
-## Why this exists
+## What It Does
 
-Strudel thinks in repeating cycles and patterns. Most musicians think in linear piano rolls and MIDI files. These two worlds don't map cleanly onto each other — especially when you have polyphony, overlapping notes, and real-world timing imprecision.
+- Parses `.mid` and `.midi` files in the browser
+- Detects tempo, time signature, drum tracks, and a likely musical key
+- Converts tracks into Strudel-friendly melody/harmony output
+- Supports absolute notes or relative scale-degree notation
+- Lets you tune playback, quantization, formatting, visuals, and per-track mapping
+- Embeds a Strudel editor/player so you can hear and inspect the result immediately
 
-This tool does the translation work: it reads a MIDI file, analyzes its structure, and outputs clean Strudel code you can drop straight into the Strudel REPL and start playing with.
+## Getting Started
 
----
-
-## Key Features
-
-- **Voice splitting** — Separates each track into a melody line (one note at a time) and a harmony line (chords and overlapping notes), matching Strudel's `melody+harmony` pattern style.
-- **Musical key detection** — Uses the Krumhansl-Schmuckler algorithm to automatically detect the key and mode of your MIDI, with a confidence score. You can accept the detected key or set it manually.
-- **Quantization** — Optional grid-snapping to clean up timing imprecision from live recordings. Configurable threshold and correction strength.
-- **Multiple notation styles** — Output absolute pitch names (`note("c4 e4 g4")`) or scale-degree numbers (`n("0 2 4").scale("C4:major")`).
-- **Drum track support** — Drum tracks are detected automatically and mapped using General MIDI note numbers. Unmapped drum notes are dropped rather than producing silence.
-- **Cycle-based durations** — Durations are expressed as fractions of a cycle (`@0.25` = quarter note at default settings). The cycle unit can be set to a bar or a beat.
-- **Per-track sound assignment** — Each track gets a `.sound()` call. You can set sounds manually in the sidebar, or let the tool auto-map based on the MIDI instrument family.
-
----
-
-## How to Use
-
-1. **Drop a MIDI file** onto the upload area (or click to browse).
-2. **Configure settings** in the sidebar — BPM, key, notation style, quantization, and per-track sound assignments.
-3. **Copy the generated code** from the editor on the right.
-4. Click **"Open in Strudel"** to launch the Strudel REPL with your code pre-loaded, or paste it manually at [strudel.cc](https://strudel.cc/).
-
-Settings are live — changing anything in the sidebar immediately updates the output.
-
----
-
-## Local Development
-
-**Prerequisites:** Node.js
+### Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173).
+The Vite dev server runs on [http://localhost:3000](http://localhost:3000).
 
----
+### Quality checks
 
-## Understanding the Output
-
-The generated code follows Strudel's mini-notation. A simple example:
-
-```javascript
-$PIANO_MELODY: `<
-C4@0.5 E4@0.5 G4@0.5 C5@1
->`.as("note")
-  .sound("triangle");
+```bash
+npm test
+npm run build
+npm run typecheck
+npm run lint
 ```
 
-A few things to know:
+## Project Structure
 
-- **`<...>`** wraps a sequence of cycles. Each item inside is one event in the timeline.
-- **`@0.5`** sets the duration — `@0.5` is half a cycle (a half note at default 4/4 bar = cycle settings), `@0.25` is a quarter note, and so on.
-- **`~`** is a rest.
-- **`{C4, E4, G4}`** groups simultaneous notes (a chord). Inside brackets, each voice is padded with rests so they all span the same total duration.
-- **`$TRACK_MELODY` / `$TRACK_HARMONY`** — each MIDI track becomes two Strudel patterns: one for single-note melody, one for chords and overlapping notes.
-- **`.as("note")`** tells Strudel to interpret the values as note names. For relative/scale mode, this becomes `.as("n").scale("C4:major")`.
+- `App.tsx` handles the top-level app shell and screen orchestration.
+- `hooks/useProjectState.ts` owns project loading, persistence, and generated-code recomputation.
+- `components/Sidebar.tsx` and `components/sidebar/` contain the settings UI.
+- `components/CodeViewer.tsx` and `components/codeViewer/` contain the embedded Strudel editor/player.
+- `services/StrudelNotation.ts` is the public notation entry point; detailed rendering lives under `services/notation/`.
 
----
+## Notes On Output
+
+The converter is built around Strudel’s cycle-based timing model.
+
+- `@0.25` means one quarter of a cycle
+- `~` is a rest
+- melody and harmony are emitted as separate patterns when overlap requires it
+- relative mode uses `n(...).scale(...)`
+- absolute mode uses `.as("note")`
+
+The historical markdown files in the repo are still intentionally kept:
+
+- `Working out strudel notation and prompt.md` is the original notation-history/workshopping document.
+- `strudel-reference.md` is a Strudel syntax/reference note used during development.
 
 ## Known Limitations
 
-- **Complex polyphony** — The voice-splitting algorithm is straightforward: the first non-overlapping note becomes melody, everything else goes to harmony. Dense arrangements may need manual cleanup.
-- **Drum mapping** — Only General MIDI standard drum notes are mapped. Non-standard drum notes are silently dropped.
-- **Quantization is optional and imprecise** — Aggressive quantization can distort timing in ways that feel unmusical. Start conservative (high threshold, moderate strength).
-- **Tempo changes** — MIDI files with multiple tempo changes may not convert accurately. The tool uses a single BPM value for the entire file.
-- **MIDI format support** — Works best with standard Type 0 and Type 1 MIDI files.
+- Dense polyphony can still need manual cleanup after conversion
+- Drum mapping is intentionally conservative and only covers known mappings
+- Multi-tempo MIDI files are flattened to a single playback tempo
+- Quantization is useful, but aggressive settings can make output feel less musical
+- The embedded Strudel/audio bundle is still heavy relative to the rest of the app
+
+## v1.0.0 Release Notes
+
+- Normalized key-confidence handling and removed duplicate persisted key state
+- Split the top-level app flow into smaller screen/state pieces
+- Split the Strudel editor into a hook plus smaller UI components
+- Replaced the CDN-style MIDI parser import with a package-managed dependency
+- Added `lint` and `typecheck` scripts and refreshed the repo docs

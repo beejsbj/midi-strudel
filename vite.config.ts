@@ -15,6 +15,7 @@ export default defineConfig({
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('@strudel/soundfonts')) return 'strudel-soundfonts';
+            if (id.includes('@strudel/') || id.includes('@codemirror/')) return 'strudel-editor';
             if (id.includes('react') || id.includes('scheduler')) return 'react-vendor';
             return undefined;
           },

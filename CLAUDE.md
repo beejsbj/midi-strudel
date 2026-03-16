@@ -1,66 +1,53 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives repository-specific guidance to coding agents working in `midi-strudel`.
 
 ## Commands
 
 ```bash
-bun install          # Install dependencies
-bun run dev          # Start dev server at http://localhost:3000
-bun run build        # Production build
-bun run test         # Run all tests (vitest)
-bun run test -- services/notation/__tests__/NotationUtils.test.ts  # Run a single test file
+npm install
+npm run dev
+npm test
+npm run build
+npm run typecheck
+npm run lint
 ```
+
+The dev server is configured for `http://localhost:3000`.
 
 ## Architecture
 
-This is a MIDI-to-Strudel converter — a React + TypeScript + Vite SPA that parses MIDI files, converts them to [Strudel](https://strudel.cc/) live-coding notation, and embeds a full Strudel player with CodeMirror editor.
+This is a React + TypeScript + Vite SPA for converting MIDI files into Strudel notation and previewing the generated result in an embedded Strudel editor/player.
 
-### Data flow
+### Main flow
 
-1. User drops a `.mid` file → `MidiParser` → `Track[]` + detected BPM/time sig
-2. `KeyDetector` runs Krumhansl-Schmuckler algorithm on the `Track[]` to detect `KeySignature`
-3. `App.tsx` holds `StrudelConfig` + `Track[]` in state (persisted to `localStorage`)
-4. `StrudelNotation.generate(tracks)` → Strudel code string (recomputed via `useMemo` on any config/track change)
-5. `CodeViewer` renders the code in an embedded `StrudelMirror` editor with live playback
+1. A MIDI file is loaded from the drop zone, hidden file input, or an example asset.
+2. `parseMidiFile` converts it into `Track[]` plus BPM/time signature metadata.
+3. `detectKey` estimates a musical key and stores a normalized confidence score.
+4. `useProjectState` persists `config` and `tracks`, and recomputes generated code with `StrudelNotation`.
+5. The sidebar updates config/track overrides, and `CodeViewer` renders or plays the current Strudel output.
 
-### Key types (`types.ts`)
+### Important files
 
-- `Note` — single MIDI note with `noteOn`/`noteOff` in seconds, `midi` number, `velocity 0-1`
-- `Track` — array of `Note[]` plus metadata (name, sound, color, isDrum, hidden, per-track visual override)
-- `StrudelConfig` — all conversion/playback settings; `DEFAULT_CONFIG` is the source of truth for defaults
-- `KeySignature` — root, type (major/minor), confidence, averageOctave
-
-### Notation pipeline (`services/notation/`)
-
-`StrudelNotation` (entry point) delegates to:
-- `NotationUtils.ts` — pure math/formatting helpers: `getCycleDuration`, `prepareNotes` (quantization), `formatNoteVal`, `getRelativeDegree`, `buildVisualSuffix`, rest token helpers
-- `GridBuilder.ts` — LCM/GCD grid construction; produces absolute (`renderMeasureAbsolute`) or subdivision (`renderMeasureSubdivision`) measure strings
-- `DrumRenderer.ts` — maps MIDI drum notes via General MIDI drum map to Strudel sample names
-- `MelodicRenderer.ts` — `splitMelodyHarmony` separates notes into melody (non-overlapping) and harmony (chords); `renderSequence` builds the token stream per voice
-
-### Strudel integration (`components/CodeViewer.tsx`)
-
-Embeds `@strudel/codemirror`'s `StrudelMirror` editor. The editor instance is stored in a ref and accessed via a typed `StrudelEditorInstance` interface. On mount, `prebake` loads all Strudel modules and soundfonts. Code changes propagate to the editor via `setEditorContent`; if playing, the pattern is re-evaluated.
-
-Custom CodeMirror extensions injected into the editor:
-- `durationPlugin` — dims `@0.25`-style duration annotations
-- `strudelPlaybackHighlightExtension` (`components/strudelPlaybackHighlight.ts`) — highlights active notes during playback using `StateField`s and `EditorView.decorations`; supports note coloring (hue from pitch class), progressive fill (conic gradient), and pattern text coloring
-
-### Sidebar
-
-`Sidebar.tsx` composes section components from `components/sidebar/`:
-- `PlaybackSettings` — BPM, key, time signature, notation type (absolute/relative)
-- `FormatSettings` — cycle unit, duration style, format-per-line
-- `QuantizationSettings` — snap-to-grid options
-- `GeneralOptions` — sound mapping, velocity
-- `VisualsSection` — visual methods (pianoroll, punchcard, spiral, pitchwheel, spectrum), visual scope, and coloring toggles
-- `TrackList` — per-track sound, color swatch, visual override, hide/show
-
-### Visual methods
-
-Visual methods in `StrudelConfig.visualMethods` map to Strudel's draw functions. When `visualScope === 'inline'`, the function is prefixed with `_` (e.g., `._pianoroll()`) to render inline. Per-track overrides in `Track.trackVisualMethod` take precedence over the global array. `.color()` is always emitted before visual methods in `buildVisualSuffix`.
+- `App.tsx` wires the top-level shell and screen switching.
+- `hooks/useProjectState.ts` owns project hydration, persistence, load/clear actions, and generated code.
+- `services/projectStorage.ts` contains config sanitization and localStorage helpers.
+- `services/StrudelNotation.ts` is the notation entry point.
+- `services/notation/` contains focused notation helpers/renderers.
+- `components/codeViewer/useStrudelEditor.ts` owns Strudel editor lifecycle and playback wiring.
+- `components/Sidebar.tsx` plus `components/sidebar/` contain settings UI.
 
 ### Tests
 
-Tests live in `services/notation/__tests__/` and use Vitest. They cover `NotationUtils`, `GridBuilder`, `MelodicRenderer`, and `DrumRenderer`.
+Vitest covers the notation pipeline and project-storage/key-detection contracts.
+
+Primary test areas:
+
+- `services/notation/__tests__/`
+- `services/__tests__/KeyDetector.test.ts`
+- `services/__tests__/projectStorage.test.ts`
+
+## Repo notes
+
+- Keep historical markdown files in place unless explicitly asked to remove them.
+- Prefer `npm` commands when documenting or verifying this repo, since the lockfile and current workflow are npm-based.

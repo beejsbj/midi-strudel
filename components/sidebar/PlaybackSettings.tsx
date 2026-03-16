@@ -2,13 +2,13 @@ import React from 'react';
 import { Activity, RotateCcw } from 'lucide-react';
 import { StrudelConfig, KeySignature } from '../../types';
 import { PITCH_CLASSES } from '../../constants';
+import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   controlCardClass,
   sliderClass,
   valuePillClass,
   inputClass,
-  compactInputClass,
   getBoundedNumberInputValue,
 } from './SidebarShared';
 
@@ -25,17 +25,13 @@ export const PlaybackSettings: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
-
   const updatePlaybackKey = (field: keyof KeySignature, value: string | number) => {
       if (!config.playbackKey) return;
-      updateConfig('playbackKey', { ...config.playbackKey, [field]: value });
+      updateConfigValue(setConfig, 'playbackKey', { ...config.playbackKey, [field]: value });
   };
 
   const updateTimeSig = (field: 'numerator' | 'denominator', value: number) => {
-      updateConfig('timeSignature', { ...config.timeSignature, [field]: value });
+      updateConfigValue(setConfig, 'timeSignature', { ...config.timeSignature, [field]: value });
   };
 
   return (
@@ -60,7 +56,7 @@ export const PlaybackSettings: React.FC<Props> = ({
               </div>
               {config.bpm !== config.sourceBpm && (
                 <button
-                  onClick={() => updateConfig('bpm', config.sourceBpm)}
+                  onClick={() => updateConfigValue(setConfig, 'bpm', config.sourceBpm)}
                   aria-label="Reset to source BPM"
                   className="rounded-sm border border-[rgba(245,158,11,0.14)] bg-black/45 p-1 text-zinc-500 transition-colors hover:border-gold-500/35 hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500"
                   title="Reset to Source BPM"
@@ -76,7 +72,7 @@ export const PlaybackSettings: React.FC<Props> = ({
               max="300"
               value={config.bpm}
               aria-label={`Tempo ${config.bpm} BPM`}
-              onChange={(e) => updateConfig('bpm', getBoundedNumberInputValue(e, config.bpm, 20, 300))}
+              onChange={(e) => updateConfigValue(setConfig, 'bpm', getBoundedNumberInputValue(e, config.bpm, 20, 300))}
               className={`h-1.5 bg-zinc-800 ${sliderClass}`}
             />
           </div>
@@ -95,7 +91,7 @@ export const PlaybackSettings: React.FC<Props> = ({
             config.timeSignature.denominator !== config.sourceTimeSignature?.denominator
           ) && (
             <button
-              onClick={() => updateConfig('timeSignature', config.sourceTimeSignature!)}
+              onClick={() => updateConfigValue(setConfig, 'timeSignature', config.sourceTimeSignature!)}
               aria-label="Reset time signature"
               className="absolute right-3 top-3 rounded-sm border border-[rgba(245,158,11,0.14)] bg-black/45 p-1 text-zinc-500 transition-colors hover:border-gold-500/35 hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500"
               title="Reset"

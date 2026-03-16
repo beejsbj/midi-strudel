@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StrudelConfig, Track, KeySignature } from '../types';
+import { StrudelConfig, Track } from '../types';
 import { Upload, Trash2, Check, X } from 'lucide-react';
 import { PlaybackSettings } from './sidebar/PlaybackSettings';
 import { FormatSettings } from './sidebar/FormatSettings';
@@ -36,7 +36,6 @@ function loadCollapsedSections(): Record<SidebarSectionId, boolean> {
 interface Props {
   config: StrudelConfig;
   tracks: Track[];
-  keySignature?: KeySignature;
   setConfig: React.Dispatch<React.SetStateAction<StrudelConfig>>;
   setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   onClear: () => void;
@@ -50,7 +49,6 @@ export const Sidebar: React.FC<Props> = ({
   setConfig,
   tracks,
   setTracks,
-  keySignature,
   onClear,
   onUpload,
   isMobileOpen,

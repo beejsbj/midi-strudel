@@ -166,7 +166,7 @@ export function flattenGrid(beatGrids: string[][]): string[] {
   const lengths = beatGrids.map(g => g.length);
   const totalLCM = lengths.reduce((a, b) => lcm(a, b), 1);
 
-  let fullGrid: string[] = [];
+  const fullGrid: string[] = [];
 
   for (const grid of beatGrids) {
     const factor = totalLCM / grid.length;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Settings } from 'lucide-react';
 import { StrudelConfig } from '../../types';
+import { patchConfig, updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   SegmentedControl,
@@ -21,8 +22,21 @@ export const FormatSettings: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
+  const updateTimingStyle = (value: StrudelConfig['timingStyle']) => {
+    if (value === 'relativeDivision') {
+      patchConfig(setConfig, {
+        timingStyle: value,
+        formatPerLineBy: 'measure',
+        measuresPerLine: 1,
+      });
+      return;
+    }
+
+    patchConfig(setConfig, {
+      timingStyle: value,
+      formatPerLineBy: 'note',
+      measuresPerLine: 4,
+    });
   };
 
   return (
@@ -37,7 +51,7 @@ export const FormatSettings: React.FC<Props> = ({
         <SegmentedControl
           aria-label="Notation type"
           value={config.notationType}
-          onChange={(value) => updateConfig('notationType', value as StrudelConfig['notationType'])}
+          onChange={(value) => updateConfigValue(setConfig, 'notationType', value as StrudelConfig['notationType'])}
           options={[
             { value: 'absolute', label: 'Absolute' },
             { value: 'relative', label: 'Relative' },
@@ -55,7 +69,7 @@ export const FormatSettings: React.FC<Props> = ({
         <SegmentedControl
           aria-label="Cycle unit"
           value={config.cycleUnit}
-          onChange={(value) => updateConfig('cycleUnit', value as StrudelConfig['cycleUnit'])}
+          onChange={(value) => updateConfigValue(setConfig, 'cycleUnit', value as StrudelConfig['cycleUnit'])}
           options={[
             { value: 'bar', label: 'Whole Bar' },
             { value: 'beat', label: 'Beat' },
@@ -69,7 +83,7 @@ export const FormatSettings: React.FC<Props> = ({
         <SegmentedControl
           aria-label="Timing syntax"
           value={config.timingStyle}
-          onChange={(value) => updateConfig('timingStyle', value as StrudelConfig['timingStyle'])}
+          onChange={(value) => updateTimingStyle(value as StrudelConfig['timingStyle'])}
           options={[
             { value: 'absoluteDuration', label: 'Duration' },
             { value: 'relativeDivision', label: 'Division' },

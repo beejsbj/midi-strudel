@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Music, Drum } from 'lucide-react';
 import { StrudelConfig, Track } from '../../types';
 import { INSTRUMENTS, DRUM_BANKS, getAutoSound } from '../../constants';
+import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   SwitchRow,
@@ -41,10 +42,6 @@ export const TrackList: React.FC<Props> = ({
     config.visualMethods.length === 0
       ? 'Off'
       : config.visualMethods.map((method) => prettifyOption(method)).join(' + ');
-
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
 
   const toggleTrack = (id: string) => {
     setTracks(prev => prev.map(t => t.id === id ? { ...t, hidden: !t.hidden } : t));
@@ -102,7 +99,7 @@ export const TrackList: React.FC<Props> = ({
           <label className={fieldLabelClass}>Global Sound</label>
           <Combobox
             value={config.globalSound}
-            onChange={(value) => updateConfig('globalSound', value)}
+            onChange={(value) => updateConfigValue(setConfig, 'globalSound', value)}
             options={soundOptions}
             aria-label="Global sound"
           />
@@ -111,7 +108,7 @@ export const TrackList: React.FC<Props> = ({
           label="Auto Mapping"
           description="Guess instruments from track names."
           checked={config.useAutoMapping}
-          onChange={(checked) => updateConfig('useAutoMapping', checked)}
+          onChange={(checked) => updateConfigValue(setConfig, 'useAutoMapping', checked)}
           aria-label="Enable auto mapping"
         />
       </div>

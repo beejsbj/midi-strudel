@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import { StrudelConfig } from '../../types';
+import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   SegmentedControl,
@@ -40,10 +41,6 @@ export const VisualsSection: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateConfig = <K extends keyof StrudelConfig>(key: K, value: StrudelConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
-
   return (
     <SidebarSection
       icon={<Eye size={14} />}
@@ -56,7 +53,7 @@ export const VisualsSection: React.FC<Props> = ({
         <SegmentedControl
           aria-label="Inline metadata style"
           value={config.durationTagStyle}
-          onChange={(value) => updateConfig('durationTagStyle', value as StrudelConfig['durationTagStyle'])}
+          onChange={(value) => updateConfigValue(setConfig, 'durationTagStyle', value as StrudelConfig['durationTagStyle'])}
           columns={3}
           options={DURATION_STYLES.map(({ value, label }) => ({ value, label }))}
         />
@@ -68,7 +65,7 @@ export const VisualsSection: React.FC<Props> = ({
         <MultiSegmentedControl
           aria-label="Playback visual methods"
           values={config.visualMethods}
-          onChange={(values) => updateConfig('visualMethods', values as StrudelConfig['visualMethods'])}
+          onChange={(values) => updateConfigValue(setConfig, 'visualMethods', values as StrudelConfig['visualMethods'])}
           options={VISUAL_METHODS}
         />
 
@@ -77,7 +74,7 @@ export const VisualsSection: React.FC<Props> = ({
             label="Inline Scope"
             description="Uses `._pianoroll()` instead of `.pianoroll()`."
             checked={config.visualScope === 'inline'}
-            onChange={(checked) => updateConfig('visualScope', checked ? 'inline' : 'global')}
+            onChange={(checked) => updateConfigValue(setConfig, 'visualScope', checked ? 'inline' : 'global')}
             aria-label="Inline visual scope"
           />
         )}
@@ -87,7 +84,7 @@ export const VisualsSection: React.FC<Props> = ({
         label="Track Colors"
         description="Adds `.color()` per track and affects highlights plus visuals."
         checked={config.isTrackColoringEnabled}
-        onChange={(checked) => updateConfig('isTrackColoringEnabled', checked)}
+        onChange={(checked) => updateConfigValue(setConfig, 'isTrackColoringEnabled', checked)}
         aria-label="Track Colors"
       />
 
@@ -103,7 +100,7 @@ export const VisualsSection: React.FC<Props> = ({
             label={label}
             description={desc}
             checked={config[key]}
-            onChange={(checked) => updateConfig(key, checked)}
+            onChange={(checked) => updateConfigValue(setConfig, key, checked)}
             aria-label={label}
           />
         ))}

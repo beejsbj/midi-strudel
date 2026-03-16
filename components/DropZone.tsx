@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { UploadCloud } from 'lucide-react';
 
 interface Props {
@@ -55,7 +56,7 @@ export const DropZone: React.FC<Props> = ({ onFileLoaded }) => {
     onFileLoaded(file);
   }, [onFileLoaded]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     setTypeError(false);
     const file = e.target.files?.[0];
     if (!file) return;
