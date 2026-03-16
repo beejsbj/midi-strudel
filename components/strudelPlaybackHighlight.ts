@@ -4,7 +4,13 @@ import {
   StateField,
   Text,
 } from '@codemirror/state';
-import { Decoration, EditorView } from '@codemirror/view';
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  ViewPlugin,
+  type ViewUpdate,
+} from '@codemirror/view';
 import { isNote, tokenizeNote } from '@strudel/core';
 
 type NumericLike = number | { valueOf(): number };
@@ -28,8 +34,12 @@ type HapLike = {
 type NoteToken = {
   from: number;
   to: number;
-  note: string;
   color: string;
+};
+
+type VisibleRange = {
+  from: number;
+  to: number;
 };
 
 export type ActivePlaybackRange = {
@@ -39,18 +49,35 @@ export type ActivePlaybackRange = {
   duration?: NumericLike;
 };
 
+export type PlaybackFrameRange = {
+  start: number;
+  end: number;
+  progressBucket: number;
+  progressDegrees: number;
+};
+
+export type PlaybackFrame = {
+  atTime: NumericLike;
+  signature: string;
+  ranges: PlaybackFrameRange[];
+};
+
 const defaultOptions: PlaybackHighlightOptions = {
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,
   isPatternTextColoringEnabled: false,
 };
 
+export const PLAYBACK_PROGRESS_BUCKETS = 120;
+export const EMPTY_PLAYBACK_FRAME: PlaybackFrame = {
+  atTime: 0,
+  signature: 'empty',
+  ranges: [],
+};
+
 const setPlaybackOptions =
   StateEffect.define<Partial<PlaybackHighlightOptions>>();
-const setActivePlayback = StateEffect.define<{
-  atTime: NumericLike;
-  ranges: ActivePlaybackRange[];
-}>();
+const setActivePlayback = StateEffect.define<PlaybackFrame>();
 
 export const updatePlaybackHighlightOptions = (
   view: EditorView,
@@ -80,12 +107,79 @@ export const collectActivePlaybackRanges = (haps: HapLike[]): ActivePlaybackRang
   return ranges.sort((left, right) => left.start - right.start || left.end - right.end);
 };
 
-export const highlightPlaybackLocations = (
-  view: EditorView,
+export const createPlaybackFrame = (
   atTime: NumericLike,
   ranges: ActivePlaybackRange[],
+  isProgressiveFillEnabled: boolean,
+): PlaybackFrame => {
+  if (!ranges.length) {
+    return {
+      ...EMPTY_PLAYBACK_FRAME,
+      atTime,
+    };
+  }
+
+  const normalizedRanges = ranges.map((range) => {
+    const progressBucket = getProgressBucket(
+      atTime,
+      range,
+      isProgressiveFillEnabled,
+    );
+
+    return {
+      start: range.start,
+      end: range.end,
+      progressBucket,
+      progressDegrees: Math.round((progressBucket / PLAYBACK_PROGRESS_BUCKETS) * 360),
+    };
+  });
+
+  return {
+    atTime,
+    ranges: normalizedRanges,
+    signature: normalizedRanges
+      .map((range) => `${range.start}:${range.end}:${range.progressBucket}`)
+      .join('|'),
+  };
+};
+
+export const highlightPlaybackLocations = (
+  view: EditorView,
+  frame: PlaybackFrame,
 ) => {
-  view.dispatch({ effects: setActivePlayback.of({ atTime, ranges }) });
+  view.dispatch({ effects: setActivePlayback.of(frame) });
+};
+
+export const getVisibleNoteTokens = (
+  tokens: NoteToken[],
+  visibleRanges: readonly VisibleRange[],
+) => {
+  if (!tokens.length || !visibleRanges.length) {
+    return [];
+  }
+
+  const visibleTokens: NoteToken[] = [];
+  const seen = new Set<string>();
+  let tokenIndex = 0;
+
+  for (const range of visibleRanges) {
+    tokenIndex = findFirstIntersectingTokenIndex(tokens, range.from, tokenIndex);
+
+    let scanIndex = tokenIndex;
+    while (scanIndex < tokens.length && tokens[scanIndex].from < range.to) {
+      const token = tokens[scanIndex];
+      if (token.to > range.from) {
+        const key = `${token.from}:${token.to}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          visibleTokens.push(token);
+        }
+      }
+      scanIndex++;
+    }
+  }
+
+  return visibleTokens;
 };
 
 const playbackOptions = StateField.define<PlaybackHighlightOptions>({
@@ -103,12 +197,9 @@ const playbackOptions = StateField.define<PlaybackHighlightOptions>({
   },
 });
 
-const activePlayback = StateField.define<{
-  atTime: NumericLike;
-  ranges: ActivePlaybackRange[];
-}>({
+const activePlayback = StateField.define<PlaybackFrame>({
   create() {
-    return { atTime: 0, ranges: [] };
+    return EMPTY_PLAYBACK_FRAME;
   },
   update(active, tr) {
     for (const effect of tr.effects) {
@@ -130,88 +221,47 @@ const noteTokens = StateField.define<NoteToken[]>({
   },
 });
 
-const passiveNoteDecorations = EditorView.decorations.compute(
-  [noteTokens, playbackOptions],
-  (state) => {
-    const tokens = state.field(noteTokens);
-    const options = state.field(playbackOptions);
-    const builder = new RangeSetBuilder<Decoration>();
+const passiveNoteDecorations = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
 
-    if (!options.isNoteColoringEnabled) {
-      return builder.finish();
+    constructor(view: EditorView) {
+      this.decorations = buildPassiveNoteDecorations(view);
     }
 
-    for (const token of tokens) {
-      builder.add(
-        token.from,
-        token.to,
-        Decoration.mark({
-          attributes: {
-            'data-strudel-note-color': token.color,
-            style: `--strudel-note-color: ${token.color}; color: ${token.color};`,
-          },
-        }),
-      );
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        didFieldChange(update, playbackOptions)
+      ) {
+        this.decorations = buildPassiveNoteDecorations(update.view);
+      }
     }
-
-    return builder.finish();
   },
+  { decorations: (plugin) => plugin.decorations },
 );
 
-const activeNoteDecorations = EditorView.decorations.compute(
-  [noteTokens, playbackOptions, activePlayback],
-  (state) => {
-    const tokens = state.field(noteTokens);
-    const options = state.field(playbackOptions);
-    const { atTime, ranges } = state.field(activePlayback);
-    const builder = new RangeSetBuilder<Decoration>();
-    const decoratedTokens = new Set<string>();
-    let tokenIndex = 0;
+const activeNoteDecorations = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
 
-    for (const range of ranges) {
-      while (tokenIndex < tokens.length && tokens[tokenIndex].to <= range.start) {
-        tokenIndex++;
-      }
-
-      let scanIndex = tokenIndex;
-      while (scanIndex < tokens.length && tokens[scanIndex].from < range.end) {
-        const token = tokens[scanIndex];
-        if (token.to > range.start) {
-          const key = `${token.from}:${token.to}`;
-          if (!decoratedTokens.has(key)) {
-            decoratedTokens.add(key);
-
-            const color = options.isNoteColoringEnabled
-              ? token.color
-              : 'var(--foreground)';
-            const style = buildActiveNoteStyle(
-              color,
-              atTime,
-              range,
-              options.isProgressiveFillEnabled,
-              options.isPatternTextColoringEnabled,
-            );
-
-            builder.add(
-              token.from,
-              token.to,
-              Decoration.mark({
-                attributes: {
-                  class: 'cm-note-playing',
-                  'data-strudel-active-note': 'true',
-                  style,
-                },
-              }),
-            );
-          }
-        }
-
-        scanIndex++;
-      }
+    constructor(view: EditorView) {
+      this.decorations = buildActiveNoteDecorations(view);
     }
 
-    return builder.finish();
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        didFieldChange(update, playbackOptions) ||
+        didFieldChange(update, activePlayback)
+      ) {
+        this.decorations = buildActiveNoteDecorations(update.view);
+      }
+    }
   },
+  { decorations: (plugin) => plugin.decorations },
 );
 
 export const strudelPlaybackHighlightExtension = [
@@ -221,6 +271,10 @@ export const strudelPlaybackHighlightExtension = [
   passiveNoteDecorations,
   activeNoteDecorations,
 ];
+
+function didFieldChange<T>(update: ViewUpdate, field: StateField<T>) {
+  return update.startState.field(field) !== update.state.field(field);
+}
 
 function extractNoteTokens(doc: Text) {
   const tokens: NoteToken[] = [];
@@ -244,7 +298,6 @@ function extractNoteTokens(doc: Text) {
     tokens.push({
       from,
       to: from + note.length,
-      note,
       color,
     });
   }
@@ -252,16 +305,130 @@ function extractNoteTokens(doc: Text) {
   return tokens;
 }
 
+function buildPassiveNoteDecorations(view: EditorView) {
+  const options = view.state.field(playbackOptions);
+  if (!options.isNoteColoringEnabled) {
+    return Decoration.none;
+  }
+
+  const visibleTokens = getVisibleNoteTokens(
+    view.state.field(noteTokens),
+    view.visibleRanges,
+  );
+  if (!visibleTokens.length) {
+    return Decoration.none;
+  }
+
+  const builder = new RangeSetBuilder<Decoration>();
+
+  for (const token of visibleTokens) {
+    builder.add(
+      token.from,
+      token.to,
+      Decoration.mark({
+        attributes: {
+          'data-strudel-note-color': token.color,
+          style: `--strudel-note-color: ${token.color}; color: ${token.color};`,
+        },
+      }),
+    );
+  }
+
+  return builder.finish();
+}
+
+function buildActiveNoteDecorations(view: EditorView) {
+  const options = view.state.field(playbackOptions);
+  const { ranges } = view.state.field(activePlayback);
+
+  if (!ranges.length) {
+    return Decoration.none;
+  }
+
+  const visibleTokens = getVisibleNoteTokens(
+    view.state.field(noteTokens),
+    view.visibleRanges,
+  );
+  if (!visibleTokens.length) {
+    return Decoration.none;
+  }
+
+  const builder = new RangeSetBuilder<Decoration>();
+  const decoratedTokens = new Set<string>();
+  let tokenIndex = 0;
+
+  for (const range of ranges) {
+    while (tokenIndex < visibleTokens.length && visibleTokens[tokenIndex].to <= range.start) {
+      tokenIndex++;
+    }
+
+    let scanIndex = tokenIndex;
+    while (
+      scanIndex < visibleTokens.length &&
+      visibleTokens[scanIndex].from < range.end
+    ) {
+      const token = visibleTokens[scanIndex];
+      if (token.to > range.start) {
+        const key = `${token.from}:${token.to}`;
+        if (!decoratedTokens.has(key)) {
+          decoratedTokens.add(key);
+
+          const color = options.isNoteColoringEnabled
+            ? token.color
+            : 'var(--foreground)';
+
+          builder.add(
+            token.from,
+            token.to,
+            Decoration.mark({
+              attributes: {
+                class: 'cm-note-playing',
+                'data-strudel-active-note': 'true',
+                style: buildActiveNoteStyle(
+                  color,
+                  range.progressDegrees,
+                  options.isProgressiveFillEnabled,
+                  options.isPatternTextColoringEnabled,
+                ),
+              },
+            }),
+          );
+        }
+      }
+
+      scanIndex++;
+    }
+  }
+
+  return builder.finish();
+}
+
+function findFirstIntersectingTokenIndex(
+  tokens: NoteToken[],
+  from: number,
+  startIndex: number,
+) {
+  let low = Math.max(0, startIndex);
+  let high = tokens.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (tokens[mid].to <= from) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 function buildActiveNoteStyle(
   color: string,
-  atTime: NumericLike,
-  range: ActivePlaybackRange,
+  progressDegrees: number,
   isProgressiveFillEnabled: boolean,
   isPatternTextColoringEnabled: boolean,
 ) {
-  const progressDegrees = isProgressiveFillEnabled
-    ? getProgressDegrees(atTime, range)
-    : 360;
   const fillStyle = isProgressiveFillEnabled
     ? `background-image: conic-gradient(from 0deg at 50% 50%, ${toTransparentColor(
         color,
@@ -284,16 +451,24 @@ function buildActiveNoteStyle(
     .join('; ');
 }
 
-function getProgressDegrees(atTime: NumericLike, range: ActivePlaybackRange) {
+function getProgressBucket(
+  atTime: NumericLike,
+  range: ActivePlaybackRange,
+  isProgressiveFillEnabled: boolean,
+) {
+  if (!isProgressiveFillEnabled) {
+    return PLAYBACK_PROGRESS_BUCKETS;
+  }
+
   const duration = getTimeValue(range.duration);
   if (!duration) {
-    return 360;
+    return PLAYBACK_PROGRESS_BUCKETS;
   }
 
   const currentTime = getTimeValue(atTime);
   const start = getTimeValue(range.begin);
   const progress = Math.max(0, Math.min(1, (currentTime - start) / duration));
-  return Math.round(progress * 360);
+  return Math.round(progress * PLAYBACK_PROGRESS_BUCKETS);
 }
 
 function getTimeValue(value: NumericLike | undefined) {

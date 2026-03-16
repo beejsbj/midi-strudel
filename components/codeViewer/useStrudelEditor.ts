@@ -16,7 +16,9 @@ import {
 import { registerSoundfonts } from '@strudel/soundfonts';
 import { transpiler } from '@strudel/transpiler';
 import {
+  createPlaybackFrame,
   collectActivePlaybackRanges,
+  EMPTY_PLAYBACK_FRAME,
   highlightPlaybackLocations,
   strudelPlaybackHighlightExtension,
   updatePlaybackHighlightOptions,
@@ -32,6 +34,22 @@ const SAMPLE_JSON_FILES = [
   'mridangam.json',
 ];
 const INLINE_META_REGEX = /(?:@[\d.]+|:(?:\d+(?:\.\d+)?))/g;
+const DEFAULT_EDITOR_SETTINGS = {
+  fontSize: 13,
+  fontFamily: 'IBM Plex Mono, monospace',
+  theme: 'dark',
+  isLineNumbersDisplayed: true,
+  isActiveLineHighlighted: true,
+  isBracketMatchingEnabled: true,
+  isLineWrappingEnabled: true,
+  isBracketClosingEnabled: true,
+  isAutoCompletionEnabled: true,
+  isPatternHighlightingEnabled: true,
+  isFlashEnabled: true,
+  isTooltipEnabled: true,
+  isTabIndentationEnabled: true,
+  isMultiCursorEnabled: true,
+} as const;
 
 interface StrudelEditorInstance {
   getCode?: () => string;
@@ -62,8 +80,6 @@ type InlineMetaToken = {
   from: number;
   to: number;
 };
-
-type HapLike = Parameters<typeof collectActivePlaybackRanges>[0][number];
 
 function extractInlineMetaTokens(doc: Text): InlineMetaToken[] {
   const tokens: InlineMetaToken[] = [];
@@ -128,45 +144,6 @@ const inlineMetaPlugin = ViewPlugin.fromClass(
   { decorations: (view) => view.decorations },
 );
 
-function getTimeValue(value: number | { valueOf(): number } | undefined) {
-  return typeof value === 'number' ? value : (value?.valueOf() ?? 0);
-}
-
-function getPlaybackSignature(
-  atTime: number | { valueOf(): number },
-  haps: HapLike[],
-  isProgressiveFillEnabled: boolean,
-) {
-  const ranges = collectActivePlaybackRanges(haps);
-
-  if (!ranges.length) {
-    return {
-      ranges,
-      signature: 'empty',
-    };
-  }
-
-  const currentTime = getTimeValue(atTime);
-  const signature = ranges
-    .map((range) => {
-      if (!isProgressiveFillEnabled) {
-        return `${range.start}:${range.end}`;
-      }
-
-      const duration = getTimeValue(range.duration);
-      if (!duration) {
-        return `${range.start}:${range.end}:360`;
-      }
-
-      const begin = getTimeValue(range.begin);
-      const progress = Math.max(0, Math.min(1, (currentTime - begin) / duration));
-      return `${range.start}:${range.end}:${Math.round(progress * 360)}`;
-    })
-    .join('|');
-
-  return { ranges, signature };
-}
-
 export function useStrudelEditor({
   code,
   durationTagStyle,
@@ -191,11 +168,16 @@ export function useStrudelEditor({
   const latestCodeRef = useRef(code);
   const previousCodeRef = useRef(code);
   const isPlayingRef = useRef(false);
+  const isReadyRef = useRef(false);
   const playbackSignatureRef = useRef('uninitialized');
 
   useEffect(() => {
     latestCodeRef.current = code;
   }, [code]);
+
+  useEffect(() => {
+    isReadyRef.current = isReady;
+  }, [isReady]);
 
   useEffect(() => {
     highlightOptionsRef.current = {
@@ -237,7 +219,7 @@ export function useStrudelEditor({
   }, [getEditorContent]);
 
   const ensureAudioReady = useCallback(async () => {
-    if (isReady) {
+    if (isReadyRef.current) {
       return;
     }
 
@@ -284,7 +266,7 @@ export function useStrudelEditor({
 
     audioReadyPromiseRef.current = initPromise;
     await initPromise;
-  }, [isReady]);
+  }, []);
 
   useEffect(() => {
     const container = editorContainerRef.current;
@@ -322,15 +304,15 @@ export function useStrudelEditor({
             const mirror = editorRef.current;
             const cmView = mirror?.editor ?? (mirror?.view as EditorView | undefined);
             if (cmView) {
-              const { ranges, signature } = getPlaybackSignature(
+              const frame = createPlaybackFrame(
                 time as number | { valueOf(): number },
-                activeHaps,
+                collectActivePlaybackRanges(activeHaps),
                 highlightOptionsRef.current.isProgressiveFillEnabled,
               );
 
-              if (signature !== playbackSignatureRef.current) {
-                playbackSignatureRef.current = signature;
-                highlightPlaybackLocations(cmView, time as number | { valueOf(): number }, ranges);
+              if (frame.signature !== playbackSignatureRef.current) {
+                playbackSignatureRef.current = frame.signature;
+                highlightPlaybackLocations(cmView, frame);
               }
             }
 
@@ -339,33 +321,20 @@ export function useStrudelEditor({
             );
           },
           onToggle: (started: boolean) => {
+            setIsPlaying(started);
+
             if (!started) {
               playbackSignatureRef.current = 'stopped';
               const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
               if (cmView) {
-                highlightPlaybackLocations(cmView, 0, []);
+                highlightPlaybackLocations(cmView, EMPTY_PLAYBACK_FRAME);
               }
             }
           },
         }) as StrudelEditorInstance;
 
         if (editor.updateSettings) {
-          editor.updateSettings({
-            fontSize: 13,
-            fontFamily: 'IBM Plex Mono, monospace',
-            theme: 'dark',
-            isLineNumbersDisplayed: true,
-            isActiveLineHighlighted: true,
-            isBracketMatchingEnabled: true,
-            isLineWrappingEnabled: true,
-            isBracketClosingEnabled: true,
-            isAutoCompletionEnabled: true,
-            isPatternHighlightingEnabled: true,
-            isFlashEnabled: true,
-            isTooltipEnabled: true,
-            isTabIndentationEnabled: true,
-            isMultiCursorEnabled: true,
-          });
+          editor.updateSettings(DEFAULT_EDITOR_SETTINGS);
         }
 
         editorRef.current = editor;
@@ -411,7 +380,7 @@ export function useStrudelEditor({
 
       container?.replaceChildren();
     };
-  }, [setEditorContent]);
+  }, [ensureAudioReady, setEditorContent]);
 
   useEffect(() => {
     const container = editorContainerRef.current;
@@ -493,7 +462,6 @@ export function useStrudelEditor({
       try {
         if (isPlayingRef.current) {
           editorRef.current?.stop?.();
-          setIsPlaying(false);
           return;
         }
 
