@@ -94,15 +94,21 @@
         color: rgba(245,158,11,0.9);
       }
 
-      /* Progressive fill animation for markcss preset */
-      @keyframes strudel-fill {
-        from { background-size: 0% 100%; }
-        to   { background-size: 100% 100%; }
+      /* Note token coloring should win over CodeMirror's inner syntax spans */
+      [data-strudel-note-color] {
+        color: var(--strudel-note-color) !important;
       }
-      .strudel-mark {
-        background-repeat: no-repeat;
-        background-position: left center;
+      [data-strudel-note-color] * {
+        color: inherit !important;
       }
+      .cm-note-playing {
+        transition: box-shadow 120ms linear, background-color 120ms linear;
+      }
+      .cm-note-playing,
+      .cm-note-playing * {
+        color: var(--strudel-active-text-color, inherit) !important;
+      }
+
     </style>
   <script type="importmap">
 {

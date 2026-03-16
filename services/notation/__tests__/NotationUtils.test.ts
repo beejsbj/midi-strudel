@@ -6,6 +6,7 @@ import {
   getRestDuration,
   round,
   formatTrackName,
+  buildVisualSuffix,
 } from '../NotationUtils';
 import { DEFAULT_CONFIG } from '../../../types';
 import { createRestToken, createRestTokenCycles } from '../NotationUtils';
@@ -124,5 +125,34 @@ describe('formatTrackName', () => {
 
   it('strips leading and trailing underscores', () => {
     expect(formatTrackName(' track ')).toBe('TRACK');
+  });
+});
+
+describe('buildVisualSuffix', () => {
+  it('does not inject markcss for editor-only playback coloring', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      isNoteColoringEnabled: true,
+      isProgressiveFillEnabled: true,
+    };
+
+    expect(buildVisualSuffix(config)).not.toContain('markcss');
+  });
+
+  it('uses single quotes for track hsl colors', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      isTrackColoringEnabled: true,
+    };
+
+    const suffix = buildVisualSuffix(config, {
+      id: 'track-1',
+      name: 'Piano',
+      notes: [],
+      color: '210',
+      isDrum: false,
+    });
+
+    expect(suffix).toContain(".color('hsl(210,60%,60%)')");
   });
 });

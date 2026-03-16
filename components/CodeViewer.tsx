@@ -2,11 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Check, Play, Square, Loader2, AlertTriangle } from 'lucide-react';
 import { StrudelMirror } from '@strudel/codemirror';
 import { MatchDecorator, ViewPlugin, DecorationSet, EditorView, Decoration } from '@codemirror/view';
-import { StateEffect, Compartment } from '@codemirror/state';
+import { StateEffect } from '@codemirror/state';
 import * as StrudelCore from '@strudel/core';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
 import { registerSoundfonts } from "@strudel/soundfonts";
+import {
+  highlightPlaybackLocations,
+  strudelPlaybackHighlightExtension,
+  updatePlaybackHighlightOptions,
+  updatePlaybackLocations,
+} from './strudelPlaybackHighlight';
 
 // CodeMirror decoration that dims @duration annotations (e.g. @0.25, @1.5)
 const durationDecorator = new MatchDecorator({
@@ -23,38 +29,12 @@ const durationPlugin = ViewPlugin.fromClass(
   { decorations: v => v.decorations }
 );
 
-// Pitch-class hue map for note text coloring
-const NOTE_HUES: Record<string, number> = {
-  'C': 0, 'C#': 30, 'Db': 30, 'D': 60, 'D#': 90, 'Eb': 90, 'E': 120,
-  'F': 150, 'F#': 180, 'Gb': 180, 'G': 210, 'G#': 240, 'Ab': 240,
-  'A': 270, 'A#': 300, 'Bb': 300, 'B': 330,
-};
-
-const noteDecorator = new MatchDecorator({
-  regexp: /\b([A-G][#b]?)(\d)\b/g,
-  decoration: (match) => {
-    const hue = NOTE_HUES[match[1]] ?? 0;
-    return Decoration.mark({ attributes: { style: `color: hsl(${hue}, 70%, 65%)` } });
-  },
-});
-
-const noteColorPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) { this.decorations = noteDecorator.createDeco(view); }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    update(u: any) { this.decorations = noteDecorator.updateDeco(u, this.decorations); }
-  },
-  { decorations: v => v.decorations }
-);
-
-const noteColorCompartment = new Compartment();
-
 interface Props {
   code: string;
   durationTagStyle?: string;
-  isPatternTextColoringEnabled?: boolean;
   isNoteColoringEnabled?: boolean;
+  isProgressiveFillEnabled?: boolean;
+  isPatternTextColoringEnabled?: boolean;
 }
 
 // Typed interface for the methods we actually call on the editor
@@ -63,8 +43,11 @@ interface StrudelEditorInstance {
   setCode?: (code: string) => void;
   evaluate?: () => void;
   stop?: () => void;
+  clear?: () => void;
   destroy?: () => void;
   updateSettings?: (settings: Record<string, unknown>) => void;
+  drawContext?: unknown;
+  drawTime?: [number, number];
   // The underlying CodeMirror EditorView (StrudelMirror stores it as .editor)
   editor?: EditorView;
   // Legacy fallback name
@@ -87,8 +70,9 @@ const SAMPLE_JSON_FILES = [
 export const CodeViewer: React.FC<Props> = ({
   code,
   durationTagStyle,
-  isPatternTextColoringEnabled,
   isNoteColoringEnabled,
+  isProgressiveFillEnabled,
+  isPatternTextColoringEnabled,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -100,7 +84,13 @@ export const CodeViewer: React.FC<Props> = ({
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<StrudelEditorInstance | null>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
+  const latestCodeRef = useRef(code);
+  const previousCodeRef = useRef(code);
+  const isPlayingRef = useRef(false);
+
+  useEffect(() => {
+    latestCodeRef.current = code;
+  }, [code]);
 
   // Helper to safely access code from the editor instance
   const getEditorContent = () => {
@@ -139,6 +129,8 @@ export const CodeViewer: React.FC<Props> = ({
     if (!editorContainerRef.current) return;
     if (editorRef.current) return;
 
+    editorContainerRef.current.replaceChildren();
+
     const initStrudel = async () => {
       try {
         const editor = new StrudelMirror({
@@ -155,12 +147,39 @@ export const CodeViewer: React.FC<Props> = ({
             setStrudelError(String(error));
             setIsPlaying(false);
           },
+          afterEval: (options: { meta?: { miniLocations?: [number, number][] } }) => {
+            const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+            if (cmView) {
+              updatePlaybackLocations(cmView, options.meta?.miniLocations ?? []);
+            }
+          },
+          onDraw: (haps: Array<{ isActive?: (time: unknown) => boolean; context?: { locations?: Array<{ start: number; end: number }> }; whole?: { begin: number | { valueOf(): number }; duration: number | { valueOf(): number } } }>, time: unknown, painters?: Array<(context: unknown, drawTime: unknown, drawHaps: unknown[], range: [number, number]) => void>) => {
+            const activeHaps = haps.filter((hap) => hap?.isActive?.(time));
+            const mirror = editorRef.current;
+            const cmView = mirror?.editor ?? (mirror?.view as EditorView | undefined);
+            if (cmView) {
+              highlightPlaybackLocations(cmView, time as number | { valueOf(): number }, activeHaps);
+            }
+            painters?.forEach((painter) =>
+              painter(mirror?.drawContext, time, haps, mirror?.drawTime ?? [0, 0]),
+            );
+          },
+          onToggle: (started: boolean) => {
+            if (!started) {
+              const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+              if (cmView) {
+                highlightPlaybackLocations(cmView, 0, []);
+              }
+            }
+          },
           prebake: async () => {
             try {
               initAudioOnFirstClick();
+              const coreModule = await import('@strudel/core');
+              const maybeSamples = (coreModule as Record<string, unknown>).samples;
 
               const loadModules = StrudelCore.evalScope(
-                import('@strudel/core'),
+                Promise.resolve(coreModule),
                 import('@strudel/draw'),
                 import('@strudel/mini'),
                 import('@strudel/tonal'),
@@ -169,9 +188,9 @@ export const CodeViewer: React.FC<Props> = ({
 
               const promises: Promise<unknown>[] = [loadModules, registerSynthSounds(), registerSoundfonts()];
 
-              if (typeof StrudelCore.samples === 'function') {
+              if (typeof maybeSamples === 'function') {
                   for (const file of SAMPLE_JSON_FILES) {
-                      promises.push(StrudelCore.samples(`${DATA_SOURCES_BASE}${file}`));
+                      promises.push((maybeSamples as (url: string) => Promise<unknown>)(`${DATA_SOURCES_BASE}${file}`));
                   }
               }
 
@@ -213,9 +232,18 @@ export const CodeViewer: React.FC<Props> = ({
           cmView.dispatch({
             effects: StateEffect.appendConfig.of([
               durationPlugin,
-              noteColorCompartment.of([]),
+              strudelPlaybackHighlightExtension,
             ])
           });
+          updatePlaybackHighlightOptions(cmView, {
+            isNoteColoringEnabled: Boolean(isNoteColoringEnabled),
+            isProgressiveFillEnabled: Boolean(isProgressiveFillEnabled),
+            isPatternTextColoringEnabled: Boolean(isPatternTextColoringEnabled),
+          });
+        }
+
+        if (latestCodeRef.current) {
+          setEditorContent(latestCodeRef.current);
         }
       } catch (err) {
         console.error("Failed to init Strudel", err);
@@ -227,33 +255,24 @@ export const CodeViewer: React.FC<Props> = ({
     initStrudel();
 
     return () => {
-       if (observerRef.current) {
-           observerRef.current.disconnect();
-           observerRef.current = null;
-       }
+       const container = editorContainerRef.current;
        if (editorRef.current) {
            try {
-             if (typeof editorRef.current.stop === 'function') {
-                 editorRef.current.stop();
-             }
-             if (typeof editorRef.current.destroy === 'function') {
-                 editorRef.current.destroy();
-             }
+              if (typeof editorRef.current.stop === 'function') {
+                  editorRef.current.stop();
+              }
+              if (typeof editorRef.current.clear === 'function') {
+                  editorRef.current.clear();
+              }
+              if (typeof editorRef.current.destroy === 'function') {
+                  editorRef.current.destroy();
+              }
            } catch(e) { console.error("Error destroying editor", e) }
            editorRef.current = null;
        }
+       container?.replaceChildren();
     };
   }, []);
-
-  // Toggle note text coloring via Compartment reconfigure
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const cmView = editorRef.current.editor ?? (editorRef.current.view as EditorView | undefined);
-    if (!cmView) return;
-    cmView.dispatch({
-      effects: noteColorCompartment.reconfigure(isPatternTextColoringEnabled ? noteColorPlugin : [])
-    });
-  }, [isPatternTextColoringEnabled]);
 
   // Per-note hover handler for duration tags (reveals .cm-at-duration on adjacent note hover)
   useEffect(() => {
@@ -298,75 +317,39 @@ export const CodeViewer: React.FC<Props> = ({
     };
   }, [durationTagStyle]);
 
-  // MutationObserver for runtime note coloring (sets --note-value on .strudel-mark)
   useEffect(() => {
-    if (!editorContainerRef.current) return;
+    const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+    if (!cmView) return;
 
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-
-    if (!isNoteColoringEnabled) return;
-
-    const NOTE_RE = /([A-G][#b]?)(\d)/;
-    const PITCH_CLASS: Record<string, number> = {
-      'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4,
-      'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8,
-      'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
-    };
-
-    // Find elements whose style uses var(--note-value) and set the variable
-    // from their text content. Must run AFTER strudel sets the style attr.
-    const applyNoteValue = (el: HTMLElement) => {
-      const styleAttr = el.getAttribute('style') || '';
-      if (!styleAttr.includes('var(--note-value')) return;
-      if (styleAttr.includes('--note-value:')) return; // already set, avoid loop
-      const text = el.textContent || '';
-      const m = text.match(NOTE_RE);
-      if (m) {
-        const pc = PITCH_CLASS[m[1]] ?? 0;
-        const octave = parseInt(m[2], 10);
-        el.style.setProperty('--note-value', String(pc + octave * 12 + 12));
-      }
-    };
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList') {
-          for (const node of mutation.addedNodes) {
-            if (node instanceof HTMLElement) {
-              applyNoteValue(node);
-              node.querySelectorAll<HTMLElement>('span').forEach(applyNoteValue);
-            }
-          }
-        } else if (
-          mutation.type === 'attributes' &&
-          mutation.target instanceof HTMLElement
-        ) {
-          applyNoteValue(mutation.target);
-        }
-      }
+    updatePlaybackHighlightOptions(cmView, {
+      isNoteColoringEnabled: Boolean(isNoteColoringEnabled),
+      isProgressiveFillEnabled: Boolean(isProgressiveFillEnabled),
+      isPatternTextColoringEnabled: Boolean(isPatternTextColoringEnabled),
     });
+  }, [isNoteColoringEnabled, isProgressiveFillEnabled, isPatternTextColoringEnabled]);
 
-    observer.observe(editorContainerRef.current, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['style'],
-    });
-    observerRef.current = observer;
-
-    return () => {
-      observer.disconnect();
-      observerRef.current = null;
-    };
-  }, [isNoteColoringEnabled]);
-
-  // Sync code prop updates to editor
+  // Keep isPlayingRef in sync so the code-sync effect can read current value without being a dep
   useEffect(() => {
-    if (editorRef.current && code) {
-        setEditorContent(code);
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Sync code prop updates to editor — only when the generated code actually changes,
+  // NOT when isPlaying changes (which would wipe user edits on Play click)
+  useEffect(() => {
+    const previousCode = previousCodeRef.current;
+    previousCodeRef.current = code;
+
+    if (!editorRef.current || !code) return;
+    if (previousCode === code) return;
+
+    setEditorContent(code);
+
+    if (isPlayingRef.current && typeof editorRef.current.evaluate === 'function') {
+      try {
+        editorRef.current.evaluate();
+      } catch (err) {
+        console.error('Failed to re-evaluate updated code', err);
+      }
     }
   }, [code]);
 
