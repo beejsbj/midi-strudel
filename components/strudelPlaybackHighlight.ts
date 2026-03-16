@@ -244,8 +244,10 @@ function buildActiveNoteStyle(
       )} 0deg ${progressDegrees}deg, transparent ${progressDegrees}deg 360deg);`
     : `background-color: ${toTransparentColor(color)};`;
 
-  const textColorStyle = isPatternTextColoringEnabled
-    ? `color: ${toContrastTextColor(color)};`
+  const shouldUseContrastText =
+    isPatternTextColoringEnabled || isNoteColor(color);
+  const textColorStyle = shouldUseContrastText
+    ? `--strudel-active-text-color: ${toContrastTextColor(color)}; color: var(--strudel-active-text-color) !important;`
     : "";
 
   return [
@@ -258,6 +260,10 @@ function buildActiveNoteStyle(
   ]
     .filter(Boolean)
     .join("; ");
+}
+
+function isNoteColor(color: string) {
+  return color.trim().startsWith("hsl(");
 }
 
 function getProgressDegrees(atTime: NumericLike, hap: HapLike) {
@@ -332,6 +338,5 @@ function toContrastTextColor(color: string) {
     return "var(--background)";
   }
   const lightness = parseFloat(match[1]);
-  const textLightness = lightness > 50 ? 15 : 90;
-  return `hsl(0, 0%, ${textLightness}%)`;
+  return lightness >= 64 ? "white" : "white";
 }
