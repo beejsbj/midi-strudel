@@ -7,7 +7,7 @@ export function buildVisualSuffix(config: StrudelConfig, track?: Track): string 
 
   // 1. .color() FIRST — visual methods must see it to render correctly
   if (config.isTrackColoringEnabled && trackHue) {
-    parts.push(`  .color("hsl(${trackHue},60%,60%)")`);
+    parts.push(`  .color('hsl(${trackHue},60%,60%)')`);
   }
 
   // 2. Visual method(s) — per-track single override takes precedence over global array
@@ -25,10 +25,6 @@ export function buildVisualSuffix(config: StrudelConfig, track?: Track): string 
     }
   }
 
-  // 3. .markcss() — sentinel for MutationObserver to apply note colors / animated highlight
-  if (config.isNoteColoringEnabled || config.isProgressiveFillEnabled) {
-    parts.push(`  .markcss('--sm:1')`);
-  }
   return parts.length ? '\n' + parts.join('\n') : '';
 }
 

@@ -7,6 +7,12 @@ import * as StrudelCore from '@strudel/core';
 import { initAudioOnFirstClick, getAudioContext, webaudioOutput, registerSynthSounds } from '@strudel/webaudio';
 import { transpiler } from '@strudel/transpiler';
 import { registerSoundfonts } from "@strudel/soundfonts";
+import {
+  highlightPlaybackLocations,
+  strudelPlaybackHighlightExtension,
+  updatePlaybackHighlightOptions,
+  updatePlaybackLocations,
+} from './strudelPlaybackHighlight';
 
 // CodeMirror decoration that dims @duration annotations (e.g. @0.25, @1.5)
 const durationDecorator = new MatchDecorator({
@@ -28,7 +34,7 @@ interface Props {
   durationTagStyle?: string;
   isNoteColoringEnabled?: boolean;
   isProgressiveFillEnabled?: boolean;
-  cycleDurationMs?: number;
+  isPatternTextColoringEnabled?: boolean;
 }
 
 // Typed interface for the methods we actually call on the editor
@@ -37,8 +43,11 @@ interface StrudelEditorInstance {
   setCode?: (code: string) => void;
   evaluate?: () => void;
   stop?: () => void;
+  clear?: () => void;
   destroy?: () => void;
   updateSettings?: (settings: Record<string, unknown>) => void;
+  drawContext?: unknown;
+  drawTime?: [number, number];
   // The underlying CodeMirror EditorView (StrudelMirror stores it as .editor)
   editor?: EditorView;
   // Legacy fallback name
@@ -63,7 +72,7 @@ export const CodeViewer: React.FC<Props> = ({
   durationTagStyle,
   isNoteColoringEnabled,
   isProgressiveFillEnabled,
-  cycleDurationMs,
+  isPatternTextColoringEnabled,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -75,7 +84,13 @@ export const CodeViewer: React.FC<Props> = ({
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<StrudelEditorInstance | null>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
+  const latestCodeRef = useRef(code);
+  const previousCodeRef = useRef(code);
+  const isPlayingRef = useRef(false);
+
+  useEffect(() => {
+    latestCodeRef.current = code;
+  }, [code]);
 
   // Helper to safely access code from the editor instance
   const getEditorContent = () => {
@@ -114,6 +129,8 @@ export const CodeViewer: React.FC<Props> = ({
     if (!editorContainerRef.current) return;
     if (editorRef.current) return;
 
+    editorContainerRef.current.replaceChildren();
+
     const initStrudel = async () => {
       try {
         const editor = new StrudelMirror({
@@ -130,12 +147,39 @@ export const CodeViewer: React.FC<Props> = ({
             setStrudelError(String(error));
             setIsPlaying(false);
           },
+          afterEval: (options: { meta?: { miniLocations?: [number, number][] } }) => {
+            const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+            if (cmView) {
+              updatePlaybackLocations(cmView, options.meta?.miniLocations ?? []);
+            }
+          },
+          onDraw: (haps: Array<{ isActive?: (time: unknown) => boolean; context?: { locations?: Array<{ start: number; end: number }> }; whole?: { begin: number | { valueOf(): number }; duration: number | { valueOf(): number } } }>, time: unknown, painters?: Array<(context: unknown, drawTime: unknown, drawHaps: unknown[], range: [number, number]) => void>) => {
+            const activeHaps = haps.filter((hap) => hap?.isActive?.(time));
+            const mirror = editorRef.current;
+            const cmView = mirror?.editor ?? (mirror?.view as EditorView | undefined);
+            if (cmView) {
+              highlightPlaybackLocations(cmView, time as number | { valueOf(): number }, activeHaps);
+            }
+            painters?.forEach((painter) =>
+              painter(mirror?.drawContext, time, haps, mirror?.drawTime ?? [0, 0]),
+            );
+          },
+          onToggle: (started: boolean) => {
+            if (!started) {
+              const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+              if (cmView) {
+                highlightPlaybackLocations(cmView, 0, []);
+              }
+            }
+          },
           prebake: async () => {
             try {
               initAudioOnFirstClick();
+              const coreModule = await import('@strudel/core');
+              const maybeSamples = (coreModule as Record<string, unknown>).samples;
 
               const loadModules = StrudelCore.evalScope(
-                import('@strudel/core'),
+                Promise.resolve(coreModule),
                 import('@strudel/draw'),
                 import('@strudel/mini'),
                 import('@strudel/tonal'),
@@ -144,9 +188,9 @@ export const CodeViewer: React.FC<Props> = ({
 
               const promises: Promise<unknown>[] = [loadModules, registerSynthSounds(), registerSoundfonts()];
 
-              if (typeof StrudelCore.samples === 'function') {
+              if (typeof maybeSamples === 'function') {
                   for (const file of SAMPLE_JSON_FILES) {
-                      promises.push(StrudelCore.samples(`${DATA_SOURCES_BASE}${file}`));
+                      promises.push((maybeSamples as (url: string) => Promise<unknown>)(`${DATA_SOURCES_BASE}${file}`));
                   }
               }
 
@@ -188,8 +232,18 @@ export const CodeViewer: React.FC<Props> = ({
           cmView.dispatch({
             effects: StateEffect.appendConfig.of([
               durationPlugin,
+              strudelPlaybackHighlightExtension,
             ])
           });
+          updatePlaybackHighlightOptions(cmView, {
+            isNoteColoringEnabled: Boolean(isNoteColoringEnabled),
+            isProgressiveFillEnabled: Boolean(isProgressiveFillEnabled),
+            isPatternTextColoringEnabled: Boolean(isPatternTextColoringEnabled),
+          });
+        }
+
+        if (latestCodeRef.current) {
+          setEditorContent(latestCodeRef.current);
         }
       } catch (err) {
         console.error("Failed to init Strudel", err);
@@ -201,21 +255,22 @@ export const CodeViewer: React.FC<Props> = ({
     initStrudel();
 
     return () => {
-       if (observerRef.current) {
-           observerRef.current.disconnect();
-           observerRef.current = null;
-       }
+       const container = editorContainerRef.current;
        if (editorRef.current) {
            try {
-             if (typeof editorRef.current.stop === 'function') {
-                 editorRef.current.stop();
-             }
-             if (typeof editorRef.current.destroy === 'function') {
-                 editorRef.current.destroy();
-             }
+              if (typeof editorRef.current.stop === 'function') {
+                  editorRef.current.stop();
+              }
+              if (typeof editorRef.current.clear === 'function') {
+                  editorRef.current.clear();
+              }
+              if (typeof editorRef.current.destroy === 'function') {
+                  editorRef.current.destroy();
+              }
            } catch(e) { console.error("Error destroying editor", e) }
            editorRef.current = null;
        }
+       container?.replaceChildren();
     };
   }, []);
 
@@ -262,111 +317,39 @@ export const CodeViewer: React.FC<Props> = ({
     };
   }, [durationTagStyle]);
 
-  // MutationObserver for runtime note coloring and animated highlight.
-  //
-  // When isNoteColoringEnabled or isProgressiveFillEnabled is on, the generated .markcss()
-  // includes '--sm:1' as a sentinel. The observer detects this on strudel's active mark spans
-  // and applies note-based colors and/or progress-based fill animation.
-  //
-  // Strudel resets inline styles each frame, clearing --sm-applied, so the observer refires.
-  // WeakMap entries are GC'd automatically when DOM elements are removed by strudel.
   useEffect(() => {
-    if (!editorContainerRef.current) return;
+    const cmView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+    if (!cmView) return;
 
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-
-    if (!isNoteColoringEnabled && !isProgressiveFillEnabled) return;
-
-    const NOTE_RE = /([A-G][#b]?)(\d)/;
-    const PITCH_CLASS: Record<string, number> = {
-      'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4,
-      'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8,
-      'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
-    };
-
-    const elementStartTimes = new WeakMap<HTMLElement, { start: number; dur: number }>();
-
-    const applyNoteValue = (el: HTMLElement) => {
-      const styleAttr = el.getAttribute('style') || '';
-      if (!styleAttr.includes('--sm:')) return;
-      if (styleAttr.includes('--sm-applied:')) return;
-
-      const text = el.textContent || '';
-      const noteMatch = text.match(NOTE_RE);
-      const durMatch = text.match(/@([\d.]+)/);
-
-      // Note coloring — chromatic 360/12 hue from pitch class
-      if (isNoteColoringEnabled && noteMatch) {
-        const pc = PITCH_CLASS[noteMatch[1]] ?? 0;
-        const octave = parseInt(noteMatch[2], 10);
-        const hue = pc * 30;
-        const lightness = Math.max(20, Math.min(80, 20 + octave * 10));
-        el.style.backgroundColor = `hsla(${hue},70%,${lightness}%,0.75)`;
-      }
-
-      // Animated highlight — progressive fill showing note duration
-      if (isProgressiveFillEnabled && cycleDurationMs) {
-        if (!elementStartTimes.has(el)) {
-          const durCycles = durMatch ? parseFloat(durMatch[1]) : 1;
-          elementStartTimes.set(el, {
-            start: performance.now(),
-            dur: durCycles * cycleDurationMs,
-          });
-        }
-        const entry = elementStartTimes.get(el)!;
-        const progress = Math.min(1, (performance.now() - entry.start) / entry.dur);
-        const fillColor = isNoteColoringEnabled && noteMatch
-          ? `hsla(${PITCH_CLASS[noteMatch[1]!] * 30},70%,${Math.min(90, 20 + parseInt(noteMatch[2], 10) * 10 + 15)}%,0.5)`
-          : 'rgba(255,255,255,0.6)';
-        el.style.backgroundImage = `linear-gradient(to right,${fillColor},transparent)`;
-        el.style.backgroundSize = `${progress * 100}% 100%`;
-        el.style.backgroundRepeat = 'no-repeat';
-        el.style.backgroundPosition = 'left center';
-      }
-
-      el.style.borderRadius = '2px';
-      el.style.setProperty('--sm-applied', '1');
-    };
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList') {
-          for (const node of mutation.addedNodes) {
-            if (node instanceof HTMLElement) {
-              applyNoteValue(node);
-              node.querySelectorAll<HTMLElement>('span').forEach(applyNoteValue);
-            }
-          }
-        } else if (
-          mutation.type === 'attributes' &&
-          mutation.target instanceof HTMLElement
-        ) {
-          applyNoteValue(mutation.target);
-        }
-      }
+    updatePlaybackHighlightOptions(cmView, {
+      isNoteColoringEnabled: Boolean(isNoteColoringEnabled),
+      isProgressiveFillEnabled: Boolean(isProgressiveFillEnabled),
+      isPatternTextColoringEnabled: Boolean(isPatternTextColoringEnabled),
     });
+  }, [isNoteColoringEnabled, isProgressiveFillEnabled, isPatternTextColoringEnabled]);
 
-    observer.observe(editorContainerRef.current, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['style'],
-    });
-    observerRef.current = observer;
-
-    return () => {
-      observer.disconnect();
-      observerRef.current = null;
-    };
-  }, [isNoteColoringEnabled, isProgressiveFillEnabled, cycleDurationMs]);
-
-  // Sync code prop updates to editor
+  // Keep isPlayingRef in sync so the code-sync effect can read current value without being a dep
   useEffect(() => {
-    if (editorRef.current && code) {
-        setEditorContent(code);
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // Sync code prop updates to editor — only when the generated code actually changes,
+  // NOT when isPlaying changes (which would wipe user edits on Play click)
+  useEffect(() => {
+    const previousCode = previousCodeRef.current;
+    previousCodeRef.current = code;
+
+    if (!editorRef.current || !code) return;
+    if (previousCode === code) return;
+
+    setEditorContent(code);
+
+    if (isPlayingRef.current && typeof editorRef.current.evaluate === 'function') {
+      try {
+        editorRef.current.evaluate();
+      } catch (err) {
+        console.error('Failed to re-evaluate updated code', err);
+      }
     }
   }, [code]);
 
