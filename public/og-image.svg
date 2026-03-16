@@ -1,0 +1,60 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="100" y1="54" x2="1018" y2="614" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17171A" />
+      <stop offset="1" stop-color="#08080A" />
+    </linearGradient>
+    <radialGradient id="warm" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(272 118) rotate(33.7) scale(522.626 391.05)">
+      <stop stop-color="#FBBF24" stop-opacity="0.32" />
+      <stop offset="1" stop-color="#FBBF24" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="gold" x1="133" y1="124" x2="932" y2="581" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCD34D" />
+      <stop offset="1" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" rx="36" fill="url(#bg)" />
+  <rect width="1200" height="630" rx="36" fill="url(#warm)" />
+  <rect x="28" y="28" width="1144" height="574" rx="26" stroke="#F59E0B" stroke-opacity="0.24" stroke-width="2" />
+
+  <g opacity="0.16" stroke="#FBBF24" stroke-width="8" stroke-linecap="round">
+    <path d="M90 152H1110" />
+    <path d="M90 222H1110" />
+    <path d="M90 292H1110" />
+    <path d="M90 362H1110" />
+    <path d="M90 432H1110" />
+    <path d="M90 502H1110" />
+  </g>
+
+  <rect x="96" y="90" width="340" height="450" rx="74" fill="#09090B" fill-opacity="0.78" stroke="#F59E0B" stroke-opacity="0.28" stroke-width="2" />
+  <rect x="96" y="90" width="340" height="450" rx="74" fill="url(#warm)" />
+
+  <g stroke="url(#gold)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M191 182H154V448H191" />
+    <path d="M344 182H381V448H344" />
+  </g>
+
+  <g fill="url(#gold)">
+    <rect x="287" y="164" width="21" height="184" rx="10.5" />
+    <ellipse cx="245" cy="392" rx="72" ry="54" transform="rotate(-12 245 392)" />
+    <path d="M308 164C338 166 364 179 381 200C349 203 326 216 308 241V164Z" />
+  </g>
+
+  <circle cx="905" cy="152" r="8" fill="#FBBF24" fill-opacity="0.56" />
+  <circle cx="936" cy="152" r="8" fill="#FBBF24" fill-opacity="0.3" />
+  <circle cx="967" cy="152" r="8" fill="#FBBF24" fill-opacity="0.16" />
+
+  <text x="510" y="258" fill="#F9FAFB" font-family="'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif" font-size="74" font-weight="700" letter-spacing="-2">
+    midi-strudel
+  </text>
+  <text x="510" y="330" fill="#D4D4D8" font-family="'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif" font-size="31" font-weight="500">
+    Turn MIDI files into Strudel-ish code you can read,
+  </text>
+  <text x="510" y="372" fill="#D4D4D8" font-family="'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif" font-size="31" font-weight="500">
+    tweak, and play back in one noir little notation lab.
+  </text>
+  <text x="510" y="457" fill="#FBBF24" font-family="'IBM Plex Mono', 'SFMono-Regular', monospace" font-size="18" font-weight="500" letter-spacing="1.2">
+    MIDI PARSER / STRUDEL NOTATION / EMBEDDED PLAYER
+  </text>
+</svg>
