@@ -84,6 +84,7 @@ export interface StrudelConfig {
   isTrackColoringEnabled: boolean;
   isNoteColoringEnabled: boolean;
   isProgressiveFillEnabled: boolean;
+  isPatternTextColoringEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: StrudelConfig = {
@@ -113,4 +114,5 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   isTrackColoringEnabled: false,
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,
+  isPatternTextColoringEnabled: false,
 };

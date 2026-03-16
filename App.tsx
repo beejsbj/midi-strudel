@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { CodeViewer } from './components/CodeViewer';
 import { DropZone } from './components/DropZone';
@@ -128,13 +128,21 @@ function saveKeySignatureToStorage(keySig: KeySignature | undefined): void {
 const App: React.FC = () => {
   const [config, setConfig] = useState<StrudelConfig>(() => loadConfigFromStorage());
   const [tracks, setTracks] = useState<Track[]>(() => loadTracksFromStorage());
-  const [code, setCode] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [keySignature, setKeySignature] = useState<KeySignature | undefined>(() => loadKeySignatureFromStorage());
   const [error, setError] = useState<string | null>(null);
 
   // Hidden input for the sidebar "Upload New" button
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const code = useMemo(() => {
+    if (tracks.length === 0) {
+      return "";
+    }
+
+    const service = new StrudelNotation(config);
+    return service.generate(tracks);
+  }, [config, tracks]);
 
   // Persist config, tracks, and key signature to localStorage on every change
   useEffect(() => { saveConfigToStorage(config); }, [config]);
@@ -195,25 +203,11 @@ const App: React.FC = () => {
       setTracks([]);
       setKeySignature(undefined);
       setConfig(DEFAULT_CONFIG);
-      setCode("");
       setError(null);
       localStorage.removeItem(TRACKS_STORAGE_KEY);
       localStorage.removeItem(KEY_SIG_STORAGE_KEY);
       localStorage.removeItem(CONFIG_STORAGE_KEY);
   };
-
-  useEffect(() => {
-    if (tracks.length === 0) return;
-
-    const generate = () => {
-      const service = new StrudelNotation(config);
-      const output = service.generate(tracks);
-      setCode(output);
-    };
-
-    const timeout = setTimeout(generate, 100);
-    return () => clearTimeout(timeout);
-  }, [config, tracks]);
 
   return (
     <div className="flex h-screen w-full bg-noir-900 text-gray-200 font-sans overflow-hidden">
@@ -328,11 +322,7 @@ const App: React.FC = () => {
                    durationTagStyle={config.durationTagStyle}
                    isNoteColoringEnabled={config.isNoteColoringEnabled}
                    isProgressiveFillEnabled={config.isProgressiveFillEnabled}
-                   cycleDurationMs={(() => {
-                     const beatDur = 60 / config.bpm;
-                     const cycleDur = config.cycleUnit === 'beat' ? beatDur : beatDur * (config.timeSignature.numerator || 4);
-                     return cycleDur * 1000;
-                   })()}
+                   isPatternTextColoringEnabled={config.isPatternTextColoringEnabled}
                  />
                </div>
             </div>

@@ -120,6 +120,7 @@ export const VisualsSection: React.FC<Props> = ({ config, setConfig }) => {
         {([
           ['isNoteColoringEnabled',         'Note Colors',           'Chromatic pitch-based coloring on active marks during playback'] as const,
           ['isProgressiveFillEnabled',      'Animated Highlight',    'Progressive fill showing note duration during playback'] as const,
+          ['isPatternTextColoringEnabled',  'Text Contrast',         'Adjust active note text for readability against note-based fills'] as const,
         ]).map(([key, label, desc]) => (
           <div
             key={key}
