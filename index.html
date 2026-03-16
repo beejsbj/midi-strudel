@@ -97,9 +97,13 @@
       .cm-activeLine, .cm-activeLineGutter {
         background-color: #27272a !important;
       }
-      /* Ensure canvas overlay (pianoroll) is positioned correctly if used by Strudel */
+      /* Keep Strudel's global draw canvas above the workspace while remaining non-interactive */
+      body > canvas {
+        z-index: 20 !important;
+        pointer-events: none;
+      }
       .strudel-pianoroll {
-        z-index: 10;
+        z-index: 20;
         pointer-events: none;
       }
       /* Inline duration / velocity metadata (e.g. @0.25, :0.82) */

@@ -14,7 +14,7 @@ export const EXAMPLE_MIDIS: readonly ExampleMidi[] = [
     url: '/examples/warrior-of-the-mind-epic-the-musical.mid',
     fileName: 'Warrior of the Mind (Epic The Musical).mid',
     label: 'Warrior of the Mind',
-    detail: 'A denser file with more material if you want to stress the conversion a bit.',
+    detail: 'A much denser example MIDI. It is great for stress-testing, but the conversion does not work as cleanly because the arrangement is so much more complex.',
     sourceUrl: 'https://onlinesequencer.net/4782267',
   },
 ] as const;

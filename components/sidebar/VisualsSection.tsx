@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, X } from 'lucide-react';
 import { StrudelConfig } from '../../types';
 import { updateConfigValue } from './configUpdates';
 import {
@@ -61,22 +61,46 @@ export const VisualsSection: React.FC<Props> = ({
       </div>
 
       <div className="space-y-1.5">
-        <span className={fieldLabelClass}>Playback Visual</span>
-        <MultiSegmentedControl
-          aria-label="Playback visual methods"
-          values={config.visualMethods}
-          onChange={(values) => updateConfigValue(setConfig, 'visualMethods', values as StrudelConfig['visualMethods'])}
-          options={VISUAL_METHODS}
-        />
+        <div className="flex items-center justify-between gap-3">
+          <span className={fieldLabelClass}>Playback Visual</span>
+          {config.visualMethods.length > 0 && (
+            <button
+              type="button"
+              onClick={() => updateConfigValue(setConfig, 'visualMethods', [])}
+              aria-label="Clear playback visuals"
+              title="Disable playback visuals"
+              className="rounded-sm border border-[rgba(245,158,11,0.12)] bg-black/45 p-1 text-zinc-500 transition-colors hover:border-gold-500/35 hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-500"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        <div>
+          <MultiSegmentedControl
+            aria-label="Playback visual methods"
+            values={config.visualMethods}
+            onChange={(values) => updateConfigValue(setConfig, 'visualMethods', values as StrudelConfig['visualMethods'])}
+            options={VISUAL_METHODS}
+          />
+        </div>
 
         {config.visualMethods.length > 0 && (
-          <SwitchRow
-            label="Inline Scope"
-            description="Uses `._pianoroll()` instead of `.pianoroll()`."
-            checked={config.visualScope === 'inline'}
-            onChange={(checked) => updateConfigValue(setConfig, 'visualScope', checked ? 'inline' : 'global')}
-            aria-label="Inline visual scope"
-          />
+          <p className="text-[11px] leading-4 text-yellow-400">
+            Playback visuals can affect performance on larger projects.
+          </p>
+        )}
+
+        {config.visualMethods.length > 0 && (
+          <>
+            <SwitchRow
+              label="Inline Scope"
+              description="Uses `._pianoroll()` instead of `.pianoroll()`."
+              checked={config.visualScope === 'inline'}
+              onChange={(checked) => updateConfigValue(setConfig, 'visualScope', checked ? 'inline' : 'global')}
+              aria-label="Inline visual scope"
+            />
+          </>
         )}
       </div>
 
