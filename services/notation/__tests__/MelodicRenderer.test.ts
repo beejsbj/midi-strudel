@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitMelodyHarmony, renderMelodicTrack } from '../MelodicRenderer';
+import { splitMelodyHarmony, renderMelodicTrack, renderSequence } from '../MelodicRenderer';
 import { DEFAULT_CONFIG } from '../../../types';
 import type { Note, Track } from '../../../types';
 
@@ -120,5 +120,28 @@ describe('renderMelodicTrack', () => {
       quantizationStrength: 100,
     });
     expect(result).toContain('C4@0.25');
+  });
+
+  it('places a leading rest on its own line before chunking note rows', () => {
+    const sequence = renderSequence(
+      [
+        makeNote(76, 'E5', beatDur * 2, beatDur * 3),
+        makeNote(74, 'D5', beatDur * 3, beatDur * 4),
+        makeNote(72, 'C5', beatDur * 4, beatDur * 5),
+        makeNote(71, 'B4', beatDur * 5, beatDur * 6),
+        makeNote(69, 'A4', beatDur * 6, beatDur * 7),
+      ],
+      beatDur * 7,
+      false,
+      {
+        ...config,
+        cycleUnit: 'beat',
+        formatPerLineBy: 'note',
+        measuresPerLine: 4,
+      },
+      {},
+    );
+
+    expect(sequence).toBe(['~@2', 'E5 D5 C5 B4', 'A4'].join('\n'));
   });
 });

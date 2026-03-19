@@ -135,15 +135,16 @@ export function renderSequence(
 
   if (config.formatPerLineBy === 'note') {
     const flatTokens = mergedTokens.flatMap(t => t.trim().split(/\s+/).filter(Boolean));
-    let lineTokens: string[] = [];
-    for (const t of flatTokens) {
-      lineTokens.push(t);
-      if (lineTokens.length >= perLine) {
-        outputLines.push(lineTokens.join(' '));
-        lineTokens = [];
-      }
+    const chunkSize = Math.max(1, perLine);
+    const remainingTokens = [...flatTokens];
+
+    while (remainingTokens.length > 1 && isRest(remainingTokens[0])) {
+      outputLines.push(remainingTokens.shift()!);
     }
-    if (lineTokens.length > 0) outputLines.push(lineTokens.join(' '));
+
+    for (let index = 0; index < remainingTokens.length; index += chunkSize) {
+      outputLines.push(remainingTokens.slice(index, index + chunkSize).join(' '));
+    }
   } else {
     let currentLine = "";
     let itemsInLine = 0;
