@@ -172,10 +172,24 @@ export function EmptyStateScreen({
               {EXAMPLE_MIDIS.map((example) => {
                 const isActive = activeExampleId === example.id;
                 const isDisabled = isProcessing;
+                const isRuthlessness = example.id === 'ruthlessness';
                 const primaryLabel =
-                  example.id === 'ruthlessness'
+                  isRuthlessness
                     ? 'see full Ruthlessness example'
                     : 'or check out Warrior of the Mind';
+
+                const baseButtonClasses =
+                  'inline-flex items-center justify-between gap-3 rounded-[6px] border px-4 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400';
+                const enabledClasses =
+                  'border-[rgba(245,158,11,0.16)] bg-black/30 text-zinc-100 hover:border-[rgba(245,158,11,0.28)] hover:bg-zinc-900';
+                const disabledClasses =
+                  'cursor-not-allowed border-[rgba(245,158,11,0.10)] bg-gold-500/5 text-gold-300/60';
+                const highlightClasses =
+                  isRuthlessness && !isDisabled
+                    ? 'ring-2 ring-gold-500/70 ring-offset-2 ring-offset-black/40 shadow-[0_0_35px_rgba(245,158,11,0.4)]'
+                    : isRuthlessness
+                    ? 'ring-2 ring-gold-500/40 ring-offset-2 ring-offset-black/40 shadow-[0_0_28px_rgba(245,158,11,0.25)]'
+                    : '';
 
                 return (
                   <button
@@ -183,11 +197,7 @@ export function EmptyStateScreen({
                     type="button"
                     onClick={() => onExampleLoad(example.id)}
                     disabled={isDisabled}
-                    className={`inline-flex items-center justify-between gap-3 rounded-[6px] border px-4 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400 ${
-                      isDisabled
-                        ? 'cursor-not-allowed border-[rgba(245,158,11,0.10)] bg-gold-500/5 text-gold-300/60'
-                        : 'border-[rgba(245,158,11,0.16)] bg-black/30 text-zinc-100 hover:border-[rgba(245,158,11,0.28)] hover:bg-zinc-900'
-                    }`}
+                    className={`${baseButtonClasses} ${isDisabled ? disabledClasses : enabledClasses} ${highlightClasses}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-zinc-100">{primaryLabel}</p>
