@@ -122,7 +122,7 @@ describe('renderMelodicTrack', () => {
     expect(result).toContain('C4@0.25');
   });
 
-  it('places a leading rest on its own line before chunking note rows', () => {
+  it('places a leading rest on its own line before chunking note rows and keeps the trailing rest', () => {
     const sequence = renderSequence(
       [
         makeNote(76, 'E5', beatDur * 2, beatDur * 3),
@@ -142,6 +142,6 @@ describe('renderMelodicTrack', () => {
       {},
     );
 
-    expect(sequence).toBe(['~@2', 'E5 D5 C5 B4', 'A4'].join('\n'));
+    expect(sequence).toBe(['~@2', 'E5 D5 C5 B4', 'A4 ~@3'].join('\n'));
   });
 });

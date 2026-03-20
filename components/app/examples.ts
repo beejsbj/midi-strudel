@@ -1,29 +1,31 @@
 import type { ExampleMidi } from '../../hooks/useProjectState';
 
+const EXAMPLES_SOURCE_BASE_URL =
+  'https://github.com/beejsbj/midi-strudel/blob/main/public/examples';
+
 export const EXAMPLE_MIDIS: readonly ExampleMidi[] = [
   {
-    id: 'ruthlessness',
-    url: '/examples/ruthlessness-epic-the-musical.mid',
-    fileName: 'Ruthlessness (Epic The Musical).mid',
-    label: 'Ruthlessness',
-    detail: 'A smaller example that loads quickly and shows the shape of the app fast.',
-    sourceUrl: 'https://onlinesequencer.net/3897560',
+    id: 'lantern-loop',
+    url: '/examples/lantern-loop.mid',
+    fileName: 'Lantern Loop.mid',
+    label: 'Lantern Loop',
+    detail: 'A short original melody with a counterline. It loads quickly and shows the converter fast.',
+    sourceUrl: `${EXAMPLES_SOURCE_BASE_URL}/lantern-loop.mid`,
   },
   {
-    id: 'warrior-of-the-mind',
-    url: '/examples/warrior-of-the-mind-epic-the-musical.mid',
-    fileName: 'Warrior of the Mind (Epic The Musical).mid',
-    label: 'Warrior of the Mind',
-    detail: 'A much denser example MIDI. It is great for stress-testing, but the conversion does not work as cleanly because the arrangement is so much more complex.',
-    sourceUrl: 'https://onlinesequencer.net/4782267',
+    id: 'glass-garden',
+    url: '/examples/glass-garden.mid',
+    fileName: 'Glass Garden.mid',
+    label: 'Glass Garden',
+    detail: 'A denser original arrangement with chords, bass, and drums for a more realistic stress test.',
+    sourceUrl: `${EXAMPLES_SOURCE_BASE_URL}/glass-garden.mid`,
   },
 ] as const;
 
-export const RUTHLESSNESS_EXAMPLE_SNIPPET = `$EXAMPLE_MELODY: \`<
-E6@0.0833 D6@0.0833 C6@0.0833 D6@0.0833
-C6@0.0833 B5@0.0833 C6@0.0833 B5@0.0833
-A5@0.0833 B5@0.0833 A5@0.0833 G5@0.0833
+export const LANTERN_LOOP_EXAMPLE_SNIPPET = `$LANTERN_LEAD: \`<
+C5@0.125 E5@0.125 G5@0.125 A5@0.125
+G5@0.125 E5@0.125 D5@0.125 C5@0.125
 >\`
   .as("note")
-  .sound("triangle").cps(135 / 60 / 4)
+  .sound("triangle").cps(118 / 60 / 4)
   ._pianoroll()`;
