@@ -24,6 +24,6 @@ describe('EmptyStateScreen', () => {
       />,
     );
 
-    expect(screen.getByTestId('live-player').textContent).toContain('Lantern Loop / lead');
+    expect(screen.getByTestId('live-player').textContent).toContain('Ruthlessness / first track');
   });
 });

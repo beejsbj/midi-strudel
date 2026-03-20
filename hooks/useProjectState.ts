@@ -111,8 +111,6 @@ export function useProjectState({ examples, dependencies }: UseProjectStateOptio
   const notationConfigKey = getNotationConfigKey(config);
   const notationConfig = useMemo(
     () => getNotationConfig(config),
-    // Editor-only visual settings are intentionally excluded so they do not regenerate notation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [notationConfigKey],
   );
   const debouncedConfig = useDebouncedValue(config, deps.debounceMs);

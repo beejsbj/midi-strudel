@@ -3,7 +3,7 @@ import { ExternalLink, Loader2, Play } from 'lucide-react';
 import { DropZone } from '../DropZone';
 import { LazyCodeViewer } from '../codeViewer/LazyCodeViewer';
 import { StrudelConfig } from '../../types';
-import { EXAMPLE_MIDIS, LANTERN_LOOP_EXAMPLE_SNIPPET } from './examples';
+import { EXAMPLE_MIDIS, RUTHLESSNESS_EXAMPLE_SNIPPET } from './examples';
 
 interface Props {
   activeExampleId: string | null;
@@ -19,91 +19,82 @@ export function EmptyStateScreen({
   isProcessing,
   onExampleLoad,
   onFileLoaded,
-  }: Props) {
+}: Props) {
   return (
     <div className="flex-1 overflow-y-auto bg-noir-900 p-6 md:p-10">
-      <div className="mx-auto grid min-h-full max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="relative overflow-hidden rounded-[8px] border border-[rgba(245,158,11,0.18)] bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.99))] p-7 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:p-10">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.1),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.04),transparent_28%)]" />
-          <div className="relative space-y-8">
-            <div className="space-y-4">
-              <p className="font-display text-[11px] font-medium uppercase tracking-[0.28em] text-gold-500/75">
-                midi-strudel
+    <div className="mx-auto grid min-h-full max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+      <section className="relative overflow-hidden rounded-[8px] border border-[rgba(245,158,11,0.18)] bg-[linear-gradient(180deg,rgba(24,24,24,0.96),rgba(10,10,10,0.99))] p-7 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:p-10">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.1),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.04),transparent_28%)]" />
+        <div className="relative space-y-8">
+          <div className="space-y-4">
+            <p className="font-display text-[11px] font-medium uppercase tracking-[0.28em] text-gold-500/75">
+              midi-strudel
+            </p>
+            <h1 className="max-w-2xl font-display text-4xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
+              i got too obsessed with Epic: The Musical and wanted to see the melodies as strudel code.
+            </h1>
+            <div className="max-w-2xl space-y-4 text-[15px] leading-7 text-zinc-400">
+              <p>
+                that was honestly the whole spark for this. i was on a high from Epic, discovered{' '}
+                <a
+                  href="https://strudel.cc/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-gold-400 underline decoration-gold-500/40 underline-offset-4 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                >
+                  strudel
+                </a>
+                , and really wanted to look at those melodies in this code-shaped notation instead of just a piano roll.
               </p>
-              <h1 className="max-w-2xl font-display text-4xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
-                turn midi into readable strudel code.
-              </h1>
-              <div className="max-w-2xl space-y-4 text-[15px] leading-7 text-zinc-400">
-                <p>
-                  this started because i wanted to inspect melodies in strudel&apos;s code-shaped
-                  notation instead of a piano roll. once that felt useful, it slowly turned into a
-                  proper converter.
-                </p>
-                <p>
-                  the app reads a midi file, pulls apart the tracks, and gives you a strudel-ish
-                  starting point you can actually study, tweak, and send into the repl.
-                </p>
-                <p>
-                  along the way it also became a useful excuse to play with gemini, claude, and
-                  gpt as ai dev tools and see what kind of workflow they were actually good for.
-                </p>
-                <p>
-                  if you&apos;re new to strudel, start here:{' '}
-                  <a
-                    href="https://strudel.cc/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-gold-400 underline decoration-gold-500/40 underline-offset-4 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                  >
-                    strudel
-                  </a>
-                  .
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
-                <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">
-                  what strudel is
-                </p>
-                <p className="text-sm leading-6 text-zinc-300">
-                  strudel is a browser-based live coding environment for music. instead of a piano
-                  roll, you describe repeating patterns and cycles in code.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-zinc-400">
-                  <a
-                    href="https://strudel.cc/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                  >
-                    strudel.cc
-                    <ExternalLink size={12} />
-                  </a>
-                  <a
-                    href="https://strudel.cc/learn/getting-started/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                  >
-                    docs / getting started
-                    <ExternalLink size={12} />
-                  </a>
-                </div>
-              </div>
-              <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
-                <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">
-                  what this project does
-                </p>
-                <p className="text-sm leading-6 text-zinc-300">
-                  it takes a midi file, parses the tracks, and gives you strudel-ish code you can
-                  read, tweak, and send into the repl without starting from scratch.
-                </p>
-              </div>
+              <p>
+                then vibe coding made it very easy to keep poking at it. it stopped being a one-off experiment and slowly became a fun little toy for turning midi into strudel-ish code.
+              </p>
+              <p>
+                along the way it also became a useful excuse to play with gemini, claude, and gpt as ai dev tools and see what kind of workflow they were actually good for.
+              </p>
             </div>
           </div>
-        </section>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
+              <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">
+                what strudel is
+              </p>
+              <p className="text-sm leading-6 text-zinc-300">
+                strudel is a browser-based live coding environment for music. instead of a piano roll, you describe repeating patterns and cycles in code.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-zinc-400">
+                <a
+                  href="https://strudel.cc/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                >
+                  strudel.cc
+                  <ExternalLink size={12} />
+                </a>
+                <a
+                  href="https://strudel.cc/learn/getting-started/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 transition-colors hover:text-gold-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                >
+                  docs / getting started
+                  <ExternalLink size={12} />
+                </a>
+              </div>
+            </div>
+            <div className="rounded-[6px] border border-[rgba(245,158,11,0.16)] bg-black/25 p-4">
+              <p className="mb-2 font-display text-[11px] font-medium uppercase tracking-[0.22em] text-gold-500/70">
+                what this project does
+              </p>
+              <p className="text-sm leading-6 text-zinc-300">
+                it takes a midi file, parses the tracks, and gives you strudel-ish code you can read, tweak, and send into the repl without starting from scratch.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="flex flex-col gap-6">
         <div className="rounded-[8px] border border-[rgba(245,158,11,0.16)] bg-black/30 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
@@ -112,7 +103,7 @@ export function EmptyStateScreen({
           </p>
           <div className="space-y-2 text-sm leading-6 text-zinc-300">
             <p>1. drop a `.mid` or `.midi` file into the upload box.</p>
-            <p>2. or load one of the original bundled examples if you want to hear the vibe first.</p>
+            <p>2. or hit one of the examples if you want to hear the vibe first.</p>
             <p>3. once it loads, tweak the settings and open the result in strudel.</p>
           </div>
         </div>
@@ -149,8 +140,7 @@ export function EmptyStateScreen({
                 example
               </p>
               <p className="text-sm leading-6 text-zinc-400">
-                this player is one loop from Lantern Loop, one of the original bundled demo MIDIs,
-                so the repo can ship a real example without borrowing someone else&apos;s song.
+                this is one loop from the first Ruthlessness track, shown as a real little strudel player instead of a fake code block.
               </p>
             </div>
 
@@ -166,14 +156,14 @@ export function EmptyStateScreen({
                 }
               >
                 <LazyCodeViewer
-                  code={LANTERN_LOOP_EXAMPLE_SNIPPET}
+                  code={RUTHLESSNESS_EXAMPLE_SNIPPET}
                   durationTagStyle={config.durationTagStyle}
                   isNoteColoringEnabled={config.isNoteColoringEnabled}
                   isProgressiveFillEnabled={config.isProgressiveFillEnabled}
                   isPatternTextColoringEnabled={config.isPatternTextColoringEnabled}
                   showCopyButton={false}
                   showOpenExternalButton={false}
-                  playerLabel="Lantern Loop / lead"
+                  playerLabel="Ruthlessness / first track"
                 />
               </Suspense>
             </div>
@@ -182,8 +172,11 @@ export function EmptyStateScreen({
               {EXAMPLE_MIDIS.map((example) => {
                 const isActive = activeExampleId === example.id;
                 const isDisabled = isProcessing;
-                const isFeaturedExample = example.id === 'lantern-loop';
-                const primaryLabel = `load ${example.label}`;
+                const isRuthlessness = example.id === 'ruthlessness';
+                const primaryLabel =
+                  isRuthlessness
+                    ? 'see full Ruthlessness example'
+                    : 'or check out Warrior of the Mind';
 
                 const baseButtonClasses =
                   'inline-flex items-center justify-between gap-3 rounded-[6px] border px-4 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-400';
@@ -192,9 +185,9 @@ export function EmptyStateScreen({
                 const disabledClasses =
                   'cursor-not-allowed border-[rgba(245,158,11,0.10)] bg-gold-500/5 text-gold-300/60';
                 const highlightClasses =
-                  isFeaturedExample && !isDisabled
+                  isRuthlessness && !isDisabled
                     ? 'ring-2 ring-gold-500/70 ring-offset-2 ring-offset-black/40 shadow-[0_0_35px_rgba(245,158,11,0.4)]'
-                    : isFeaturedExample
+                    : isRuthlessness
                     ? 'ring-2 ring-gold-500/40 ring-offset-2 ring-offset-black/40 shadow-[0_0_28px_rgba(245,158,11,0.25)]'
                     : '';
 
@@ -238,8 +231,8 @@ export function EmptyStateScreen({
             </div>
           </div>
         </div>
-        </section>
-      </div>
+      </section>
+    </div>
     </div>
   );
 }
