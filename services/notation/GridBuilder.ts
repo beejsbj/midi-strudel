@@ -270,47 +270,105 @@ export function renderMeasureAbsolute(
 
   if (notes.length === 0) return createRestTokenFn(measureDur, cycleDur);
 
-  let cursor = measureStart;
-  let output = "";
+  const formatOverlapGroup = (groupNotes: Note[]): { token: string; end: number } => {
+    const groupStart = groupNotes[0].noteOn;
+    const groupEnd = Math.max(...groupNotes.map(note => note.noteOff));
+    const lanes: Note[][] = [];
 
-  for (let i = 0; i < notes.length; i++) {
+    for (const groupNote of groupNotes) {
+      let placed = false;
+
+      for (const lane of lanes) {
+        const lastNote = lane[lane.length - 1];
+        if (lastNote.noteOff <= groupNote.noteOn + EPSILON) {
+          lane.push(groupNote);
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) lanes.push([groupNote]);
+    }
+
+    const groupDur = groupEnd - groupStart;
+    const cycles = round(groupDur / cycleDur, config.durationPrecision);
+    const suffix = Math.abs(cycles - 1) < 0.001 ? "" : `@${cycles}`;
+    const isSimpleChord = lanes.every(lane => lane.length === 1)
+      && groupNotes.every(note =>
+        Math.abs(note.noteOn - groupStart) < EPSILON
+        && Math.abs(note.noteOff - groupEnd) < EPSILON,
+      );
+
+    if (isSimpleChord) {
+      const innerNotes = groupNotes.map(note =>
+        formatNoteVal(note, cycleDur, isDrum, config, drumMap).replace(/@-?\d*\.?\d+$/, ''),
+      );
+
+      return { token: `{${innerNotes.join(', ')}}${suffix}`, end: groupEnd };
+    }
+
+    const laneTokens = lanes.map(lane => {
+      const parts: string[] = [];
+      let laneCursor = groupStart;
+
+      for (const laneNote of lane) {
+        if (laneNote.noteOn > laneCursor + EPSILON) {
+          parts.push(createRestTokenFn(laneNote.noteOn - laneCursor, cycleDur));
+        }
+
+        parts.push(formatNoteVal(laneNote, cycleDur, isDrum, config, drumMap));
+        laneCursor = laneNote.noteOff;
+      }
+
+      if (laneCursor < groupEnd - EPSILON) {
+        parts.push(createRestTokenFn(groupEnd - laneCursor, cycleDur));
+      }
+
+      return parts.join(' ');
+    });
+
+    return { token: `{${laneTokens.join(', ')}}${suffix}`, end: groupEnd };
+  };
+
+  let cursor = measureStart;
+  const output: string[] = [];
+
+  for (let i = 0; i < notes.length;) {
     const note = notes[i];
     if (note.noteOn > cursor + EPSILON) {
       const gap = note.noteOn - cursor;
       if (gap > EPSILON) {
-        output += `${createRestTokenFn(gap, cycleDur)} `;
+        output.push(createRestTokenFn(gap, cycleDur));
       }
-      cursor += gap;
-    } else {
-      cursor = Math.max(cursor, note.noteOn);
+      cursor = note.noteOn;
     }
 
-    const chordNotes = [note];
     let j = i + 1;
-    while (j < notes.length && Math.abs(notes[j].noteOn - note.noteOn) < EPSILON) {
-      chordNotes.push(notes[j]);
+    let overlapEnd = note.noteOff;
+
+    while (j < notes.length && notes[j].noteOn < overlapEnd - EPSILON) {
+      overlapEnd = Math.max(overlapEnd, notes[j].noteOff);
       j++;
     }
-    i = j - 1;
 
-    if (chordNotes.length > 1) {
-      const maxEnd = Math.max(...chordNotes.map(n => n.noteOff));
-      const dur = maxEnd - note.noteOn;
-      const noteStrs = chordNotes.map(n => formatNoteVal(n, cycleDur, isDrum, config, drumMap, 0));
-      const cycles = dur / cycleDur;
-      const suffix = Math.abs(cycles - 1) < 0.001 ? "" : `@${round(cycles, config.durationPrecision)}`;
-      output += `{${noteStrs.join(', ')}}${suffix} `;
-      cursor = maxEnd;
+    const groupNotes = notes.slice(i, j);
+
+    if (groupNotes.length > 1) {
+      const overlapGroup = formatOverlapGroup(groupNotes);
+      output.push(overlapGroup.token);
+      cursor = overlapGroup.end;
     } else {
-      output += `${formatNoteVal(note, cycleDur, isDrum, config, drumMap)} `;
+      output.push(formatNoteVal(note, cycleDur, isDrum, config, drumMap));
       cursor = note.noteOff;
     }
+
+    i = j;
   }
 
   if (cursor < measureStart + measureDur - EPSILON) {
     const rem = (measureStart + measureDur) - cursor;
-    output += createRestTokenFn(rem, cycleDur);
+    output.push(createRestTokenFn(rem, cycleDur));
   }
 
-  return output.trim();
+  return output.join(' ').trim();
 }

@@ -142,6 +142,44 @@ describe('renderMelodicTrack', () => {
       {},
     );
 
-    expect(sequence).toBe(['~@2', 'E5 D5 C5 B4', 'A4'].join('\n'));
+    const lines = sequence.split('\n');
+    expect(lines[0]).toBe('~@2');
+    expect(lines[1]).toBe('E5 D5 C5 B4');
+    expect(lines[2]?.startsWith('A4')).toBe(true);
+  });
+
+  it('renders same-start harmony chords without zero-duration inner notes', () => {
+    const sequence = renderSequence(
+      [
+        makeNote(49, 'C#3', 0, beatDur),
+        makeNote(52, 'E3', 0, beatDur),
+        makeNote(56, 'G#3', 0, beatDur),
+      ],
+      beatDur,
+      false,
+      config,
+      {},
+    );
+
+    expect(sequence).toBe('{C#3, E3, G#3}@0.25 ~@0.75');
+    expect(sequence).not.toContain('C#3@0');
+    expect(sequence).not.toContain('E3@0');
+    expect(sequence).not.toContain('G#3@0');
+  });
+
+  it('renders overlapping harmony voices as padded bracket lanes', () => {
+    const sequence = renderSequence(
+      [
+        makeNote(60, 'C4', 0, beatDur),
+        makeNote(64, 'E4', 0, beatDur * 2),
+        makeNote(67, 'G4', beatDur, beatDur * 2),
+      ],
+      beatDur * 2,
+      false,
+      config,
+      {},
+    );
+
+    expect(sequence).toBe('{C4@0.25 G4@0.25, E4@0.5}@0.5 ~@0.5');
   });
 });
