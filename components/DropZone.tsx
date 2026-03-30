@@ -86,34 +86,37 @@ export const DropZone: React.FC<Props> = ({ onFileLoaded }) => {
       onDrop={handleDrop}
       onKeyDown={handleKeyDown}
       onClick={() => inputRef.current?.click()}
-      className={`border-2 border-dashed rounded-md flex flex-col items-center justify-center p-8 transition-all cursor-pointer group h-48 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-500 ${
+      className={`group flex min-h-[174px] cursor-pointer flex-col items-center justify-center rounded-[4px] border-[1.5px] border-dashed px-5 py-[30px] text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c8922a] ${
         isDragOver
-          ? 'border-gold-500 bg-gold-500/10'
+          ? 'border-[#c8922a] bg-[rgba(200,146,42,0.08)]'
           : typeError
           ? 'border-red-500/70 bg-red-500/5'
-          : 'border-[rgba(245,158,11,0.14)] hover:border-gold-500/50 bg-noir-800/50'
+          : 'border-[rgba(200,146,42,0.5)] bg-transparent hover:border-[#c8922a] hover:bg-[rgba(200,146,42,0.08)]'
       }`}
     >
-      <div className={`bg-noir-900 p-3 rounded-full mb-4 border transition-transform ${
-        isDragOver ? 'border-gold-500 scale-110' : 'border-[rgba(245,158,11,0.14)] group-hover:scale-110'
-      }`}>
-        <UploadCloud
-          className={`transition-colors ${isDragOver ? 'text-gold-500' : 'text-zinc-400 group-hover:text-gold-500'}`}
-          size={24}
-        />
-      </div>
+      <UploadCloud
+        className={`mb-[10px] transition-colors ${isDragOver ? 'text-[#c8922a]' : 'text-[#7a5c1a]'}`}
+        size={32}
+        strokeWidth={1.4}
+      />
 
       {typeError ? (
         <>
-          <p className="text-red-400 font-medium text-sm mb-1">Please drop a .mid or .midi file</p>
-          <p className="text-zinc-600 text-xs">Only MIDI files are supported</p>
+          <p className="mb-1 font-display text-sm font-bold text-red-400">
+            this needs a `.mid` or `.midi` file
+          </p>
+          <p className="font-mono text-[10px] tracking-[0.04em] text-[#565450]">
+            only MIDI files are supported here
+          </p>
         </>
       ) : (
         <>
-          <p className="text-zinc-300 font-medium text-sm mb-1">
-            {isDragOver ? 'Release to upload' : 'Drop MIDI file here'}
+          <p className="mb-[3px] font-display text-[14px] font-bold text-[#ddd9c8]">
+            {isDragOver ? 'Drop a .mid file here' : 'Drop a .mid file here'}
           </p>
-          <p className="text-zinc-600 text-xs">or click / press Enter to browse</p>
+          <p className="font-mono text-[10px] tracking-[0.04em] text-[#565450]">
+            or click / press Enter to browse
+          </p>
         </>
       )}
 

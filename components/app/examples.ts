@@ -6,7 +6,7 @@ export const EXAMPLE_MIDIS: readonly ExampleMidi[] = [
     url: '/examples/ruthlessness-epic-the-musical.mid',
     fileName: 'Ruthlessness (Epic The Musical).mid',
     label: 'Ruthlessness',
-    detail: 'A smaller example that loads quickly and shows the shape of the app fast.',
+    detail: 'The full Ruthlessness MIDI. Still one of the cleaner conversions, but with enough material to show what the app really outputs.',
     sourceUrl: 'https://onlinesequencer.net/3897560',
   },
   {
