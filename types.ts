@@ -98,7 +98,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   formatPerLineBy: 'note',
   measuresPerLine: 4,
   
-  useAutoMapping: false,
+  useAutoMapping: true,
   globalSound: 'triangle',
   
   includeVelocity: false,
@@ -112,7 +112,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   visualMethods: [],
   visualScope: 'inline',
   isTrackColoringEnabled: true,
-  isNoteColoringEnabled: false,
+  isNoteColoringEnabled: true,
   isProgressiveFillEnabled: true,
   isPatternTextColoringEnabled: true,
 };

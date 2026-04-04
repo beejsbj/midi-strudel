@@ -37,6 +37,15 @@ describe('normalizeConfidence', () => {
 });
 
 describe('sanitizeConfig', () => {
+  it('applies the current default toggles to partial persisted config', () => {
+    const config = sanitizeConfig({
+      globalSound: 'sawtooth',
+    });
+
+    expect(config.useAutoMapping).toBe(true);
+    expect(config.isNoteColoringEnabled).toBe(true);
+  });
+
   it('normalizes key confidence from persisted config', () => {
     const config = sanitizeConfig({
       ...DEFAULT_CONFIG,
