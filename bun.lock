@@ -4,6 +4,7 @@
     "": {
       "name": "strudel-api-playground",
       "dependencies": {
+        "@nanostores/vue": "^1.0.1",
         "@strudel/codemirror": "latest",
         "@strudel/core": "latest",
         "@strudel/draw": "latest",
@@ -106,6 +107,8 @@
     "@marijn/find-cluster-break": ["@marijn/find-cluster-break@1.0.2", "", {}, "sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g=="],
 
     "@nanostores/persistent": ["@nanostores/persistent@0.10.2", "", { "peerDependencies": { "nanostores": "^0.9.0 || ^0.10.0 || ^0.11.0" } }, "sha512-BEndnLhRC+yP7gXTESepBbSj8XNl8OXK9hu4xAgKC7MWJHKXnEqJMqY47LUyHxK6vYgFnisyHmqq+vq8AUFyIg=="],
+
+    "@nanostores/vue": ["@nanostores/vue@1.0.1", "", { "peerDependencies": { "@nanostores/logger": "^0.4.0 || ^1.0.0", "@vue/devtools-api": ">=7.6.2", "nanostores": "^0.11.3 || ^1.0.0", "vue": ">=3.3.1" }, "optionalPeers": ["@nanostores/logger", "@vue/devtools-api"] }, "sha512-0VwubMTMvEdWQhVN4BAvDZ+vHQH3O1G9BaOfgrjfF4erqBsWScoK/zyaBeRfFjptNOb25947EFPHBZwEf9JcMg=="],
 
     "@replit/codemirror-emacs": ["@replit/codemirror-emacs@6.1.0", "", { "peerDependencies": { "@codemirror/autocomplete": "^6.0.2", "@codemirror/commands": "^6.0.0", "@codemirror/search": "^6.0.0", "@codemirror/state": "^6.0.1", "@codemirror/view": "^6.3.0" } }, "sha512-74DITnht6Cs6sHg02PQ169IKb1XgtyhI9sLD0JeOFco6Ds18PT+dkD8+DgXBDokne9UIFKsBbKPnpFRAz60/Lw=="],
 

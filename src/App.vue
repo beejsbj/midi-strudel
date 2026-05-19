@@ -18,7 +18,7 @@ import {
   onBeforeUnmount,
   watch,
 } from "vue";
-import { StrudelMirror } from "@strudel/codemirror";
+import { StrudelMirror, toggleComment } from "@strudel/codemirror";
 import { evalScope } from "@strudel/core";
 import { transpiler } from "@strudel/transpiler";
 import { useStore } from "@nanostores/vue";
@@ -33,6 +33,21 @@ import {
 } from "@strudel/webaudio";
 import { registerSoundfonts } from "@strudel/soundfonts";
 import { themes } from "@strudel/codemirror";
+
+/**
+ * Simple trailing debounce helper for auto-evaluating after typing
+ */
+function debounce(fn, wait = 500) {
+  let t;
+  const debounced = (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+  debounced.cancel = () => {
+    clearTimeout(t);
+  };
+  return debounced;
+}
 
 // Example patterns demonstrating different Strudel features
 const examplePatterns = {
@@ -170,8 +185,12 @@ const strudelSettings = reactive({
   slidersEnabled: true,
 });
 
-// Non-reactive state
+/**
+ * Non-reactive state
+ */
 let editor = null;
+let suppressInitialOnCode = true;
+let inputListener = null;
 
 /**
  * User-friendly status text based on current status
@@ -206,6 +225,12 @@ async function initializeEditor() {
       initialCode: currentCode.value,
       onCode: (code) => {
         currentCode.value = code;
+        if (suppressInitialOnCode) {
+          suppressInitialOnCode = false;
+          return;
+        }
+        console.debug("[Strudel] onCode change, scheduling evaluate");
+        debouncedEvaluate();
       },
       onError: (error) => {
         handleError(error);
@@ -241,6 +266,13 @@ async function initializeEditor() {
       },
     });
     editor.updateSettings(editorConfig);
+
+    // Last resort: manual event listener on the root element
+    if (editorRoot.value) {
+      editorRoot.value.addEventListener("input", () => {
+        debouncedEvaluate();
+      });
+    }
   } catch (error) {
     handleError(new Error(`Editor initialization failed: ${error.message}`));
     throw error;
@@ -250,20 +282,31 @@ async function initializeEditor() {
 /**
  * Handle play button click - uses evaluate()
  */
-async function handlePlay() {
+
+async function handleEvaluate(source = "manual") {
   if (!editor) {
     return;
   }
   try {
+    console.debug(`[Strudel] handleEvaluate() start (source=${source})`);
     status.value = "loading";
     //  editor.appendCode(".punchcard()");
     await editor.evaluate();
     status.value = "playing";
+    console.debug("[Strudel] handleEvaluate() done");
   } catch (error) {
     status.value = "stopped";
     handleError(error);
   }
 }
+
+const debouncedEvaluate = debounce(() => {
+  if (!editor || status.value === "loading") return;
+  console.debug(
+    "[Strudel] debouncedEvaluate firing -> handleEvaluate('typing')"
+  );
+  handleEvaluate("typing");
+}, 500);
 
 /**
  * Handle stop button click - uses stop()
@@ -472,27 +515,23 @@ function handleError(error) {
  */
 onMounted(async () => {
   await initializeEditor();
-  console.log(editor);
 });
 
 /**
  * Clean up editor when component unmounts
  */
 onBeforeUnmount(() => {
+  if (editor?.view?.dom && inputListener) {
+    editor.view.dom.removeEventListener("input", inputListener);
+    editor.view.dom.removeEventListener("keyup", inputListener);
+  }
   if (editor) {
     editor.destroy();
   }
+  if (typeof debouncedEvaluate?.cancel === "function") {
+    debouncedEvaluate.cancel();
+  }
 });
-
-watch(
-  () => currentCode.value,
-  (newCode) => {
-    if (editor && editor.getCode() !== newCode) {
-      editor.setCode(newCode);
-    }
-  },
-  { immediate: false }
-);
 
 //this is how we get access to all the loaded samples
 const sounds = useStore(soundMap);
@@ -519,14 +558,12 @@ console.log(sounds);
         <!-- Playback Controls -->
         <div class="control-group">
           <h4>Playback</h4>
-          <button @click="handlePlay" :disabled="status === 'loading'">
-            ▶ Play
-          </button>
-          <button @click="handleStop" :disabled="status === 'loading'">
-            ⏹ Stop
-          </button>
           <button @click="handleToggle" :disabled="status === 'loading'">
-            ⏯ Toggle
+            <span v-if="status === 'stopped'"> Play </span>
+            <span v-else-if="status === 'playing'"> Stop </span>
+          </button>
+          <button @click="handleEvaluate" :disabled="status === 'loading'">
+            Update
           </button>
         </div>
 
