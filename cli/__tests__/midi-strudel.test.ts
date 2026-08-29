@@ -22,5 +22,7 @@ describe('midi-strudel arguments', () => {
   it('rejects invalid input and invalid choices', () => {
     expect(() => parseArgs(['song.txt'])).toThrow('.mid or .midi');
     expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
+    expect(() => parseArgs(['--duration-precision', '9', 'song.mid']))
+      .toThrow('--duration-precision must be <= 8');
   });
 });

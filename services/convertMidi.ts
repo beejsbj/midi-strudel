@@ -22,7 +22,10 @@ export const createMidiProject = (
   keyDetector: typeof detectKey = detectKey,
 ): { config: StrudelConfig; tracks: Track[] } => {
   const key = keyDetector(parsed.tracks) ?? undefined;
-  const baseName = fileName.replace(/\.(?:mid|midi)$/i, '');
+  const baseName = fileName
+    .replace(/\.(?:mid|midi)$/i, '')
+    .replace(/[\r\n\u2028\u2029]+/g, ' ')
+    .trim() || 'MIDI Conversion';
   return {
     tracks: parsed.tracks,
     config: {

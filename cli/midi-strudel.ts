@@ -100,7 +100,12 @@ export const parseArgs = (args: string[]): CliOptions | null => {
         overrides.quantizationStrength = strength;
         break;
       }
-      case '--duration-precision': overrides.durationPrecision = integerValue(value(), arg); break;
+      case '--duration-precision': {
+        const precision = integerValue(value(), arg);
+        if (precision > 8) fail(`${arg} must be <= 8`);
+        overrides.durationPrecision = precision;
+        break;
+      }
       default: fail(`unknown option: ${arg}`);
     }
   }

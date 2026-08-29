@@ -141,19 +141,19 @@ export function useProjectState({ examples, dependencies }: UseProjectStateOptio
 
     try {
       const result = await deps.parseMidi(file);
-      const project = createMidiProject(
+      const detectedKey = deps.detectKeySignature(result.tracks);
+
+      setTracks(result.tracks);
+      setConfig((currentConfig) => createMidiProject(
         result,
         file.name,
         {
-          ...config,
+          ...currentConfig,
           bpm: result.bpm,
           timeSignature: result.timeSignature,
         },
-        deps.detectKeySignature,
-      );
-
-      setTracks(project.tracks);
-      setConfig(project.config);
+        () => detectedKey,
+      ).config);
     } catch (err) {
       console.error('Failed to parse MIDI', err);
       setError(

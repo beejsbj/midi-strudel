@@ -28,4 +28,12 @@ describe('convertMidi', () => {
     expect(() => convertMidi(new TextEncoder().encode('not midi').buffer, 'invalid.mid'))
       .toThrow('Failed to parse MIDI file');
   });
+
+  it('keeps filename line breaks out of generated title metadata', async () => {
+    const bytes = await readFile(fileURLToPath(fixtureUrl));
+    const result = convertMidi(asArrayBuffer(bytes), 'safe\nsetcps(999)\u2028title.mid');
+
+    expect(result.config.fileName).toBe('safe setcps(999) title');
+    expect(result.code.split('\n')[0]).toBe('// @title safe setcps(999) title');
+  });
 });
