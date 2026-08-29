@@ -62,3 +62,29 @@ npm run build
 npm run typecheck
 npm run lint
 ```
+
+## agent-facing CLI
+
+Install dependencies from a clean checkout, then invoke the converter without a browser or prompts:
+
+```bash
+npm ci
+npm run --silent convert -- path/to/song.mid
+```
+
+The command writes only its requested result to stdout. Errors and diagnostics go to stderr and return a nonzero exit status, so agents can safely redirect or parse stdout.
+
+Choose one of three stable output formats:
+
+```bash
+# Plain Strudel code (the default)
+npm run --silent convert -- song.mid --format code
+
+# Versioned JSON with source metadata, effective config, track summaries, code, and URL
+npm run --silent convert -- song.mid --format json
+
+# An openable strudel.cc URL containing the same encoded code payload as the web app
+npm run --silent convert -- song.mid --format url
+```
+
+Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--timing absoluteDuration|relativeDivision`, `--quantize` / `--no-quantize`, `--quantization-threshold`, `--quantization-strength`, and `--duration-precision`. Run `npm run --silent convert -- --help` for the complete contract.

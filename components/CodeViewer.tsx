@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CodeViewerAlerts } from './codeViewer/CodeViewerAlerts';
 import { CodeViewerToolbar } from './codeViewer/CodeViewerToolbar';
 import { useStrudelEditor } from './codeViewer/useStrudelEditor';
+import { createStrudelLink } from '../services/strudelLink';
 
 interface Props {
   code: string;
@@ -73,8 +74,7 @@ export const CodeViewer: React.FC<Props> = ({
     const currentCode = getEditorContent() || code;
 
     try {
-      const encoded = btoa(unescape(encodeURIComponent(currentCode)));
-      window.open(`https://strudel.cc/#${encoded}`, '_blank');
+      window.open(createStrudelLink(currentCode), '_blank');
     } catch (err) {
       console.error('Failed to encode code for Strudel URL:', err);
       window.open('https://strudel.cc/', '_blank');

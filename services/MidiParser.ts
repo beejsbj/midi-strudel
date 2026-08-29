@@ -1,9 +1,16 @@
 
-import { Midi } from '@tonejs/midi';
+import MidiPackage from '@tonejs/midi';
 import { Track, Note } from '../types';
 
-export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm: number, timeSignature: {numerator: number, denominator: number} }> => {
-  const arrayBuffer = await file.arrayBuffer();
+const { Midi } = MidiPackage;
+
+export interface ParsedMidi {
+  tracks: Track[];
+  bpm: number;
+  timeSignature: { numerator: number; denominator: number };
+}
+
+export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
   let midi;
   try {
     midi = new Midi(arrayBuffer);
@@ -43,3 +50,6 @@ export const parseMidiFile = async (file: File): Promise<{ tracks: Track[], bpm:
 
   return { tracks, bpm, timeSignature: ts };
 };
+
+export const parseMidiFile = async (file: File): Promise<ParsedMidi> =>
+  parseMidiBuffer(await file.arrayBuffer());
