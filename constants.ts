@@ -45,11 +45,11 @@ export const DRUM_MAP: Record<number, string> = {
   37: "rim",          // Side Stick
   42: "hh", 44: "hh", // Closed Hi Hat, Pedal Hi-Hat
   46: "oh",           // Open Hi-Hat
-  41: "lt",           // Low Tom 
+  41: "lt", 43: "lt", // Low Floor Tom, High Floor Tom
   45: "mt",           // Low-Mid Tom
-  47: "ht",           // Hi-Mid Tom
+  47: "ht", 48: "ht", // Low-Mid Tom, Hi-Mid Tom
   51: "rd",           // Ride Cymbal 1
-  49: "cr", 57: "cr", // Crash Cymbal 1, Crash Cymbal 2
+  49: "cr", 52: "cr", 57: "cr", // Crash Cymbal 1, Chinese Cymbal, Crash Cymbal 2
   56: "cb",           // Cowbell
   82: "sh",           // Shaker
 };

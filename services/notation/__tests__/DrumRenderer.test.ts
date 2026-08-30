@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderDrumTrack } from '../DrumRenderer';
 import { DEFAULT_CONFIG } from '../../../types';
 import type { Track, Note } from '../../../types';
@@ -64,47 +64,15 @@ describe('renderDrumTrack', () => {
     expect(result).toContain(`.bank(${JSON.stringify(bank)})`);
   });
 
-  it('warns for unmapped MIDI drum notes via console.warn', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const unmappedMidi = 99; // not in DRUM_MAP
-      const notes = [makeNote(unmappedMidi, 0, beatDur, 'D#7')];
-      const track = makeTrack(notes);
-      renderDrumTrack(track, beatDur, config);
-      expect(warnSpy).toHaveBeenCalledOnce();
-      // The warn message should mention the MIDI number
-      expect(warnSpy.mock.calls[0][0]).toContain('99');
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it('does NOT warn for mapped drum notes', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const notes = [makeNote(36, 0, beatDur)]; // 36 = bd, mapped
-      const track = makeTrack(notes);
-      renderDrumTrack(track, beatDur, config);
-      expect(warnSpy).not.toHaveBeenCalled();
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
   it('filters out unmapped notes from output', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const notes = [
-        makeNote(36, 0, beatDur),   // mapped -> bd
-        makeNote(99, beatDur, beatDur * 2), // unmapped, should be dropped
-      ];
-      const track = makeTrack(notes);
-      const result = renderDrumTrack(track, beatDur * 2, config);
-      expect(result).toContain('bd');
-      expect(result).not.toContain('?');
-    } finally {
-      warnSpy.mockRestore();
-    }
+    const notes = [
+      makeNote(36, 0, beatDur),   // mapped -> bd
+      makeNote(99, beatDur, beatDur * 2), // unmapped, should be dropped
+    ];
+    const track = makeTrack(notes);
+    const result = renderDrumTrack(track, beatDur * 2, config);
+    expect(result).toContain('bd');
+    expect(result).not.toContain('?');
   });
 
   it('uses the track name in the variable identifier', () => {

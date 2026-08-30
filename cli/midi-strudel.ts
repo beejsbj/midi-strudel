@@ -137,6 +137,9 @@ const serializeJsonOutput = (input: string, conversion: MidiConversion): string 
     isDrum: track.isDrum,
     hidden: Boolean(track.hidden),
   })),
+  // Additive schema-v1 field: existing consumers may continue reading the
+  // stable code/url/config fields while agents can inspect dropped events.
+  diagnostics: conversion.diagnostics,
   code: conversion.code,
   url: conversion.link,
 }, null, 2);
@@ -151,6 +154,12 @@ export const runCli = async (args: string[]): Promise<void> => {
   const bytes = await readFile(options.input);
   const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const conversion = convertMidi(arrayBuffer, basename(options.input), options.overrides);
+
+  conversion.diagnostics.forEach((diagnostic) => {
+    process.stderr.write(
+      `midi-strudel: ${diagnostic.severity} [${diagnostic.code}]: ${diagnostic.message}\n`,
+    );
+  });
 
   if (options.format === 'code') {
     process.stdout.write(conversion.code.endsWith('\n') ? conversion.code : `${conversion.code}\n`);

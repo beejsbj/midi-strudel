@@ -27,6 +27,14 @@ export interface Track {
   drumBank?: string;
 }
 
+export interface ConversionDiagnostic {
+  code: 'unmapped-drum-note';
+  severity: 'warning';
+  midiNote: number;
+  count: number;
+  message: string;
+}
+
 export interface KeySignature {
   root: string;
   type: 'major' | 'minor';

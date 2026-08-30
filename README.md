@@ -72,7 +72,7 @@ npm ci
 npm run --silent convert -- path/to/song.mid
 ```
 
-The command writes only its requested result to stdout. Errors and diagnostics go to stderr and return a nonzero exit status, so agents can safely redirect or parse stdout.
+The command writes only its requested result to stdout, so agents can safely redirect or parse it. Errors go to stderr and return a nonzero exit status. Non-fatal conversion diagnostics also go to stderr as one deterministic line per affected MIDI note, while conversion still succeeds.
 
 Choose one of three stable output formats:
 
@@ -80,11 +80,15 @@ Choose one of three stable output formats:
 # Plain Strudel code (the default)
 npm run --silent convert -- song.mid --format code
 
-# Versioned JSON with source metadata, effective config, track summaries, code, and URL
+# Versioned JSON with source metadata, effective config, track summaries, diagnostics, code, and URL
 npm run --silent convert -- song.mid --format json
 
 # An openable strudel.cc URL containing the same encoded code payload as the web app
 npm run --silent convert -- song.mid --format url
 ```
+
+The schema-v1 JSON object includes a `diagnostics` array. This is an additive,
+backward-compatible field; each dropped percussion entry contains a stable
+diagnostic code, severity, MIDI note number, event count, and message.
 
 Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--timing absoluteDuration|relativeDivision`, `--quantize` / `--no-quantize`, `--quantization-threshold`, `--quantization-strength`, and `--duration-precision`. Run `npm run --silent convert -- --help` for the complete contract.

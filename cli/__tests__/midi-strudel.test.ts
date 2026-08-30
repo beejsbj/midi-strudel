@@ -8,6 +8,7 @@ import { parseArgs } from '../midi-strudel';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const fixture = 'public/examples/ruthlessness-epic-the-musical.mid';
+const denseFixture = 'public/examples/warrior-of-the-mind-epic-the-musical.mid';
 let temporaryDirectory: string;
 let midiFixture: string;
 
@@ -51,17 +52,26 @@ describe('midi-strudel CLI', () => {
   });
 
   it('emits schema-versioned JSON while keeping diagnostics on stderr', () => {
-    const result = runCli(fixture, '--format', 'json');
+    const result = runCli(denseFixture, '--format', 'json');
+    const parsed = JSON.parse(result.stdout);
 
     expect(result.status).toBe(0);
-    expect(() => JSON.parse(result.stdout)).not.toThrow();
-    expect(JSON.parse(result.stdout)).toMatchObject({
+    expect(parsed).toMatchObject({
       schemaVersion: 1,
-      input: 'ruthlessness-epic-the-musical.mid',
+      input: 'warrior-of-the-mind-epic-the-musical.mid',
       code: expect.stringContaining('setcps('),
       url: expect.stringMatching(/^https:\/\/strudel\.cc\/#/),
+      diagnostics: [
+        { code: 'unmapped-drum-note', midiNote: 31, count: 85 },
+        { code: 'unmapped-drum-note', midiNote: 74, count: 1 },
+        { code: 'unmapped-drum-note', midiNote: 78, count: 1 },
+        { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
+        { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
+      ],
     });
-    expect(result.stderr).toContain('Unmapped MIDI drum note dropped');
+    expect(result.stderr.trim().split('\n')).toHaveLength(5);
+    expect(result.stderr).toContain('Dropped 85 unmapped drum note events for MIDI 31');
+    expect(result.stderr).toContain('Dropped 159 unmapped drum note events for MIDI 85');
   });
 
   it('emits a Strudel URL whose base64 fragment decodes to the emitted code', () => {
@@ -74,6 +84,23 @@ describe('midi-strudel CLI', () => {
     expect(Buffer.from(url.hash.slice(1), 'base64').toString('utf8'))
       .toBe(codeResult.stdout);
   });
+
+  it.each(['code', 'url'] as const)(
+    'keeps dense %s stdout clean while reporting bounded diagnostics',
+    (format) => {
+      const result = runCli(denseFixture, '--format', format);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr.trim().split('\n')).toHaveLength(5);
+      expect(result.stdout).not.toContain('midi-strudel: warning');
+      if (format === 'code') {
+        expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);
+      } else {
+        expect(result.stdout.trim()).toMatch(/^https:\/\/strudel\.cc\/#/);
+        expect(result.stdout.trim().split('\n')).toHaveLength(1);
+      }
+    },
+  );
 
   it('returns a meaningful nonzero exit when the input is missing', () => {
     const result = runCli('--format', 'code');
