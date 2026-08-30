@@ -63,6 +63,14 @@ function Harness({ dependencies }: HarnessProps) {
       >
         nudge-track-color
       </button>
+      <button
+        type="button"
+        onClick={() => state.handleFileLoaded(new File(['midi'], 'loaded.mid'))}
+      >
+        load-midi
+      </button>
+      <output data-testid="bpm">{state.config.bpm}</output>
+      <output data-testid="duration-style">{state.config.durationTagStyle}</output>
       <span>{state.code}</span>
     </div>
   );
@@ -192,5 +200,43 @@ describe('useProjectState', () => {
       vi.advanceTimersByTime(30);
     });
     expect(saveTracks).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves settings changed while MIDI parsing is in progress', async () => {
+    let finishParsing!: (value: { tracks: Track[]; bpm: number; timeSignature: { numerator: number; denominator: number } }) => void;
+    const parseMidi = vi.fn(() => new Promise<Parameters<typeof finishParsing>[0]>((resolve) => {
+      finishParsing = resolve;
+    }));
+
+    render(
+      <Harness
+        dependencies={{
+          clearStorage: vi.fn(),
+          createNotation: vi.fn(() => ({ generate: vi.fn(() => 'generated') })),
+          debounceMs: 40,
+          detectKeySignature: vi.fn(() => null),
+          loadConfig: vi.fn(() => DEFAULT_CONFIG),
+          loadTracks: vi.fn(() => []),
+          parseMidi,
+          saveConfig: vi.fn(),
+          saveTracks: vi.fn(),
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'load-midi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'increase-bpm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-duration-style' }));
+    expect(screen.getByTestId('bpm').textContent).toBe('121');
+    expect(screen.getByTestId('duration-style').textContent).toBe('hover');
+
+    await act(async () => {
+      finishParsing({ tracks: TEST_TRACKS, bpm: 90, timeSignature: { numerator: 3, denominator: 4 } });
+      await Promise.resolve();
+    });
+
+    // Source-derived BPM is intentionally applied; other concurrent settings survive.
+    expect(screen.getByTestId('bpm').textContent).toBe('90');
+    expect(screen.getByTestId('duration-style').textContent).toBe('hover');
   });
 });

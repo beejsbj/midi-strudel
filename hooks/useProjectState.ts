@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { detectKey } from '../services/KeyDetector';
 import { parseMidiFile } from '../services/MidiParser';
+import { createMidiProject } from '../services/convertMidi';
 import {
   clearProjectStorage,
   loadConfigFromStorage,
@@ -143,16 +144,16 @@ export function useProjectState({ examples, dependencies }: UseProjectStateOptio
       const detectedKey = deps.detectKeySignature(result.tracks);
 
       setTracks(result.tracks);
-      setConfig((prev) => ({
-        ...prev,
-        bpm: result.bpm,
-        sourceBpm: result.bpm,
-        timeSignature: result.timeSignature,
-        sourceTimeSignature: result.timeSignature,
-        fileName: file.name.replace(/\.[^.]+$/, ''),
-        key: detectedKey ?? undefined,
-        playbackKey: detectedKey ?? undefined,
-      }));
+      setConfig((currentConfig) => createMidiProject(
+        result,
+        file.name,
+        {
+          ...currentConfig,
+          bpm: result.bpm,
+          timeSignature: result.timeSignature,
+        },
+        () => detectedKey,
+      ).config);
     } catch (err) {
       console.error('Failed to parse MIDI', err);
       setError(

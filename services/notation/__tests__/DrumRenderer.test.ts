@@ -56,6 +56,14 @@ describe('renderDrumTrack', () => {
     expect(result).toContain('.bank("RhythmAce")');
   });
 
+  it('serializes drum bank names as safe JavaScript string literals', () => {
+    const bank = 'x"); hush(); //\nnext';
+    const notes = [makeNote(36, 0, beatDur)];
+    const result = renderDrumTrack(makeTrack(notes, { drumBank: bank }), beatDur, config);
+
+    expect(result).toContain(`.bank(${JSON.stringify(bank)})`);
+  });
+
   it('warns for unmapped MIDI drum notes via console.warn', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

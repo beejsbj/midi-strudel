@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "bun@1.2.17",
   "scripts": {
+    "convert": "tsx cli/midi-strudel.ts",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
@@ -35,6 +36,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^16.5.0",
     "jsdom": "^24.1.3",
+    "tsx": "^4.20.6",
     "typescript": "~5.8.2",
     "typescript-eslint": "^8.57.0",
     "vite": "^6.2.0",
