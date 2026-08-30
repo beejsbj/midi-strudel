@@ -1,9 +1,25 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseArgs } from '../midi-strudel';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const fixture = 'public/examples/ruthlessness-epic-the-musical.mid';
+let temporaryDirectory: string;
+let midiFixture: string;
+
+beforeAll(() => {
+  temporaryDirectory = mkdtempSync(join(tmpdir(), 'midi-strudel-cli-'));
+  midiFixture = join(temporaryDirectory, 'ruthlessness-epic-the-musical.midi');
+  copyFileSync(join(repoRoot, fixture), midiFixture);
+});
+
+afterAll(() => {
+  rmSync(temporaryDirectory, { force: true, recursive: true });
+});
 
 const results = new Map<string, SpawnSyncReturns<string>>();
 const runCli = (...args: string[]): SpawnSyncReturns<string> => {
@@ -73,5 +89,38 @@ describe('midi-strudel CLI', () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('missing.mid');
+  });
+
+  it('accepts a real MIDI file with the .midi extension', () => {
+    const result = runCli(midiFixture, '--format', 'code');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('setcps(');
+  });
+});
+
+describe('midi-strudel arguments', () => {
+  it('parses stable agent-facing conversion flags', () => {
+    expect(parseArgs([
+      '--format', 'json', '--bpm', '96', '--notation', 'relative',
+      '--cycle-unit', 'beat', '--quantize', '--velocity', 'song.midi',
+    ])).toEqual({
+      input: 'song.midi',
+      format: 'json',
+      overrides: {
+        bpm: 96,
+        notationType: 'relative',
+        cycleUnit: 'beat',
+        isQuantized: true,
+        includeVelocity: true,
+      },
+    });
+  });
+
+  it('rejects invalid input and invalid choices', () => {
+    expect(() => parseArgs(['song.txt'])).toThrow('.mid or .midi');
+    expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
+    expect(() => parseArgs(['--duration-precision', '9', 'song.mid']))
+      .toThrow('--duration-precision must be <= 8');
   });
 });
