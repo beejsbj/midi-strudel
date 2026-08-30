@@ -110,6 +110,19 @@ describe('renderMelodicTrack', () => {
     expect(result).toContain('gm_piano');
   });
 
+  it('serializes sound names as safe JavaScript string literals', () => {
+    const sound = 'x"); hush(); //\nnext';
+    const notes = [makeNote(60, 'C4', 0, beatDur)];
+    const result = renderMelodicTrack(
+      makeTrack(notes),
+      beatDur,
+      { ...config, useAutoMapping: false, globalSound: sound },
+    );
+
+    expect(result).toContain(`.sound(${JSON.stringify(sound)})`);
+    expect(result).not.toContain('.sound("x"); hush(); //\nnext")');
+  });
+
   it('uses quantized timing when quantization is enabled', () => {
     const notes = [makeNote(60, 'C4', 0.02, 0.48)];
     const track = makeTrack(notes);

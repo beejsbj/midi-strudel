@@ -22,5 +22,5 @@ export function renderDrumTrack(
   const bank = track.drumBank || "RolandTR909";
   const visualSuffix = buildVisualSuffix(config, track);
 
-  return `$${formatTrackName(track.name)}: \`<\n${sequence}\n>\`\n  .as("s")\n  .bank("${bank}")` + visualSuffix + `;\n\n`;
+  return `$${formatTrackName(track.name)}: \`<\n${sequence}\n>\`\n  .as("s")\n  .bank(${JSON.stringify(bank)})` + visualSuffix + `;\n\n`;
 }
