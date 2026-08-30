@@ -3,7 +3,11 @@
 import { readFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { convertMidi, type ConversionOverrides } from '../services/convertMidi';
+import {
+  convertMidi,
+  type ConversionOverrides,
+  type MidiConversion,
+} from '../services/convertMidi';
 
 type OutputFormat = 'code' | 'json' | 'url';
 
@@ -77,31 +81,31 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       continue;
     }
 
-    const value = () => takeValue(args, index++, arg);
+    const consumeValue = () => takeValue(args, index++, arg);
     switch (arg) {
-      case '--format': format = choice(value(), arg, ['code', 'json', 'url']); break;
-      case '--bpm': overrides.bpm = numberValue(value(), arg, 1); break;
-      case '--notation': overrides.notationType = choice(value(), arg, ['absolute', 'relative']); break;
-      case '--cycle-unit': overrides.cycleUnit = choice(value(), arg, ['bar', 'beat']); break;
-      case '--format-per-line': overrides.formatPerLineBy = choice(value(), arg, ['measure', 'note']); break;
-      case '--items-per-line': overrides.measuresPerLine = integerValue(value(), arg); break;
-      case '--sound': overrides.globalSound = value(); break;
+      case '--format': format = choice(consumeValue(), arg, ['code', 'json', 'url']); break;
+      case '--bpm': overrides.bpm = numberValue(consumeValue(), arg, 1); break;
+      case '--notation': overrides.notationType = choice(consumeValue(), arg, ['absolute', 'relative']); break;
+      case '--cycle-unit': overrides.cycleUnit = choice(consumeValue(), arg, ['bar', 'beat']); break;
+      case '--format-per-line': overrides.formatPerLineBy = choice(consumeValue(), arg, ['measure', 'note']); break;
+      case '--items-per-line': overrides.measuresPerLine = integerValue(consumeValue(), arg); break;
+      case '--sound': overrides.globalSound = consumeValue(); break;
       case '--auto-mapping': overrides.useAutoMapping = true; break;
       case '--no-auto-mapping': overrides.useAutoMapping = false; break;
       case '--velocity': overrides.includeVelocity = true; break;
       case '--no-velocity': overrides.includeVelocity = false; break;
-      case '--timing': overrides.timingStyle = choice(value(), arg, ['absoluteDuration', 'relativeDivision']); break;
+      case '--timing': overrides.timingStyle = choice(consumeValue(), arg, ['absoluteDuration', 'relativeDivision']); break;
       case '--quantize': overrides.isQuantized = true; break;
       case '--no-quantize': overrides.isQuantized = false; break;
-      case '--quantization-threshold': overrides.quantizationThreshold = numberValue(value(), arg); break;
+      case '--quantization-threshold': overrides.quantizationThreshold = numberValue(consumeValue(), arg); break;
       case '--quantization-strength': {
-        const strength = numberValue(value(), arg);
+        const strength = numberValue(consumeValue(), arg);
         if (strength > 100) fail(`${arg} must be <= 100`);
         overrides.quantizationStrength = strength;
         break;
       }
       case '--duration-precision': {
-        const precision = integerValue(value(), arg);
+        const precision = integerValue(consumeValue(), arg);
         if (precision > 8) fail(`${arg} must be <= 8`);
         overrides.durationPrecision = precision;
         break;
@@ -116,6 +120,26 @@ export const parseArgs = (args: string[]): CliOptions | null => {
   }
   return { input, format, overrides };
 };
+
+const serializeJsonOutput = (input: string, conversion: MidiConversion): string => JSON.stringify({
+  schemaVersion: 1,
+  input: basename(input),
+  source: {
+    bpm: conversion.config.sourceBpm,
+    timeSignature: conversion.config.sourceTimeSignature,
+    trackCount: conversion.tracks.length,
+  },
+  config: conversion.config,
+  tracks: conversion.tracks.map((track) => ({
+    id: track.id,
+    name: track.name,
+    noteCount: track.notes.length,
+    isDrum: track.isDrum,
+    hidden: Boolean(track.hidden),
+  })),
+  code: conversion.code,
+  url: conversion.link,
+}, null, 2);
 
 export const runCli = async (args: string[]): Promise<void> => {
   const options = parseArgs(args);
@@ -133,25 +157,7 @@ export const runCli = async (args: string[]): Promise<void> => {
   } else if (options.format === 'url') {
     process.stdout.write(`${conversion.link}\n`);
   } else {
-    process.stdout.write(`${JSON.stringify({
-      schemaVersion: 1,
-      input: basename(options.input),
-      source: {
-        bpm: conversion.config.sourceBpm,
-        timeSignature: conversion.config.sourceTimeSignature,
-        trackCount: conversion.tracks.length,
-      },
-      config: conversion.config,
-      tracks: conversion.tracks.map((track) => ({
-        id: track.id,
-        name: track.name,
-        noteCount: track.notes.length,
-        isDrum: track.isDrum,
-        hidden: Boolean(track.hidden),
-      })),
-      code: conversion.code,
-      url: conversion.link,
-    }, null, 2)}\n`);
+    process.stdout.write(`${serializeJsonOutput(options.input, conversion)}\n`);
   }
 };
 
