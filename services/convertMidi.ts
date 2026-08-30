@@ -1,4 +1,9 @@
-import { DEFAULT_CONFIG, type StrudelConfig, type Track } from '../types';
+import {
+  DEFAULT_CONFIG,
+  type ConversionDiagnostic,
+  type StrudelConfig,
+  type Track,
+} from '../types';
 import { detectKey } from './KeyDetector';
 import { parseMidiBuffer, type ParsedMidi } from './MidiParser';
 import { StrudelNotation } from './StrudelNotation';
@@ -11,6 +16,7 @@ export type ConversionOverrides = Partial<Omit<StrudelConfig,
 export interface MidiConversion {
   code: string;
   config: StrudelConfig;
+  diagnostics: ConversionDiagnostic[];
   link: string;
   tracks: Track[];
 }
@@ -49,11 +55,12 @@ export const convertMidi = (
 ): MidiConversion => {
   const parsed = parseMidiBuffer(bytes);
   const { config, tracks } = createMidiProject(parsed, fileName, overrides);
-  const code = new StrudelNotation(config).generate(parsed.tracks);
+  const { code, diagnostics } = new StrudelNotation(config).generateWithDiagnostics(parsed.tracks);
 
   return {
     code,
     config,
+    diagnostics,
     link: createStrudelLink(code),
     tracks,
   };

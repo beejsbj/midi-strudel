@@ -9,12 +9,6 @@ export function renderDrumTrack(
   config: StrudelConfig,
   preparedNotes?: Note[],
 ): string {
-  // Warn about and filter out notes that don't map to our drum kit
-  track.notes.forEach(n => {
-    if (!DRUM_MAP[n.midi]) {
-      console.warn(`Unmapped MIDI drum note dropped: MIDI ${n.midi} (${n.note})`);
-    }
-  });
   const rawNotes = track.notes.filter(n => DRUM_MAP[n.midi]);
   const notes = preparedNotes ?? prepareNotes(rawNotes, config);
 

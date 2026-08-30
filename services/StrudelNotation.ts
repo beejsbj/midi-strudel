@@ -8,7 +8,7 @@
  *   MelodicRenderer — melody + harmony voice splitting and rendering
  */
 
-import { StrudelConfig, Track } from '../types';
+import { ConversionDiagnostic, StrudelConfig, Track } from '../types';
 import { DRUM_MAP } from '../constants';
 import { renderDrumTrack } from './notation/DrumRenderer';
 import { renderMelodicTrack } from './notation/MelodicRenderer';
@@ -22,6 +22,32 @@ export class StrudelNotation {
   }
 
   public generate(tracks: Track[]): string {
+    return this.generateWithDiagnostics(tracks).code;
+  }
+
+  public generateWithDiagnostics(tracks: Track[]): {
+    code: string;
+    diagnostics: ConversionDiagnostic[];
+  } {
+    const droppedNoteCounts = new Map<number, number>();
+    tracks.forEach((track) => {
+      if (!track.isDrum || track.hidden) return;
+      track.notes.forEach((note) => {
+        if (!DRUM_MAP[note.midi]) {
+          droppedNoteCounts.set(note.midi, (droppedNoteCounts.get(note.midi) ?? 0) + 1);
+        }
+      });
+    });
+    const diagnostics = [...droppedNoteCounts.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([midiNote, count]): ConversionDiagnostic => ({
+        code: 'unmapped-drum-note',
+        severity: 'warning',
+        midiNote,
+        count,
+        message: `Dropped ${count} unmapped drum note event${count === 1 ? '' : 's'} for MIDI ${midiNote}`,
+      }));
+
     const preparedTracks = tracks.map((track) => {
       const preparedNotes = track.isDrum
         ? prepareNotes(track.notes.filter((note) => DRUM_MAP[note.midi]), this.config)
@@ -67,7 +93,7 @@ export class StrudelNotation {
       output += '\n';
     });
 
-    return output;
+    return { code: output, diagnostics };
   }
 
   private getCpsFormula(): string {
