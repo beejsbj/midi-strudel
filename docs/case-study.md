@@ -2,7 +2,7 @@
 
 The spark was small: after getting absorbed in *Epic: The Musical*, I wanted to look at its melodies as Strudel code instead of only as a piano roll. The first version was an experiment in notation. Repeated work on the experiment turned it into a web converter for studying, editing, and hearing MIDI-derived patterns, and later into a repo-local CLI that coding agents can invoke without a browser.
 
-This is a case study of that path, not a claim that MIDI transcription is solved.
+As the [README](../README.md) records, the project also became a way to explore Gemini, Claude, and GPT as development tools. That iterative, AI-assisted process is part of its provenance.
 
 ## The notation problem
 
@@ -43,9 +43,9 @@ That output shows the source metadata, meter-derived CPS setup, an initial rest,
 
 ## One converter, two surfaces
 
-The web app remains the human inspection surface: load a MIDI file, adjust notation, timing, mapping, and formatting settings, play the result, and open the generated code in Strudel. The CLI calls the same `convertMidi` path as the web app; `StrudelNotation` delegates rendering to the notation modules rather than maintaining a second transcription implementation. Its stable non-interactive outputs are plain code, schema-v1 JSON, and a `strudel.cc/#...` URL carrying the same encoded code payload used by the web surface. CLI usage and flags live in the repository [`README.md`](../README.md).
+The [live web demo](https://midi-strudel.vercel.app/) remains the human inspection surface: load a MIDI file, adjust notation, timing, mapping, and formatting settings, play the result, and open the generated code in Strudel. The CLI's `convertMidi` entry point and the web app's `useProjectState` hook share the MIDI parser, `createMidiProject`, and `StrudelNotation` renderer. The renderer delegates to focused notation modules; there is no separate CLI transcription implementation. Its non-interactive outputs are plain code, schema-v1 JSON, and a `strudel.cc/#...` URL carrying the same encoded code payload used by the web surface. CLI usage and flags live in the repository [CLI documentation](../README.md#agent-facing-cli).
 
-The CLI contract was delivered in [PR #6](https://github.com/beejsbj/midi-strudel/pull/6) and hardened in [PR #7](https://github.com/beejsbj/midi-strudel/pull/7). The recorded receipts report subprocess coverage for `.mid`/`.midi`, code/JSON/URL output, clean stdout, stderr separation, deterministic output, and meaningful failures. The web path's bundled-example verification is recorded under parent issue [BJS-38](https://linear.app/bjs-projects/issue/BJS-38/finish-midi-strudel-as-an-agent-facing-converter-and-case-study).
+The CLI contract was delivered in [PR #6](https://github.com/beejsbj/midi-strudel/pull/6) and hardened in [PR #7](https://github.com/beejsbj/midi-strudel/pull/7). The recorded receipts report subprocess coverage for `.mid`/`.midi`, code/JSON/URL output, clean stdout, stderr separation, deterministic output, and meaningful failures. The web path's bundled-example verification is recorded in [BJS-398's verification receipt](https://linear.app/bjs-projects/issue/BJS-398#comment-770623ca). For this case study, the CLI example and all 10 CLI tests passed on September 10 against source revision `4fe4bbd`; the live demo returned HTTP 200. That availability check did not repeat the earlier browser playback verification.
 
 ## What remains bounded
 
