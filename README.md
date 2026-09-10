@@ -34,6 +34,7 @@ if you want the deeper background:
 
 - [strudel-notation-history.md](strudel-notation-history.md) is the history file where i worked through the notation ideas
 - [strudel-notation-project-prompt.md](strudel-notation-project-prompt.md) is the extracted project prompt/spec that came out of that process
+- [docs/case-study.md](docs/case-study.md) is the concise case study, including a reproducible CLI conversion and the verified limits of the finished artifact
 
 ## what you can do with it
 
