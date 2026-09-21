@@ -45,7 +45,8 @@ export const renderPreciseLiteral = (
     const velocity = options.includeVelocity && event.velocity !== undefined
       ? `.velocity(${numberLiteral(event.velocity)})`
       : '';
-    return `${call}.slow(${numberLiteral(spanCycles)}).late(${numberLiteral(event.onsetSeconds / span.cycleDurationSeconds)}).clip(${numberLiteral(gate / span.durationSeconds)})${velocity}`;
+    return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)}).clip(${numberLiteral(gate / span.durationSeconds)})${velocity}`;
   });
-  return lines.length === 1 ? lines[0] : `stack(\n    ${lines.join(',\n    ')}\n  )`;
+  const pattern = lines.length === 1 ? lines[0] : `stack(\n    ${lines.join(',\n    ')}\n  )`;
+  return `${pattern}.slow(${numberLiteral(spanCycles)})`;
 };
