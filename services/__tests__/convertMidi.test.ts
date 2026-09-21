@@ -205,6 +205,96 @@ describe('convertMidi', () => {
       .toEqual([2.5, 2.6, 2.7, 2.8, 2.9]);
   });
 
+  it('uses the literal fallback for tempo and meter changes while preserving cross-transition gates', async () => {
+    const midi = new Midi();
+    midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 480 });
+    midi.header.tempos = [{ ticks: 0, bpm: 123.5 }, { ticks: 480, bpm: 100 }];
+    midi.header.timeSignatures = [
+      { ticks: 0, timeSignature: [4, 4], measures: 0 },
+      { ticks: 960, timeSignature: [3, 4], measures: 1 },
+    ];
+    const track = midi.addTrack();
+    track.addNote({ midi: 60, ticks: 240, durationTicks: 720, velocity: 0.7 });
+    track.addNote({ midi: 64, ticks: 960, durationTicks: 240, velocity: 0.6 });
+
+    const result = convertMidi(midi.toArray().buffer, 'changing-map.mid', { includeVelocity: true });
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    // Calculated from the retained source map, not the renderer: tick 480
+    // changes from 123.5 to 100 BPM. C4 crosses that boundary; E4 begins at
+    // the meter transition.
+    const firstLoop = observed.events.filter(({ onset }) => onset < result.sharedSpanSeconds);
+    const sourceSecondsAtTick = (ticks: number) => {
+      const tempos = result.source.tempos;
+      let seconds = 0;
+      let previousTick = 0;
+      let bpm = tempos[0].bpm;
+      tempos.slice(1).filter((tempo) => tempo.ticks < ticks).forEach((tempo) => {
+        seconds += ((tempo.ticks - previousTick) / result.source.ppq) * (60 / bpm);
+        previousTick = tempo.ticks;
+        bpm = tempo.bpm;
+      });
+      return seconds + ((ticks - previousTick) / result.source.ppq) * (60 / bpm);
+    };
+    const c4Onset = sourceSecondsAtTick(240);
+    const c4Release = sourceSecondsAtTick(960);
+    const e4Onset = sourceSecondsAtTick(960);
+    const e4Release = sourceSecondsAtTick(1200);
+    expect(result.source.tempos).toEqual([
+      { ticks: 0, bpm: expect.closeTo(123.5, 3) },
+      { ticks: 480, bpm: 100 },
+    ]);
+    expect(result.source.timeSignatures).toEqual([
+      { ticks: 0, numerator: 4, denominator: 4 },
+      { ticks: 960, numerator: 3, denominator: 4 },
+    ]);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'precise-literal-fallback',
+      message: expect.stringContaining('tempo and meter changes'),
+    }));
+    expect(result.sharedSpanSeconds).toBe(60 / result.config.sourceBpm * 4);
+    expect(firstLoop).toHaveLength(2);
+    expect(firstLoop[0]).toMatchObject({ pitch: 'C4', velocity: 88 / 127 });
+    expect(Math.abs(firstLoop[0].onset - c4Onset)).toBeLessThanOrEqual(0.000001);
+    expect(Math.abs(firstLoop[0].gateEnd - c4Release)).toBeLessThanOrEqual(0.000001);
+    expect(firstLoop[1]).toMatchObject({ pitch: 'E4', velocity: 76 / 127 });
+    expect(Math.abs(firstLoop[1].onset - e4Onset)).toBeLessThanOrEqual(0.000001);
+    expect(Math.abs(firstLoop[1].gateEnd - e4Release)).toBeLessThanOrEqual(0.000001);
+    const secondLoop = observed.events.filter(({ onset }) => onset >= result.sharedSpanSeconds);
+    expect(secondLoop).toHaveLength(2);
+    expect(Math.abs(secondLoop[0].onset - (c4Onset + result.sharedSpanSeconds))).toBeLessThanOrEqual(0.000001);
+    expect(Math.abs(secondLoop[0].gateEnd - (c4Release + result.sharedSpanSeconds))).toBeLessThanOrEqual(0.000001);
+    expect(Math.abs(secondLoop[1].onset - (e4Onset + result.sharedSpanSeconds))).toBeLessThanOrEqual(0.000001);
+    expect(Math.abs(secondLoop[1].gateEnd - (e4Release + result.sharedSpanSeconds))).toBeLessThanOrEqual(0.000001);
+  });
+
+  it('keeps legacy seconds-only tracks playable through the literal route without inventing source ticks', async () => {
+    const legacyTracks = [{
+      id: 'legacy-piano',
+      name: 'Legacy Piano',
+      isDrum: false,
+      notes: [
+        { note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 },
+        { note: 'E4', midi: 64, noteOn: 1.5, noteOff: 1.75, velocity: 0.6 },
+      ],
+    }];
+
+    const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics(legacyTracks);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(legacyTracks[0].notes.every((note) => !Object.hasOwn(note, 'source'))).toBe(true);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'precise-literal-fallback',
+      message: expect.stringContaining('saved notes lack source ticks'),
+    }));
+    expect(observed.events).toEqual([
+      { pitch: 'C4', onset: 0.125, gateEnd: 0.375, velocity: undefined },
+      { pitch: 'E4', onset: 1.5, gateEnd: 1.75, velocity: undefined },
+      { pitch: 'C4', onset: 2.125, gateEnd: 2.375, velocity: undefined },
+      { pitch: 'E4', onset: 3.5, gateEnd: 3.75, velocity: undefined },
+    ]);
+  });
+
   it('keeps a hidden loaded track in the source-origin shared span', () => {
     const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics([
       {

@@ -115,6 +115,20 @@ describe('project storage', () => {
     expect(loadTracksFromStorage(storage)).toEqual(tracks);
   });
 
+  it('loads legacy seconds-only tracks without manufacturing source timing', () => {
+    const storage = createMemoryStorage();
+    const legacyTracks = [{
+      id: 'legacy-piano',
+      name: 'Legacy Piano',
+      isDrum: false,
+      notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }],
+    }];
+
+    saveTracksToStorage(legacyTracks, storage);
+
+    expect(loadTracksFromStorage(storage)).toEqual(legacyTracks);
+  });
+
   it('clears both persisted keys', () => {
     const storage = createMemoryStorage();
 

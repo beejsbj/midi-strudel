@@ -13,6 +13,7 @@ import { DRUM_MAP, getAutoSound } from '../constants';
 import { prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { splitMelodyHarmony } from './notation/MelodicRenderer';
+import { assessSourceTimingEligibility, type LiteralFallbackReason } from './notation/SourceEligibility';
 import {
   buildVisualSuffix,
   formatTrackName,
@@ -62,7 +63,10 @@ export class StrudelNotation {
       events: track.isDrum ? events.filter((event) => DRUM_MAP[event.midi]) : events,
     }));
 
-    // 1. Calculate Global Song Duration
+    // 1. Calculate Global Song Duration. Literal fallback keeps one
+    // source-origin period, rounded from the initial source meter and large
+    // enough for every event; later source-map changes are not claimed as an
+    // exported dynamic Strudel tempo/meter map.
     let maxDuration = effectiveTracks.reduce((max, entry) => {
       const trackMax = entry.events.reduce((m, event) => Math.max(m, event.releaseSeconds), 0);
       return Math.max(max, trackMax);
@@ -90,7 +94,7 @@ export class StrudelNotation {
       ``,
     ].join('\n');
 
-    const literalFallbackTracks: string[] = [];
+    const literalFallbackTracks = new Map<string, Set<LiteralFallbackReason | 'relative-division'>>();
     const activeLabels = this.getUniqueActiveLabels(effectiveTracks);
     effectiveTracks.forEach(({ track, events }) => {
       if (track.hidden) return;
@@ -100,20 +104,40 @@ export class StrudelNotation {
       // notation is still incomplete. It represents all attacks/gates without
       // the old subdivision whitelist or configured display-decimal loss.
       output += this.renderLiteralTrack(track, events, maxDuration, activeLabels.get(track)!);
-      if (this.config.timingStyle === 'relativeDivision') literalFallbackTracks.push(track.name);
+      const reasons = new Set<LiteralFallbackReason | 'relative-division'>(
+        assessSourceTimingEligibility(track, events).fallbackReasons,
+      );
+      if (this.config.timingStyle === 'relativeDivision') reasons.add('relative-division');
+      if (reasons.size > 0) literalFallbackTracks.set(activeLabels.get(track)!, reasons);
       output += '\n';
     });
 
-    if (literalFallbackTracks.length > 0) {
+    if (literalFallbackTracks.size > 0) {
       diagnostics.push({
         code: 'precise-literal-fallback',
         severity: 'warning',
-        count: literalFallbackTracks.length,
-        message: `Used precise literal timing for ${literalFallbackTracks.length} track${literalFallbackTracks.length === 1 ? '' : 's'} because exact subdivision formatting is unavailable`,
+        count: literalFallbackTracks.size,
+        message: `Used precise literal timing for ${literalFallbackTracks.size} track${literalFallbackTracks.size === 1 ? '' : 's'} because ${this.describeLiteralFallbackReasons(literalFallbackTracks)}`,
       });
     }
 
     return { code: output, diagnostics, sharedSpanSeconds: maxDuration };
+  }
+
+  private describeLiteralFallbackReasons(
+    tracks: Map<string, Set<LiteralFallbackReason | 'relative-division'>>,
+  ): string {
+    const reasons = new Set<LiteralFallbackReason | 'relative-division'>();
+    tracks.forEach((trackReasons) => trackReasons.forEach((reason) => reasons.add(reason)));
+    const descriptions: string[] = [];
+    if (reasons.has('legacy-seconds-only')) descriptions.push('saved notes lack source ticks');
+    const tempoChanges = reasons.has('source-tempo-changes');
+    const meterChanges = reasons.has('source-meter-changes');
+    if (tempoChanges && meterChanges) descriptions.push('the source has tempo and meter changes');
+    else if (tempoChanges) descriptions.push('the source has tempo changes');
+    else if (meterChanges) descriptions.push('the source has meter changes');
+    if (reasons.has('relative-division')) descriptions.push('exact subdivision formatting is unavailable');
+    return descriptions.join('; ');
   }
 
   private renderLiteralTrack(

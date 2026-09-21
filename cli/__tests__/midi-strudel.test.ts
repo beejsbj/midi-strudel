@@ -1,9 +1,10 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import MidiPackage from '@tonejs/midi';
 import { parseArgs } from '../midi-strudel';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -11,11 +12,26 @@ const fixture = 'public/examples/ruthlessness-epic-the-musical.mid';
 const denseFixture = 'public/examples/warrior-of-the-mind-epic-the-musical.mid';
 let temporaryDirectory: string;
 let midiFixture: string;
+let changingMapFixture: string;
 
 beforeAll(() => {
   temporaryDirectory = mkdtempSync(join(tmpdir(), 'midi-strudel-cli-'));
   midiFixture = join(temporaryDirectory, 'ruthlessness-epic-the-musical.midi');
   copyFileSync(join(repoRoot, fixture), midiFixture);
+
+  const { Midi } = MidiPackage;
+  const midi = new Midi();
+  midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 480 });
+  midi.header.tempos = [{ ticks: 0, bpm: 120 }, { ticks: 480, bpm: 90 }];
+  midi.header.timeSignatures = [
+    { ticks: 0, timeSignature: [4, 4], measures: 0 },
+    { ticks: 960, timeSignature: [3, 4], measures: 1 },
+  ];
+  const track = midi.addTrack();
+  track.addNote({ midi: 60, ticks: 240, durationTicks: 720 });
+  track.addNote({ midi: 64, ticks: 960, durationTicks: 240 });
+  changingMapFixture = join(temporaryDirectory, 'changing-map.mid');
+  writeFileSync(changingMapFixture, midi.toArray());
 });
 
 afterAll(() => {
@@ -87,6 +103,34 @@ describe('midi-strudel CLI', () => {
     expect(urlResult.status).toBe(0);
     expect(Buffer.from(url.hash.slice(1), 'base64').toString('utf8'))
       .toBe(codeResult.stdout);
+  });
+
+  it('keeps changing source maps in JSON while code and URL use the explicit literal fallback', () => {
+    const jsonResult = runCli(changingMapFixture, '--format', 'json');
+    const codeResult = runCli(changingMapFixture, '--format', 'code');
+    const urlResult = runCli(changingMapFixture, '--format', 'url');
+    const parsed = JSON.parse(jsonResult.stdout);
+    const url = new URL(urlResult.stdout.trim());
+
+    expect(jsonResult.status).toBe(0);
+    expect(parsed.source.timing).toMatchObject({
+      ppq: 480,
+      tempos: [{ ticks: 0, bpm: 120 }, { ticks: 480, bpm: expect.closeTo(90, 3) }],
+      timeSignatures: [
+        { ticks: 0, numerator: 4, denominator: 4 },
+        { ticks: 960, numerator: 3, denominator: 4 },
+      ],
+    });
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'precise-literal-fallback',
+      message: expect.stringContaining('tempo and meter changes'),
+    }));
+    expect(jsonResult.stderr).toContain('[precise-literal-fallback]');
+    expect(codeResult.status).toBe(0);
+    expect(codeResult.stderr).toContain('[precise-literal-fallback]');
+    expect(urlResult.status).toBe(0);
+    expect(urlResult.stderr).toContain('[precise-literal-fallback]');
+    expect(Buffer.from(url.hash.slice(1), 'base64').toString('utf8')).toBe(codeResult.stdout);
   });
 
   it.each(['code', 'url'] as const)(
