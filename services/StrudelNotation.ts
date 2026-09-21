@@ -18,8 +18,8 @@ import {
   formatTrackName,
   gcd,
   getCycleDuration,
-  getMeasureDuration,
   getRelativeDegree,
+  getSourceMeasureDuration,
 } from './notation/NotationUtils';
 
 export class StrudelNotation {
@@ -68,11 +68,11 @@ export class StrudelNotation {
       return Math.max(max, trackMax);
     }, 0);
 
-    const barDur = getMeasureDuration(this.config);
-    if (maxDuration === 0) maxDuration = barDur;
+    const sourceMeasureDuration = getSourceMeasureDuration(this.config);
+    if (maxDuration === 0) maxDuration = sourceMeasureDuration;
     // A single song-origin meter grid is shared even by hidden tracks. Do not
     // let a delayed voice establish a private measure origin or private loop.
-    maxDuration = Math.ceil((maxDuration - Number.EPSILON) / barDur) * barDur;
+    maxDuration = this.roundUpToSourceMeasure(maxDuration, sourceMeasureDuration);
 
     // 2. Generate CPS setup
     const cpsFormula = this.getCpsFormula();
@@ -91,6 +91,7 @@ export class StrudelNotation {
     ].join('\n');
 
     const literalFallbackTracks: string[] = [];
+    const activeLabels = this.getUniqueActiveLabels(effectiveTracks);
     effectiveTracks.forEach(({ track, events }) => {
       if (track.hidden) return;
       if (!events.length) return;
@@ -98,7 +99,7 @@ export class StrudelNotation {
       // The literal boundary is intentionally used here while structured
       // notation is still incomplete. It represents all attacks/gates without
       // the old subdivision whitelist or configured display-decimal loss.
-      output += this.renderLiteralTrack(track, events, maxDuration);
+      output += this.renderLiteralTrack(track, events, maxDuration, activeLabels.get(track)!);
       if (this.config.timingStyle === 'relativeDivision') literalFallbackTracks.push(track.name);
       output += '\n';
     });
@@ -115,7 +116,12 @@ export class StrudelNotation {
     return { code: output, diagnostics, sharedSpanSeconds: maxDuration };
   }
 
-  private renderLiteralTrack(track: Track, events: EffectiveEvent[], sharedSpanSeconds: number): string {
+  private renderLiteralTrack(
+    track: Track,
+    events: EffectiveEvent[],
+    sharedSpanSeconds: number,
+    activeLabel: string,
+  ): string {
     const cycleDurationSeconds = getCycleDuration(this.config);
     const sound = track.sound
       ?? (this.config.useAutoMapping ? getAutoSound(track) : undefined)
@@ -140,7 +146,8 @@ export class StrudelNotation {
         releaseSeconds: event.releaseSeconds,
         velocity: event.velocity,
       }));
-      const control = track.isDrum ? 's' : this.config.notationType === 'relative' ? 'n' : 'note';
+      const hasRelativeScale = this.config.notationType === 'relative' && (this.config.key || this.config.playbackKey);
+      const control = track.isDrum ? 's' : hasRelativeScale ? 'n' : 'note';
       const literal = renderPreciseLiteral(values, span, { control, includeVelocity: this.config.includeVelocity });
       const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})` : '';
       const scale = !track.isDrum && this.config.notationType === 'relative' && (this.config.key || this.config.playbackKey)
@@ -150,7 +157,7 @@ export class StrudelNotation {
       return `$${name}: ${literal}${scale}${soundSuffix}${bank}${visualSuffix};\n\n`;
     };
 
-    if (track.isDrum) return makePattern(events, formatTrackName(track.name));
+    if (track.isDrum) return makePattern(events, activeLabel);
 
     const notes: Note[] = events.map((event) => ({
       note: event.note,
@@ -164,9 +171,41 @@ export class StrudelNotation {
     const eventsByNote = new Map(notes.map((note, index) => [note, events[index]]));
     const toEvents = (partition: typeof notes): EffectiveEvent[] => partition.map((note) => eventsByNote.get(note)!);
     let result = '';
-    if (melody.length) result += makePattern(toEvents(melody), `${formatTrackName(track.name)}_MELODY`);
-    if (harmony.length) result += makePattern(toEvents(harmony), `${formatTrackName(track.name)}_HARMONY`);
+    if (melody.length) result += makePattern(toEvents(melody), `${activeLabel}_MELODY`);
+    if (harmony.length) result += makePattern(toEvents(harmony), `${activeLabel}_HARMONY`);
     return result;
+  }
+
+  private getUniqueActiveLabels(entries: Array<{ track: Track; events: EffectiveEvent[] }>): Map<Track, string> {
+    const labels = new Map<Track, string>();
+    const used = new Set<string>();
+    let activeIndex = 0;
+    entries.forEach(({ track, events }) => {
+      if (track.hidden || events.length === 0) return;
+      activeIndex += 1;
+      const name = formatTrackName(track.name) || 'TRACK';
+      const identity = formatTrackName(track.id) || `TRACK_${activeIndex}`;
+      const base = `${name}_${identity}`;
+      let label = base;
+      let duplicate = 2;
+      while (used.has(label)) {
+        label = `${base}_${duplicate}`;
+        duplicate += 1;
+      }
+      used.add(label);
+      labels.set(track, label);
+    });
+    return labels;
+  }
+
+  private roundUpToSourceMeasure(endSeconds: number, measureSeconds: number): number {
+    const measures = endSeconds / measureSeconds;
+    const nearest = Math.round(measures);
+    const roundingNoise = Number.EPSILON * Math.max(1, Math.abs(measures)) * 8;
+    const roundedMeasures = Math.abs(measures - nearest) <= roundingNoise
+      ? nearest
+      : Math.ceil(measures);
+    return Math.max(1, roundedMeasures) * measureSeconds;
   }
 
   private getCpsFormula(): string {

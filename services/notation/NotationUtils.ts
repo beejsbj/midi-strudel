@@ -80,6 +80,14 @@ export function getMeasureDuration(config: StrudelConfig): number {
   return getMeterBeatDuration(config) * numerator;
 }
 
+/** Source-meter duration for song-span rounding, independent of playback UI. */
+export function getSourceMeasureDuration(config: StrudelConfig): number {
+  const sourceMeter = config.sourceTimeSignature ?? config.timeSignature;
+  const denominator = sourceMeter.denominator || 4;
+  const quarterNoteDuration = 60 / config.sourceBpm;
+  return quarterNoteDuration * (4 / denominator) * (sourceMeter.numerator || 4);
+}
+
 export function getCycleDuration(config: StrudelConfig): number {
   if (config.cycleUnit === 'beat') return getMeterBeatDuration(config);
   return getMeasureDuration(config);

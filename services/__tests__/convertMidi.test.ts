@@ -2,14 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import MidiPackage from '@tonejs/midi';
-import { evalScope } from '@strudel/core';
-import * as core from '@strudel/core';
-import * as mini from '@strudel/mini';
-import * as tonal from '@strudel/tonal';
-import { evaluate } from '@strudel/transpiler';
-import { convertMidi } from '../convertMidi';
+import { convertMidi, createMidiProject } from '../convertMidi';
+import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { DEFAULT_CONFIG } from '../../types';
+import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
 
@@ -36,17 +33,23 @@ const makePercussionMidi = (notes: number[]): ArrayBuffer => {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 };
 
-const queryConvertedOnsets = async (code: string) => {
-  await evalScope(Promise.resolve(core), Promise.resolve(mini), Promise.resolve(tonal));
-  (globalThis as typeof globalThis & { setcps?: (value: unknown) => void }).setcps = () => undefined;
-  const expressions = [...code.matchAll(/^\$[^:]+:\s([\s\S]*?);$/gm)].map((match) => match[1]);
-  const patterns = await Promise.all(expressions.map(async (expression) => (await evaluate(expression)).pattern));
-  return patterns.flatMap((pattern) => pattern.queryArc(0, 2).filter((event) => event.hasOnset()).map((event) => ({
-    pitch: event.value.note,
-    onset: event.whole.begin.valueOf(),
-    gateEnd: event.whole.begin.valueOf() + event.duration.valueOf(),
-    velocity: event.value.velocity,
-  }))).sort((left, right) => left.onset - right.onset || left.pitch.localeCompare(right.pitch) || (left.velocity ?? 0) - (right.velocity ?? 0));
+const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number) => {
+  const runtime = await evaluateGeneratedStrudelCode(code);
+  try {
+    const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds);
+    return {
+      cps: runtime.cps,
+      events: twoLoops.map((event) => ({
+        pitch: event.value.note ?? event.value.n ?? event.value.s,
+        onset: event.onsetSeconds,
+        gateEnd: event.gateEndSeconds,
+        velocity: event.value.velocity,
+      })).sort((left, right) => left.onset - right.onset || String(left.pitch).localeCompare(String(right.pitch)) || Number(left.velocity ?? 0) - Number(right.velocity ?? 0)),
+      boundary: [...firstBoundary, ...secondBoundary],
+    };
+  } finally {
+    runtime.stop();
+  }
 };
 
 describe('convertMidi', () => {
@@ -156,16 +159,18 @@ describe('convertMidi', () => {
     track.addNote({ midi: 64, ticks: 480, durationTicks: 240, velocity: 0.6 });
 
     const result = convertMidi(midi.toArray().buffer, 'delayed.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
 
     // Independently worked out from 120 BPM/4-4: the two-second source bar
     // is one Strudel cycle, and every event must recur one cycle later.
     expect(result.sharedSpanSeconds).toBe(2);
-    expect(observed).toEqual([
-      { pitch: 'C4', onset: 0, gateEnd: 0.25, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 0.25, gateEnd: 0.375, velocity: 76 / 127 },
-      { pitch: 'C4', onset: 1, gateEnd: 1.25, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 1.25, gateEnd: 1.375, velocity: 76 / 127 },
+    expect(observed.cps).toBe(0.5);
+    expect(observed.boundary.map(({ onsetSeconds }) => onsetSeconds)).toEqual([2, 4]);
+    expect(observed.events).toEqual([
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 88 / 127 },
+      { pitch: 'E4', onset: 0.5, gateEnd: 0.75, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 88 / 127 },
+      { pitch: 'E4', onset: 2.5, gateEnd: 2.75, velocity: 76 / 127 },
     ]);
   });
 
@@ -187,17 +192,17 @@ describe('convertMidi', () => {
       timingStyle: 'relativeDivision',
       includeVelocity: true,
     });
-    const observed = await queryConvertedOnsets(result.code);
-    const firstLoop = observed.filter(({ onset }) => onset < 1);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const firstLoop = observed.events.filter(({ onset }) => onset < 2);
 
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
     expect(firstLoop.filter(({ pitch, onset }) => pitch === 'C4' && onset === 0)).toHaveLength(2);
     expect(firstLoop.filter(({ pitch }) => pitch === 'D4').map(({ onset }) => onset))
-      .toEqual([0.25, 0.3, 0.35, 0.4, 0.45]);
+      .toEqual([0.5, 0.6, 0.7, 0.8, 0.9]);
     expect(firstLoop.filter(({ pitch }) => pitch === 'E4').map(({ onset }) => onset))
-      .toEqual([0.5, 4 / 7, 9 / 14, 5 / 7, 11 / 14, 6 / 7, 13 / 14]);
-    expect(observed.filter(({ pitch, onset }) => pitch === 'D4' && onset >= 1).map(({ onset }) => onset))
-      .toEqual([1.25, 1.3, 1.35, 1.4, 1.45]);
+      .toEqual([1, 8 / 7, 9 / 7, 10 / 7, 11 / 7, 12 / 7, 13 / 7]);
+    expect(observed.events.filter(({ pitch, onset }) => pitch === 'D4' && onset >= 2).map(({ onset }) => onset))
+      .toEqual([2.5, 2.6, 2.7, 2.8, 2.9]);
   });
 
   it('keeps a hidden loaded track in the source-origin shared span', () => {
@@ -217,5 +222,94 @@ describe('convertMidi', () => {
     expect(result.sharedSpanSeconds).toBe(4);
     expect(result.code).toContain('.slow(2)');
     expect(result.code).not.toContain('HIDDEN_LATE');
+  });
+
+  it('keeps same-named active tracks distinct in the full Strudel REPL pattern', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    for (const pitch of [60, 64]) {
+      const track = midi.addTrack();
+      track.name = 'Piano';
+      track.addNote({ midi: pitch, ticks: 0, durationTicks: 240 });
+    }
+
+    const result = convertMidi(midi.toArray().buffer, 'duplicate-names.mid');
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(observed.events.filter(({ onset }) => onset === 0).map(({ pitch }) => pitch)).toEqual(['C4', 'E4']);
+  });
+
+  it('rounds the shared span to the source meter when playback meter differs', () => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.addNote({ midi: 60, ticks: 600, durationTicks: 120 });
+
+    const result = convertMidi(midi.toArray().buffer, 'source-meter.mid', {
+      timeSignature: { numerator: 3, denominator: 4 },
+    });
+
+    expect(result.config.sourceTimeSignature).toEqual({ numerator: 4, denominator: 4 });
+    expect(result.sharedSpanSeconds).toBe(2);
+  });
+
+  it('uses absolute pitch control when relative mode has no detected key', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    midi.addTrack().addNote({ midi: 61, ticks: 0, durationTicks: 120 });
+
+    const parsed = parseMidiBuffer(midi.toArray().buffer);
+    const { config, tracks } = createMidiProject(parsed, 'keyless-relative.mid', {
+      notationType: 'relative',
+    }, () => null);
+    const result = new StrudelNotation(config).generateWithDiagnostics(tracks);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(config.key).toBeUndefined();
+    expect(result.code).toContain('note("C#4")');
+    expect(observed.events[0].pitch).toBe('C#4');
+  });
+
+  it('preserves a one-tick gate and gap rather than applying legacy epsilon merging', async () => {
+    const midi = new Midi();
+    midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 960 });
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 1 });
+    track.addNote({ midi: 62, ticks: 2, durationTicks: 1 });
+
+    const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const tickSeconds = 0.5 / 960;
+
+    expect(observed.events).toEqual([
+      { pitch: 'C4', onset: 0, gateEnd: tickSeconds, velocity: undefined },
+      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3, velocity: undefined },
+      { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds, velocity: undefined },
+      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3), velocity: undefined },
+    ]);
+  });
+
+  it('does not clip a real event infinitesimally after a source bar boundary', () => {
+    const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics([{
+      id: 'late', name: 'Late', isDrum: false,
+      notes: [{ note: 'C4', midi: 60, noteOn: 2, noteOff: 2 + 1e-12, velocity: 0.8 }],
+    }]);
+
+    expect(result.sharedSpanSeconds).toBe(4);
+  });
+
+  it('gives punctuation-only names a deterministic safe active label', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.name = '!!!';
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 120 });
+
+    const result = convertMidi(midi.toArray().buffer, 'punctuation-name.mid');
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(result.code).toContain('$TRACK_TRACK_0_MELODY:');
+    expect(observed.events[0].pitch).toBe('C4');
   });
 });
