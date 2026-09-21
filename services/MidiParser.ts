@@ -1,6 +1,6 @@
 
 import MidiPackage from '@tonejs/midi';
-import { Track, Note } from '../types';
+import { Track, Note, MidiSourceMetadata } from '../types';
 
 const { Midi } = MidiPackage;
 
@@ -8,6 +8,7 @@ export interface ParsedMidi {
   tracks: Track[];
   bpm: number;
   timeSignature: { numerator: number; denominator: number };
+  source?: MidiSourceMetadata;
 }
 
 export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
@@ -18,18 +19,33 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
     throw new Error("Failed to parse MIDI file. The file may be corrupt or in an unsupported format.");
   }
 
-  const bpm = midi.header.tempos.length > 0 ? Math.round(midi.header.tempos[0].bpm) : 120;
+  const bpm = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
   const ts = midi.header.timeSignatures.length > 0 
     ? { numerator: midi.header.timeSignatures[0].timeSignature[0], denominator: midi.header.timeSignatures[0].timeSignature[1] }
     : { numerator: 4, denominator: 4 };
 
+  const source: MidiSourceMetadata = {
+    ppq: midi.header.ppq,
+    tempos: midi.header.tempos.map((tempo) => ({ ticks: tempo.ticks, bpm: tempo.bpm })),
+    timeSignatures: midi.header.timeSignatures.map((entry) => ({
+      ticks: entry.ticks,
+      numerator: entry.timeSignature[0],
+      denominator: entry.timeSignature[1],
+    })),
+  };
+
   const tracks: Track[] = midi.tracks.map((t, index) => {
-    const notes: Note[] = t.notes.map(n => ({
+    const notes: Note[] = t.notes.map((n, noteIndex) => ({
       note: n.name,
       midi: n.midi,
       noteOn: n.time,
       noteOff: n.time + n.duration,
-      velocity: n.velocity
+      velocity: n.velocity,
+      source: {
+        id: `track-${index}:note-${noteIndex}:${n.ticks}`,
+        ticks: n.ticks,
+        durationTicks: n.durationTicks,
+      },
     }));
 
     // Improved drum detection: Channel 10 (index 9) or explicit percussion flag or name
@@ -45,10 +61,11 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
       isDrum: isDrum,
       drumBank: isDrum ? "RolandTR909" : undefined, // Default bank
       color: String(Math.round((index * 360) / Math.max(midi.tracks.length, 8))),
+      sourceTiming: source,
     };
   });
 
-  return { tracks, bpm, timeSignature: ts };
+  return { tracks, bpm, timeSignature: ts, source };
 };
 
 export const parseMidiFile = async (file: File): Promise<ParsedMidi> =>

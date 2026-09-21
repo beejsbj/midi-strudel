@@ -174,13 +174,13 @@ describe('renderMelodicTrack', () => {
       {},
     );
 
-    expect(sequence).toBe('{C#3, E3, G#3}@0.25 ~@0.75');
+    expect(sequence).toBe('{C#3, E3, G#3}@0.25');
     expect(sequence).not.toContain('C#3@0');
     expect(sequence).not.toContain('E3@0');
     expect(sequence).not.toContain('G#3@0');
   });
 
-  it('renders overlapping harmony voices as padded bracket lanes', () => {
+  it('does not append a private trailing measure after overlapping harmony voices', () => {
     const sequence = renderSequence(
       [
         makeNote(60, 'C4', 0, beatDur),
@@ -193,6 +193,6 @@ describe('renderMelodicTrack', () => {
       {},
     );
 
-    expect(sequence).toBe('{C4@0.25 G4@0.25, E4@0.5}@0.5 ~@0.5');
+    expect(sequence).toBe('{C4@0.25 G4@0.25, E4@0.5}@0.5');
   });
 });

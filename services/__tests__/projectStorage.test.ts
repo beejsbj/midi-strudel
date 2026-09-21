@@ -75,8 +75,16 @@ describe('project storage', () => {
       {
         id: 'track-1',
         name: 'Piano',
-        notes: [],
+        notes: [{
+          note: 'C4', midi: 60, noteOn: 0, noteOff: 0.5, velocity: 0.8,
+          source: { id: 'track-1:note-0:0', ticks: 0, durationTicks: 480 },
+        }],
         isDrum: false,
+        sourceTiming: {
+          ppq: 480,
+          tempos: [{ ticks: 0, bpm: 120 }],
+          timeSignatures: [{ ticks: 0, numerator: 4, denominator: 4 }],
+        },
       },
     ];
     const config = {

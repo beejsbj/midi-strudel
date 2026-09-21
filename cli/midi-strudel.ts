@@ -128,7 +128,9 @@ const serializeJsonOutput = (input: string, conversion: MidiConversion): string 
     bpm: conversion.config.sourceBpm,
     timeSignature: conversion.config.sourceTimeSignature,
     trackCount: conversion.tracks.length,
+    timing: conversion.source,
   },
+  sharedSpanSeconds: conversion.sharedSpanSeconds,
   config: conversion.config,
   tracks: conversion.tracks.map((track) => ({
     id: track.id,

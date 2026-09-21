@@ -61,6 +61,10 @@ describe('midi-strudel CLI', () => {
       input: 'warrior-of-the-mind-epic-the-musical.mid',
       code: expect.stringContaining('setcps('),
       url: expect.stringMatching(/^https:\/\/strudel\.cc\/#/),
+      sharedSpanSeconds: expect.any(Number),
+      source: {
+        timing: expect.objectContaining({ ppq: expect.any(Number) }),
+      },
       diagnostics: [
         { code: 'unmapped-drum-note', midiNote: 31, count: 85 },
         { code: 'unmapped-drum-note', midiNote: 74, count: 1 },

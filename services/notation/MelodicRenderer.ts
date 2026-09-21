@@ -58,49 +58,22 @@ export function renderSequence(
   const restTokenFn = (dur: number, cd: number) => createRestToken(dur, cd, config);
 
   while (cursor < totalDuration - EPSILON) {
-    while (nextNoteIndex < notes.length && notes[nextNoteIndex].noteOn < cursor - EPSILON) {
-      nextNoteIndex++;
-    }
-
-    if (nextNoteIndex >= notes.length) {
-      const restDur = totalDuration - cursor;
-      tokens.push(createRestToken(restDur, cycleDur, config));
-      break;
-    }
-
-    const nextNote = notes[nextNoteIndex];
-
-    if (nextNote.noteOn > cursor + EPSILON) {
-      const gap = nextNote.noteOn - cursor;
-      tokens.push(createRestToken(gap, cycleDur, config));
-      cursor = nextNote.noteOn;
-    }
-
-    let blockEnd = cursor + measureDur;
+    // Measure boundaries belong to the song origin, never an individual
+    // voice's next entrance. This keeps delayed tracks on the same period.
+    const blockStart = cursor;
+    const blockEnd = Math.min(totalDuration, blockStart + measureDur);
+    while (nextNoteIndex < notes.length && notes[nextNoteIndex].noteOn < blockStart - EPSILON) nextNoteIndex++;
     let blockEndIndex = nextNoteIndex;
-    let blockMaxEnd = blockEnd;
+    while (blockEndIndex < notes.length && notes[blockEndIndex].noteOn < blockEnd - EPSILON) blockEndIndex++;
 
-    while (blockEndIndex < notes.length && notes[blockEndIndex].noteOn < blockEnd - EPSILON) {
-      blockMaxEnd = Math.max(blockMaxEnd, notes[blockEndIndex].noteOff);
-      blockEndIndex++;
-    }
-
-    if (blockMaxEnd > blockEnd + EPSILON) {
-      blockEnd = Math.ceil((blockMaxEnd + EPSILON) / measureDur) * measureDur;
-
-      while (blockEndIndex < notes.length && notes[blockEndIndex].noteOn < blockEnd - EPSILON) {
-        blockEndIndex++;
-      }
-    }
-
-    const blockDur = blockEnd - cursor;
+    const blockDur = blockEnd - blockStart;
     const blockNotes = notes.slice(nextNoteIndex, blockEndIndex);
 
     let blockString = "";
     if (config.timingStyle === 'relativeDivision') {
-      blockString = renderMeasureSubdivision(blockNotes, cursor, blockDur, cycleDur, isDrum, config, drumMap);
+      blockString = renderMeasureSubdivision(blockNotes, blockStart, blockDur, cycleDur, isDrum, config, drumMap);
     } else {
-      blockString = renderMeasureAbsolute(blockNotes, cursor, blockDur, cycleDur, isDrum, config, drumMap, restTokenFn);
+      blockString = renderMeasureAbsolute(blockNotes, blockStart, blockDur, cycleDur, isDrum, config, drumMap, restTokenFn);
     }
 
     if (blockString) tokens.push(blockString);

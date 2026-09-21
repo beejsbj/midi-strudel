@@ -74,9 +74,11 @@ export function generateSimpleGrid(
     if (current === "~" || current === "") {
       grid[index] = token;
     } else {
-      const existing = current.startsWith("{") ? current.slice(1, -1) : current;
+      const existing = current.startsWith("[") ? current.slice(1, -1) : current;
       if (!existing.includes(token)) {
-        grid[index] = `{${existing}, ${token}}`;
+        // Square brackets stack lanes in the same span. Curly braces are
+        // polymetric and move later attacks when the lanes have unlike sizes.
+        grid[index] = `[${existing}, ${token}]`;
       }
     }
   };
@@ -141,7 +143,7 @@ export function generateLayeredGrid(
   if (laneGrids.length === 0) return ["~"];
   if (laneGrids.length === 1) return [laneGrids[0]];
 
-  return [`{ ${laneGrids.join(", ")} }`];
+  return [`[${laneGrids.join(", ")}]`];
 }
 
 export function getBeatGrid(
@@ -155,7 +157,7 @@ export function getBeatGrid(
 ): string[] {
   const simpleGrid = generateSimpleGrid(startedNotes, sustainedNotes, startTime, duration, isDrum, config, drumMap);
 
-  const hasBadSyntax = simpleGrid.some(t => t.includes('{') && t.includes('_'));
+  const hasBadSyntax = simpleGrid.some(t => t.includes('[') && t.includes('_'));
 
   if (!hasBadSyntax) return simpleGrid;
 
@@ -174,7 +176,7 @@ export function flattenGrid(beatGrids: string[][]): string[] {
       fullGrid.push(...grid);
     } else {
       for (const cell of grid) {
-        const isComplex = cell.startsWith('{') && (cell.includes(',') || cell.length > 20);
+        const isComplex = cell.startsWith('[') && (cell.includes(',') || cell.length > 20);
 
         if (isComplex) {
           fullGrid.push(`${cell}@${factor}`);

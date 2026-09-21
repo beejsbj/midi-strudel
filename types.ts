@@ -6,6 +6,35 @@ export interface Note {
   noteOff: number; // Seconds
   velocity: number; // 0-1
   midi: number; // MIDI number 0-127
+  /** Immutable location in the uploaded MIDI. Absent for older saved projects. */
+  source?: SourceNoteMetadata;
+}
+
+export interface SourceNoteMetadata {
+  id: string;
+  ticks: number;
+  durationTicks: number;
+}
+
+export interface TempoMapEntry {
+  ticks: number;
+  bpm: number;
+}
+
+export interface TimeSignatureMapEntry {
+  ticks: number;
+  numerator: number;
+  denominator: number;
+}
+
+/**
+ * Source-level timing is additive so persisted projects made before BJS-441
+ * keep using their seconds-only notes.
+ */
+export interface MidiSourceMetadata {
+  ppq: number;
+  tempos: TempoMapEntry[];
+  timeSignatures: TimeSignatureMapEntry[];
 }
 
 export interface Track {
@@ -25,13 +54,14 @@ export interface Track {
   // Drum specific
   isDrum: boolean;
   drumBank?: string;
+  sourceTiming?: MidiSourceMetadata;
 }
 
 export interface ConversionDiagnostic {
-  code: 'unmapped-drum-note';
+  code: 'unmapped-drum-note' | 'precise-literal-fallback';
   severity: 'warning';
-  midiNote: number;
-  count: number;
+  midiNote?: number;
+  count?: number;
   message: string;
 }
 
