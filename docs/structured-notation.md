@@ -55,6 +55,19 @@ Shared conversion and schema-v1 CLI JSON add a `patterns` object containing acce
 
 `sharedSpanSeconds` and occurrence times use source-performance seconds. A playback BPM change scales audible seconds by `sourceBpm / bpm`; it does not rewrite source locations. Cycle-unit and playback-meter choices change the Strudel cycle representation while retaining that relationship.
 
+For Ruthlessness's piano, the generated reusable definition is:
+
+```js
+// track1Phrase1: source measures 3, 4, 5, 7, 8, 9
+const track1Phrase1 = note(`[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`)
+  .velocity(0.3937007874015748).slow(1);
+```
+
+The generated selection timeline uses that name six times, with silence before,
+between, and after the occurrences, and calls
+`track1Timeline.pickRestart({ track1Phrase1 })`. Intervening unmatched notes are
+stacked separately; this excerpt is the definition, not the complete score.
+
 ## Fidelity boundary
 
 Legacy saved notes without ticks and material with changing tempo or meter remain accepted through precise performance-time literals with a diagnostic. This release does not export dynamic tempo/meter maps. Bounded discovery or rendering limits must fall back without dropping supported events or snapping their timing.
