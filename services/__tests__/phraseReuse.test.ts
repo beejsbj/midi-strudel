@@ -242,6 +242,30 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.diagnostics.filter(({ code }) => code === 'phrase-analysis-budget')).toHaveLength(1);
   });
 
+  it('does not emit duplicate library entries with identical expressions', async () => {
+    // Regression test: identical expressions should share one library key
+    const midi = makeMidi();
+    const track = midi.addTrack();
+    track.name = 'Bass';
+    const pattern = [60, 62, 64, 65];
+    for (const passageStart of [1920 * 2, 1920 * 5]) {
+      for (let noteIndex = 0; noteIndex < 4; noteIndex++) {
+        track.addNote({
+          midi: pattern[noteIndex],
+          ticks: passageStart + noteIndex * 480,
+          durationTicks: 360,
+          velocity: 0.7,
+        });
+      }
+    }
+    const result = await verify(midi.toArray().buffer);
+    const libraryMatch = result.code.match(/bass: \{([^}]+)\}/s);
+    expect(libraryMatch).toBeDefined();
+    const definitions = libraryMatch![1].match(/^\s+[a-z]+:/gm);
+    // Should have at most 1 definition (one-off passages with identical expressions)
+    expect(definitions?.length).toBeLessThanOrEqual(1);
+  });
+
   it.each([
     ['ruthlessness', 'Grand Piano (Classic)', [3, 4, 5, 7, 8, 9]],
     ['warrior-of-the-mind', 'Grand Piano', [2, 4, 6, 8]],

@@ -45,9 +45,18 @@ export function renderPhraseTimeline(input: {
   const patterns: PatternMetadata = { definitions: [], occurrences: [] };
   const entries: Array<{ token: string; start: number; length: number }> = [];
   const definitions: Array<{ key: string; expression: string }> = [];
+
+  // Deduplicate expressions within this track: identical text → identical key.
+  const expressionToKey = new Map<string, string>();
+
   for (const [index, phrase] of phrases.entries()) {
-    const key = phraseKey(definitions.length);
-    definitions.push({ key, expression: phrase.expression });
+    // Reuse existing key if this expression was already defined.
+    let key = expressionToKey.get(phrase.expression);
+    if (!key) {
+      key = phraseKey(definitions.length);
+      definitions.push({ key, expression: phrase.expression });
+      expressionToKey.set(phrase.expression, key);
+    }
     // Stable discovery IDs remain independent of the emitted object path.
     const id = `track${trackIndex + 1}Phrase${index + 1}`;
     const first = phrase.occurrences[0];
@@ -62,8 +71,13 @@ export function renderPhraseTimeline(input: {
     }
   }
   for (const { window, expression } of passages) {
-    const key = phraseKey(definitions.length);
-    definitions.push({ key, expression });
+    // Reuse existing key if this expression was already defined.
+    let key = expressionToKey.get(expression);
+    if (!key) {
+      key = phraseKey(definitions.length);
+      definitions.push({ key, expression });
+      expressionToKey.set(expression, key);
+    }
     entries.push({ token: key, start: window.startMeasure - 1, length: window.measureCount });
   }
   entries.sort((a, b) => a.start - b.start);
@@ -88,8 +102,13 @@ export function renderPhraseTimeline(input: {
     expression = `phrases.${trackKey}.${entries[0].token}`;
   }
   if (remainderExpression) {
-    const key = phraseKey(definitions.length);
-    definitions.push({ key, expression: remainderExpression });
+    // Reuse existing key if this expression was already defined.
+    let key = expressionToKey.get(remainderExpression);
+    if (!key) {
+      key = phraseKey(definitions.length);
+      definitions.push({ key, expression: remainderExpression });
+      expressionToKey.set(remainderExpression, key);
+    }
     const remainder = `phrases.${trackKey}.${key}`;
     expression = expression ? `stack(${expression}, ${remainder})` : remainder;
   }
