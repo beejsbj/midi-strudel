@@ -33,7 +33,7 @@ export interface PhraseDiscovery {
  * Its denominator represents ppq/4 grid points and the decimal strength. Source
  * identities and floating subtraction of distant timestamps never enter keys.
  */
-function effectiveCoordinates(track: Track, events: EffectiveEvent[], config: StrudelConfig) {
+export function effectiveCoordinates(track: Track, events: EffectiveEvent[], config: StrudelConfig) {
   const ppq = track.sourceTiming!.ppq;
   const secondsPerTick = 60 / config.sourceBpm / ppq;
   const strength = config.isQuantized ? config.quantizationStrength : 0;

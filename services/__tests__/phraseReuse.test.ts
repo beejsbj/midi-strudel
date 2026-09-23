@@ -31,7 +31,7 @@ const numericPitch = (value: unknown): number => {
 
 /** Independent source oracle: fresh parse, no converter event preparation. */
 async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
-  const result = convertMidi(bytes, 'arbitrary.mid', { renderingMode: 'structured', includeVelocity: true, ...overrides });
+  const result = convertMidi(bytes, 'arbitrary.mid', { includeVelocity: true, ...overrides });
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
@@ -98,8 +98,66 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions).toHaveLength(1);
     expect(result.patterns.occurrences.map((occurrence) => occurrence.sourceStartMeasure)).toEqual([2, 5, 6]);
     expect(result.code).toContain('.pickRestart(');
-    expect(result.code).toContain('measures 2, 5, 6');
+    expect(result.code).toContain('const phrases = {');
+    expect(result.code).not.toMatch(/const track\d+(Phrase|Timeline)/);
+    expect(result.patterns.definitions[0].id).toBe('track1Phrase1');
+    expect(result.patterns.definitions[0].name).toMatch(/^phrases\.[a-z0-9_]+\.a$/);
     expect(result.patterns.occurrences.flatMap((occurrence) => occurrence.sourceNoteIds)).toHaveLength(36);
+    expect(result.code).toContain('<~ a b@2 a!2>');
+    expect(result.code).not.toContain('.slow(8)');
+  });
+
+  it('keeps one-off passages in one library without claiming discovered repetition', async () => {
+    const midi = makeMidi(); const track = midi.addTrack(); track.name = 'Grand Piano (Classic)';
+    // A duplicated attack and a gate crossing two bars must survive the passage.
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 4000, velocity: 0.6 });
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 4000, velocity: 0.6 });
+    track.addNote({ midi: 67, ticks: 3840, durationTicks: 120, velocity: 0.8 });
+    track.addNote({ midi: 72, ticks: 6 * 1920, durationTicks: 240, velocity: 0.7 });
+    const result = await verify(midi.toArray().buffer);
+    expect(result.patterns).toEqual({ definitions: [], occurrences: [] });
+    expect(result.code.match(/const phrases =/g)).toHaveLength(1);
+    expect(result.code).toContain('<a@3 ~@3 b>');
+    expect(result.code).toContain('.pickRestart(phrases.piano)');
+    expect(result.code.match(/^\$piano:/gm)).toHaveLength(1);
+    expect(result.code).not.toMatch(/_MELODY|_HARMONY|\.slow\(7\)/);
+  });
+
+  it('keeps colliding track names and object-sensitive names in separate namespaces', async () => {
+    const midi = makeMidi();
+    for (const [index, name] of ['Piano', 'Piano', 'piano_2', '__proto__', 'constructor', '123'].entries()) {
+      const track = midi.addTrack(); track.name = name;
+      track.addNote({ midi: 48 + index, ticks: index * 1920, durationTicks: 240, velocity: 0.5 + index / 20 });
+    }
+    const result = await verify(midi.toArray().buffer);
+    const labels = [...result.code.matchAll(/^\$([a-z0-9_]+):/gm)].map((match) => match[1]);
+    expect(labels).toHaveLength(6);
+    expect(new Set(labels).size).toBe(6);
+    expect(labels).toEqual(['piano', 'piano_2', 'piano_2_2', 'proto', 'track_constructor', 'track_123']);
+    expect(result.code.match(/const phrases =/g)).toHaveLength(1);
+  });
+
+  it('continues short passage keys beyond z without duplicating notes', async () => {
+    const midi = makeMidi(); const track = midi.addTrack(); track.name = 'Piano';
+    for (let index = 0; index < 28; index++) {
+      track.addNote({ midi: 40 + index, ticks: index * 3840, durationTicks: 120, velocity: 0.7 });
+    }
+    const result = await verify(midi.toArray().buffer);
+    expect(result.patterns.definitions).toEqual([]);
+    expect(result.code).toContain('    aa:');
+    expect(result.code).toContain('    ab:');
+    expect(result.code).toContain('z ~ aa ~ ab>');
+  });
+
+  it('isolates instantaneous gates without expanding their ordinary neighbors', async () => {
+    const midi = makeMidi(); const track = midi.addTrack(); track.name = 'Piano';
+    addRiff(track, 0);
+    track.addNote({ midi: 84, ticks: 480, durationTicks: 0, velocity: 0.4 });
+    const result = await verify(midi.toArray().buffer);
+    expect(result.code).toContain('stack(phrases.piano.a, phrases.piano.b)');
+    expect(result.code.match(/\.late\(/g)).toHaveLength(1);
+    expect(result.patterns.definitions).toEqual([]);
+    expect(result.diagnostics.map(({ code }) => code)).toEqual(['precise-literal-fallback']);
   });
 
   it.each([2, 4])('extracts safe %i-measure phrases without severing internal sustains', async (measures) => {
@@ -146,8 +204,8 @@ describe('exact phrase reuse through public conversion', () => {
 
   it('keeps musical matches stable under file and source identity changes', () => {
     const midi = makeMidi(); const track = midi.addTrack(); addRiff(track, 0); addRiff(track, 3840);
-    const first = convertMidi(midi.toArray().buffer, 'first.mid', { renderingMode: 'structured' });
-    const renamed = convertMidi(midi.toArray().buffer, 'renamed.mid', { renderingMode: 'structured' });
+    const first = convertMidi(midi.toArray().buffer, 'first.mid');
+    const renamed = convertMidi(midi.toArray().buffer, 'renamed.mid');
     expect(renamed.patterns).toEqual(first.patterns);
     const tracks = first.tracks.map((item) => ({ ...item, id: `new-${item.id}`, notes: [...item.notes].reverse()
       .map((note) => ({ ...note, source: { ...note.source!, id: `new-${note.source!.id}` } })) }));

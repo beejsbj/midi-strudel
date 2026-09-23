@@ -3,23 +3,21 @@
  *
  * Implementation is split across focused modules under services/notation/:
  *   NotationUtils   — pure helpers (math, formatting, isRest, etc.)
- *   GridBuilder     — LCM/GCD grid construction and subdivision rendering
- *   DrumRenderer    — drum track → Strudel notation
- *   MelodicRenderer — melody + harmony voice splitting and rendering
+ *   StructuredRenderer — source-timed rhythms and polyphony
+ *   PhraseRenderer — one score library and per-track arrangements
  */
 
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { DRUM_MAP, getAutoSound } from '../constants';
-import { effectiveEventsToNotes, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
+import { prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
-import { splitMelodyHarmony } from './notation/MelodicRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
 import { renderStructuredRhythm } from './notation/StructuredRenderer';
-import { discoverPhrases } from './notation/PhraseDiscovery';
+import { discoverPhrases, type EffectiveTickTiming, type PhraseWindow } from './notation/PhraseDiscovery';
 import { renderPhraseTimeline } from './notation/PhraseRenderer';
+import { renderOneOffPassages } from './notation/OneOffPassages';
 import {
   buildVisualSuffix,
-  formatTrackName,
   gcd,
   getCycleDuration,
   getRelativeDegree,
@@ -97,25 +95,25 @@ export class StrudelNotation {
 
     const literalFallbackTracks = new Map<string, Set<string>>();
     const patterns: PatternMetadata = { definitions: [], occurrences: [] };
+    const libraries: string[] = [];
+    const arrangements: string[] = [];
     let budgetTracks = 0;
     const activeLabels = this.getUniqueActiveLabels(effectiveTracks);
     effectiveTracks.forEach(({ track, events }, trackIndex) => {
       if (track.hidden) return;
       if (!events.length) return;
 
-      // Both renderers consume the same effective events and shared loop span.
+      // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      output += rendered.code;
+      libraries.push(rendered.library);
+      arrangements.push(rendered.code);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);
       if (eligibility.structured) rendered.fallbackReasons.forEach((reason) => reasons.add(reason));
-      if (this.config.renderingMode !== 'structured' && this.config.timingStyle === 'relativeDivision') {
-        reasons.add('relative-division');
-      }
       if (reasons.size) literalFallbackTracks.set(activeLabels.get(track)!, reasons);
-      output += '\n';
     });
+    if (libraries.length) output += `const phrases = {\n${libraries.join('\n')}\n};\n\n${arrangements.join('\n')}`;
 
     if (literalFallbackTracks.size > 0) {
       diagnostics.push({
@@ -143,8 +141,7 @@ export class StrudelNotation {
     if (tempoChanges && meterChanges) descriptions.push('the source has tempo and meter changes');
     else if (tempoChanges) descriptions.push('the source has tempo changes');
     else if (meterChanges) descriptions.push('the source has meter changes');
-    if (reasons.has('relative-division')) descriptions.push('exact subdivision formatting is unavailable');
-    const sourceReasons = new Set(['legacy-seconds-only', 'source-tempo-changes', 'source-meter-changes', 'relative-division']);
+    const sourceReasons = new Set(['legacy-seconds-only', 'source-tempo-changes', 'source-meter-changes']);
     descriptions.push(...[...reasons].filter((reason) => !sourceReasons.has(reason)).sort());
     return descriptions.join('; ');
   }
@@ -156,7 +153,7 @@ export class StrudelNotation {
     activeLabel: string,
     trackIndex: number,
     patterns: PatternMetadata,
-  ): { code: string; fallbackReasons: Set<string>; budgetExhausted: boolean } {
+  ): { code: string; library: string; fallbackReasons: Set<string>; budgetExhausted: boolean } {
     const cycleDurationSeconds = getCycleDuration(this.config);
     const sound = track.sound
       ?? (this.config.useAutoMapping ? getAutoSound(track) : undefined)
@@ -188,18 +185,16 @@ export class StrudelNotation {
     const scale = control === 'n' && key ? `${key.root}${key.averageOctave}:${key.type}` : undefined;
     const makeExpression = (eventsForPattern: EffectiveEvent[]): string => {
       const values = valuesFor(eventsForPattern);
-      const structured = this.config.renderingMode === 'structured'
-        ? renderStructuredRhythm({
-          track,
-          events: values.map(({ event, value }) => ({ event, value })),
-          span,
-          config: this.config,
-          control,
-          scale,
-        })
-        : undefined;
-      if (structured && structured.ok === false) fallbackReasons.add(structured.reason);
-      const literal = structured?.ok
+      const structured = renderStructuredRhythm({
+        track,
+        events: values.map(({ event, value }) => ({ event, value })),
+        span,
+        config: this.config,
+        control,
+        scale,
+      });
+      if (structured.ok === false) fallbackReasons.add(structured.reason);
+      const literal = structured.ok
         ? structured.expression
         : renderPreciseLiteral(values, span, {
           control,
@@ -213,56 +208,39 @@ export class StrudelNotation {
         });
       return literal;
     };
-    const makePattern = (eventsForPattern: EffectiveEvent[], name: string, expression?: string): string => {
-      const literal = expression ?? makeExpression(eventsForPattern);
+    const makePattern = (expression: string): string => {
       const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})` : '';
       const soundSuffix = track.isDrum ? '' : `\n  .sound(${JSON.stringify(sound)})`;
-      return `$${name}: ${literal}${soundSuffix}${bank}${visualSuffix};\n\n`;
+      return `$${activeLabel}: ${expression}${soundSuffix}${bank}${visualSuffix};\n`;
     };
 
-    const discovery = this.config.renderingMode === 'structured' ? discoverPhrases({
-      track, events, config: this.config, sharedSpanSeconds,
-      render: (window, timings, tickScale) => {
-        const rendered = renderStructuredRhythm({ track, events: valuesFor(window.events), config: this.config, control, scale,
-          span: { durationSeconds: window.durationSeconds, cycleDurationSeconds }, originTicks: window.originTicks,
-          originSeconds: window.originSeconds, effectiveTiming: { scale: tickScale, events: timings } });
-        return rendered.ok ? rendered.expression : undefined;
-      },
-    }) : undefined;
-    const budgetExhausted = discovery?.budgetExhausted ?? false;
-    if (discovery?.phrases.length) {
-      const timeline = renderPhraseTimeline({ phrases: discovery.phrases, trackId: track.id, trackIndex,
-        measureSeconds: getSourceMeasureDuration(this.config), cycleSeconds: cycleDurationSeconds, sharedSpanSeconds });
-      patterns.definitions.push(...timeline.patterns.definitions);
-      patterns.occurrences.push(...timeline.patterns.occurrences);
-      const expression = discovery.remainder.length
-        ? `stack(${timeline.expression},\n  ${makeExpression(discovery.remainder)})` : timeline.expression;
-      return { code: timeline.declarations + makePattern([], activeLabel, expression), fallbackReasons, budgetExhausted };
-    }
-    if (track.isDrum) {
-      return { code: makePattern(events, activeLabel), fallbackReasons, budgetExhausted };
-    }
-
-    const notes = effectiveEventsToNotes(events);
-    const { melody, harmony } = splitMelodyHarmony(notes);
-    const eventsByNote = new Map(notes.map((note, index) => [note, events[index]]));
-    const toEvents = (partition: typeof notes): EffectiveEvent[] => partition.map((note) => eventsByNote.get(note)!);
-    let result = '';
-    if (melody.length) result += makePattern(toEvents(melody), `${activeLabel}_MELODY`);
-    if (harmony.length) result += makePattern(toEvents(harmony), `${activeLabel}_HARMONY`);
-    return { code: result, fallbackReasons, budgetExhausted };
+    const renderWindow = (window: PhraseWindow, timings: ReadonlyMap<EffectiveEvent, EffectiveTickTiming>, tickScale: number) => {
+      const rendered = renderStructuredRhythm({ track, events: valuesFor(window.events), config: this.config, control, scale,
+        span: { durationSeconds: window.durationSeconds, cycleDurationSeconds }, originTicks: window.originTicks,
+        originSeconds: window.originSeconds, effectiveTiming: { scale: tickScale, events: timings } });
+      return rendered.ok ? rendered.expression : undefined;
+    };
+    const discovery = discoverPhrases({ track, events, config: this.config, sharedSpanSeconds, render: renderWindow });
+    const oneOff = discovery.budgetExhausted ? { passages: [], remainder: discovery.remainder }
+      : renderOneOffPassages({ track, events: discovery.remainder, config: this.config, render: renderWindow });
+    const timeline = renderPhraseTimeline({ phrases: discovery.phrases, passages: oneOff.passages,
+      remainderExpression: oneOff.remainder.length ? makeExpression(oneOff.remainder) : undefined,
+      trackId: track.id, trackIndex, trackKey: activeLabel,
+      measureSeconds: getSourceMeasureDuration(this.config), cycleSeconds: cycleDurationSeconds, sharedSpanSeconds });
+    patterns.definitions.push(...timeline.patterns.definitions);
+    patterns.occurrences.push(...timeline.patterns.occurrences);
+    return { code: makePattern(timeline.expression), library: timeline.library,
+      fallbackReasons, budgetExhausted: discovery.budgetExhausted };
   }
 
   private getUniqueActiveLabels(entries: Array<{ track: Track; events: EffectiveEvent[] }>): Map<Track, string> {
     const labels = new Map<Track, string>();
     const used = new Set<string>();
-    let activeIndex = 0;
     entries.forEach(({ track, events }) => {
       if (track.hidden || events.length === 0) return;
-      activeIndex += 1;
-      const name = formatTrackName(track.name) || 'TRACK';
-      const identity = formatTrackName(track.id) || `TRACK_${activeIndex}`;
-      const base = `${name}_${identity}`;
+      const name = track.name.toLowerCase().replace(/\([^)]*\)/g, '').replace(/\b(grand|classic)\b/g, '')
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24).replace(/_$/g, '') || (track.isDrum ? 'drums' : 'track');
+      const base = /^[a-z]/.test(name) && !['constructor', 'prototype'].includes(name) ? name : `track_${name}`;
       let label = base;
       let duplicate = 2;
       while (used.has(label)) {
