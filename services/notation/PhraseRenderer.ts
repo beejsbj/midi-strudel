@@ -79,8 +79,9 @@ export function renderPhraseTimeline(input: {
   const measures = Math.round(sharedSpanSeconds / measureSeconds);
   if (cursor < measures) tokens.push(token('~', measures - cursor));
   const slow = measureSeconds === cycleSeconds ? '' : `.slow(${ratioExpression(measureSeconds, cycleSeconds)})`;
+  const selector = `<${compactSelectors(tokens)}>`;
   let expression = entries.length
-    ? `cat(${JSON.stringify(`<${compactSelectors(tokens)}>`)})${slow}.pickRestart(phrases.${trackKey})`
+    ? `cat('${selector}')${slow}.pickRestart(phrases.${trackKey})`
     : '';
   // A lone passage already owns the complete loop; a selector would add noise.
   if (entries.length === 1 && entries[0].start === 0 && entries[0].length === measures) {
