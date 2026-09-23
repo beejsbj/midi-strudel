@@ -83,12 +83,16 @@ export function sanitizeKeySignature(value: unknown): KeySignature | undefined {
 
 export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
   const merged = { ...DEFAULT_CONFIG, ...config };
+  // Older projects stored rendering choices that are now automatic. Discard
+  // them at the boundary so loading and resaving cannot revive retired modes.
+  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+    Reflect.deleteProperty(merged, key);
+  }
   const defaultSourceTimeSignature =
     DEFAULT_CONFIG.sourceTimeSignature ?? DEFAULT_CONFIG.timeSignature;
 
   return {
     ...merged,
-    renderingMode: merged.renderingMode === 'structured' ? 'structured' : 'expanded',
     bpm: sanitizeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
     sourceBpm: sanitizeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
     timeSignature: sanitizeTimeSignature(merged.timeSignature, DEFAULT_CONFIG.timeSignature),
@@ -113,12 +117,6 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
       DEFAULT_CONFIG.quantizationStrength,
       0,
       100,
-    ),
-    durationPrecision: sanitizeWholeNumber(
-      merged.durationPrecision,
-      DEFAULT_CONFIG.durationPrecision,
-      1,
-      8,
     ),
     durationTagStyle:
       typeof merged.durationTagStyle === 'string' &&
@@ -148,7 +146,7 @@ export function saveConfigToStorage(config: StrudelConfig, storage?: StorageLike
   try {
     if (!resolvedStorage) return;
 
-    const serializedConfig = JSON.stringify(config);
+    const serializedConfig = JSON.stringify(sanitizeConfig(config));
     if (serializedConfig === DEFAULT_CONFIG_SERIALIZED) {
       resolvedStorage.removeItem(CONFIG_STORAGE_KEY);
       return;

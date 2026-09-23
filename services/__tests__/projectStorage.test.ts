@@ -82,7 +82,7 @@ describe('project storage', () => {
       }
     }
     const conversion = convertMidi(midi.toArray().buffer, 'fractional.mid', {
-      renderingMode: 'structured', isQuantized, quantizationStrength: 33.3, quantizationThreshold: 42.5,
+      isQuantized, quantizationStrength: 33.3, quantizationThreshold: 42.5,
     });
     expect(conversion.patterns.definitions).toHaveLength(1);
     const storage = createMemoryStorage();
@@ -99,12 +99,25 @@ describe('project storage', () => {
     });
   });
 
-  it('keeps expanded as the legacy default and persists structured mode', () => {
-    expect(sanitizeConfig({}).renderingMode).toBe('expanded');
-    expect(sanitizeConfig({ renderingMode: 'invalid' as never }).renderingMode).toBe('expanded');
+  it.each(['expanded', 'structured'])('migrates retired %s settings without changing notes or timing', (renderingMode) => {
     const storage = createMemoryStorage();
-    saveConfigToStorage({ ...DEFAULT_CONFIG, renderingMode: 'structured' }, storage);
-    expect(loadConfigFromStorage(storage).renderingMode).toBe('structured');
+    const legacyConfig = { ...DEFAULT_CONFIG, renderingMode, timingStyle: 'relativeDivision',
+      durationPrecision: 2, outputStyle: 'melody+harmony', bpm: 135.000135000135,
+      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'measure' as const };
+    const tracks = [{ id: 'legacy', name: 'Piano', isDrum: false,
+      notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }] }];
+    storage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(legacyConfig));
+    saveTracksToStorage(tracks, storage);
+    const restored = loadConfigFromStorage(storage);
+    expect(restored).toMatchObject({ bpm: legacyConfig.bpm, sourceBpm: legacyConfig.sourceBpm,
+      measuresPerLine: 2, formatPerLineBy: 'measure' });
+    expect(loadTracksFromStorage(storage)).toEqual(tracks);
+    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+      expect(restored).not.toHaveProperty(field);
+      expect(DEFAULT_CONFIG).not.toHaveProperty(field);
+    }
+    saveConfigToStorage(legacyConfig, storage);
+    expect(JSON.parse(storage.getItem(CONFIG_STORAGE_KEY)!)).toEqual(restored);
   });
 
   it('round-trips config and tracks without a separate key state', () => {

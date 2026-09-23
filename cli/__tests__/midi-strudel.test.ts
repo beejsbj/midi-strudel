@@ -59,14 +59,12 @@ const runCli = (...args: string[]): SpawnSyncReturns<string> => {
 };
 
 describe('midi-strudel CLI', () => {
-  it('offers explicit structured output while leaving unchanged invocations expanded', () => {
-    expect(parseArgs([fixture])?.overrides.renderingMode).toBeUndefined();
-    expect(parseArgs([fixture, '--rendering', 'structured'])?.overrides.renderingMode).toBe('structured');
-    expect(() => parseArgs([fixture, '--rendering', 'unknown'])).toThrow('expanded, structured');
-    const result = runCli(fixture, '--rendering', 'structured', '--format', 'json');
+  it('uses structured phrase reuse by default in every output format', () => {
+    expect(parseArgs([fixture])?.overrides).toEqual({});
+    const result = runCli(fixture, '--format', 'json');
     expect(result.status).toBe(0);
     const output = JSON.parse(result.stdout);
-    expect(output.config.renderingMode).toBe('structured');
+    expect(output.config).not.toHaveProperty('renderingMode');
     expect(output.code).toContain('note(`');
     expect(output.schemaVersion).toBe(1);
     expect(output.patterns.definitions.length).toBeGreaterThan(0);
@@ -74,8 +72,8 @@ describe('midi-strudel CLI', () => {
     const definition = output.patterns.definitions.find((entry: { trackId: string }) => entry.trackId === piano.id);
     expect(output.patterns.occurrences.filter((entry: { definitionId: string }) => entry.definitionId === definition.id)
       .map((entry: { sourceStartMeasure: number }) => entry.sourceStartMeasure)).toEqual([3, 4, 5, 7, 8, 9]);
-    expect(runCli(fixture, '--rendering', 'structured', '--format', 'code').stdout).toBe(output.code);
-    expect(runCli(fixture, '--rendering', 'structured', '--format', 'url').stdout.trim()).toBe(output.url);
+    expect(runCli(fixture, '--format', 'code').stdout).toBe(output.code);
+    expect(runCli(fixture, '--format', 'url').stdout.trim()).toBe(output.url);
     expect(Buffer.from(new URL(output.url).hash.slice(1), 'base64').toString('utf8')).toBe(output.code);
   });
 
@@ -94,7 +92,6 @@ describe('midi-strudel CLI', () => {
     expect(result.status).toBe(0);
     expect(parsed).toMatchObject({
       schemaVersion: 1,
-      patterns: { definitions: [], occurrences: [] },
       input: 'warrior-of-the-mind-epic-the-musical.mid',
       code: expect.stringContaining('setcps('),
       url: expect.stringMatching(/^https:\/\/strudel\.cc\/#/),
@@ -108,9 +105,13 @@ describe('midi-strudel CLI', () => {
         { code: 'unmapped-drum-note', midiNote: 78, count: 1 },
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
+        { code: 'precise-literal-fallback', count: expect.any(Number),
+          message: expect.stringContaining('Effective timing differs from source rhythm') },
       ],
     });
-    expect(result.stderr.trim().split('\n')).toHaveLength(5);
+    expect(parsed.patterns.definitions.length).toBeGreaterThan(0);
+    expect(result.stderr.trim().split('\n')).toHaveLength(parsed.diagnostics.length);
+    expect(result.stderr).toContain('[precise-literal-fallback]');
     expect(result.stderr).toContain('Dropped 85 unmapped drum note events for MIDI 31');
     expect(result.stderr).toContain('Dropped 159 unmapped drum note events for MIDI 85');
   });
@@ -160,7 +161,10 @@ describe('midi-strudel CLI', () => {
       const result = runCli(denseFixture, '--format', format);
 
       expect(result.status).toBe(0);
-      expect(result.stderr.trim().split('\n')).toHaveLength(5);
+      const diagnostics = result.stderr.trim().split('\n');
+      expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
+      expect(diagnostics.filter((line) => line.includes('[precise-literal-fallback]'))).toHaveLength(1);
+      expect(diagnostics).toHaveLength(6);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);
@@ -216,7 +220,22 @@ describe('midi-strudel arguments', () => {
   it('rejects invalid input and invalid choices', () => {
     expect(() => parseArgs(['song.txt'])).toThrow('.mid or .midi');
     expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
-    expect(() => parseArgs(['--duration-precision', '9', 'song.mid']))
-      .toThrow('--duration-precision must be <= 8');
+  });
+
+  it.each(['--rendering', '--timing', '--duration-precision'])('explains how to migrate retired %s commands', (flag) => {
+    expect(() => parseArgs([flag, 'expanded', 'song.mid'])).toThrow(`${flag} has been retired`);
+    const result = runCli(flag, 'expanded', fixture);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Remove this option.');
+  });
+
+  it('does not advertise retired settings in help', () => {
+    const result = runCli('--help');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('structured Strudel notation');
+    for (const flag of ['--rendering', '--timing', '--duration-precision']) {
+      expect(result.stdout).not.toContain(flag);
+    }
   });
 });

@@ -39,34 +39,8 @@ export const SCALES: Record<'major' | 'minor', number[]> = {
   minor: [0, 2, 3, 5, 7, 8, 10]
 };
 
-// Helper for rounding
-export const round = (num: number, precision: number): number => {
-  const factor = Math.pow(10, precision);
-  return Math.round(num * factor) / factor;
-};
-
 export function gcd(a: number, b: number): number {
   return !b ? a : gcd(b, a % b);
-}
-
-export function lcm(a: number, b: number): number {
-  if (a === 0 || b === 0) return 0;
-  return (a * b) / gcd(a, b);
-}
-
-/**
- * Returns true if the given Strudel token represents a rest.
- * Valid rest patterns: ~, ~@0.5, [~], [~]@0.5
- */
-export function isRest(token: string): boolean {
-  const t = token.trim();
-  return /^~(@[\d.]+)?$/.test(t) || /^\[~\](@[\d.]+)?$/.test(t);
-}
-
-export function getRestDuration(token: string): number {
-  const parts = token.split('@');
-  if (parts.length === 2) return parseFloat(parts[1]);
-  return 1;
 }
 
 export function getMeterBeatDuration(config: StrudelConfig): number {
@@ -93,36 +67,12 @@ export function getCycleDuration(config: StrudelConfig): number {
   return getMeasureDuration(config);
 }
 
-/** Creates a rest token from a duration in seconds */
-export function createRestToken(durationSeconds: number, cycleDur: number, config: StrudelConfig): string {
-  const cycles = durationSeconds / cycleDur;
-  return createRestTokenCycles(cycles, config);
-}
-
-/** Creates a rest token from a duration in cycles */
-export function createRestTokenCycles(cycles: number, config: StrudelConfig): string {
-  const r = round(cycles, config.durationPrecision);
-  const suffix = Math.abs(r - 1) < 1e-6 ? "" : `@${r}`;
-
-  if (config.timingStyle === 'relativeDivision') {
-    return `[~]${suffix}`;
-  }
-  return `~${suffix}`;
-}
-
 export function formatTrackName(name: string): string {
   return name.toUpperCase()
     .replace(/[^A-Z0-9]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_/, '')
     .replace(/_$/, '');
-}
-
-export function getAsString(isDrum: boolean, config: StrudelConfig): string {
-  if (isDrum) return "s";
-  let s = config.notationType === 'absolute' ? "note" : "n";
-  if (config.includeVelocity) s += ":velocity";
-  return s;
 }
 
 export function getRelativeDegree(note: Note, config: StrudelConfig): string | number {
@@ -181,39 +131,6 @@ export function getRelativeDegree(note: Note, config: StrudelConfig): string | n
 
   const sign = delta > 0 ? "#" : "b";
   return `${degree}${sign.repeat(Math.abs(delta))}`;
-}
-
-export function formatNoteVal(
-  note: Note,
-  cycleDur: number,
-  isDrum: boolean,
-  config: StrudelConfig,
-  drumMap: Record<number, string>,
-  durOverride?: number
-): string {
-  let val: string | number = "";
-
-  if (isDrum) {
-    val = drumMap[note.midi] || "?";
-  } else if (config.notationType === 'relative' && (config.key || config.playbackKey)) {
-    val = getRelativeDegree(note, config);
-  } else {
-    val = config.notationType === 'absolute' ? note.note : (note.midi - 60).toString();
-  }
-
-  let suffix = "";
-  if (config.includeVelocity) {
-    suffix += `:${round(note.velocity, 2)}`;
-  }
-
-  if (config.timingStyle === 'absoluteDuration') {
-    const d = durOverride !== undefined ? durOverride : (note.noteOff - note.noteOn);
-    const cycles = d / cycleDur;
-    if (Math.abs(cycles - 1) < 0.001) return `${val}${suffix}`;
-    return `${val}${suffix}@${round(cycles, config.durationPrecision)}`;
-  } else {
-    return `${val}${suffix}`;
-  }
 }
 
 /** Quarter-note subdivisions used by the requested quantization policy. */

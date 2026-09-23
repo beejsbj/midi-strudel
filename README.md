@@ -92,12 +92,14 @@ npm run --silent convert -- song.mid --format json
 # An openable strudel.cc URL containing the same encoded code payload as the web app
 npm run --silent convert -- song.mid --format url
 
-# Readable beat groups and exact phrase reuse (expanded remains the default)
-npm run --silent convert -- song.mid --rendering structured
+# Adjust line wrapping without changing musical timing
+npm run --silent convert -- song.mid --format-per-line measure --items-per-line 2
 ```
 
 The schema-v1 JSON object includes a `diagnostics` array. This is an additive,
 backward-compatible field; each dropped percussion entry contains a stable
 diagnostic code, severity, MIDI note number, event count, and message.
 
-Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--timing absoluteDuration|relativeDivision`, `--quantize` / `--no-quantize`, `--quantization-threshold`, `--quantization-strength`, and `--duration-precision`. Run `npm run --silent convert -- --help` for the complete contract.
+Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--quantize` / `--no-quantize`, `--quantization-threshold`, and `--quantization-strength`. Run `npm run --silent convert -- --help` for the complete contract.
+
+All conversions use structured notation, combining subdivisions, relative weights, note gates, and exact phrase reuse automatically. The retired `--rendering`, `--timing`, and `--duration-precision` flags now return an explanatory error; remove them from existing commands. Saved browser projects migrate these settings away while retaining their MIDI notes and other preferences.

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Settings } from 'lucide-react';
 import { StrudelConfig } from '../../types';
-import { patchConfig, updateConfigValue } from './configUpdates';
+import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
   SegmentedControl,
@@ -22,23 +22,6 @@ export const FormatSettings: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const updateTimingStyle = (value: StrudelConfig['timingStyle']) => {
-    if (value === 'relativeDivision') {
-      patchConfig(setConfig, {
-        timingStyle: value,
-        formatPerLineBy: 'measure',
-        measuresPerLine: 1,
-      });
-      return;
-    }
-
-    patchConfig(setConfig, {
-      timingStyle: value,
-      formatPerLineBy: 'note',
-      measuresPerLine: 4,
-    });
-  };
-
   return (
     <SidebarSection
       icon={<Settings size={14} />}
@@ -46,20 +29,6 @@ export const FormatSettings: React.FC<Props> = ({
       isCollapsed={isCollapsed}
       onToggleCollapse={onToggleCollapse}
     >
-      <div>
-        <label className={fieldLabelClass}>Representation</label>
-        <SegmentedControl
-          aria-label="Notation representation"
-          value={config.renderingMode}
-          onChange={(value) => updateConfigValue(setConfig, 'renderingMode', value as StrudelConfig['renderingMode'])}
-          options={[
-            { value: 'expanded', label: 'Expanded' },
-            { value: 'structured', label: 'Structured' },
-          ]}
-        />
-        <HelpText>Structured groups exact rhythms into beats. Expanded shows individual events.</HelpText>
-      </div>
-
       <div>
         <label className={fieldLabelClass}>Notation Type</label>
         <SegmentedControl
@@ -79,7 +48,7 @@ export const FormatSettings: React.FC<Props> = ({
       </div>
 
       <div>
-        <label className={fieldLabelClass}>Cycle Unit (@1)</label>
+        <label className={fieldLabelClass}>Cycle Unit</label>
         <SegmentedControl
           aria-label="Cycle unit"
           value={config.cycleUnit}
@@ -89,25 +58,7 @@ export const FormatSettings: React.FC<Props> = ({
             { value: 'beat', label: 'Beat' },
           ]}
         />
-        <HelpText>Defines what a duration of 1 means. Usually one full measure (bar) or one beat.</HelpText>
-      </div>
-
-      <div>
-        <label className={fieldLabelClass}>Timing Syntax</label>
-        <SegmentedControl
-          aria-label="Timing syntax"
-          value={config.timingStyle}
-          onChange={(value) => updateTimingStyle(value as StrudelConfig['timingStyle'])}
-          options={[
-            { value: 'absoluteDuration', label: 'Duration' },
-            { value: 'relativeDivision', label: 'Division' },
-          ]}
-        />
-        <HelpText>
-          {config.timingStyle === 'absoluteDuration'
-            ? "Specifies exact length of each note. E.g. \"note@0.5\"."
-            : "Splits time into equal parts. E.g. \"[a b]\" plays two notes in the space of one."}
-        </HelpText>
+        <HelpText>Sets whether one Strudel cycle represents a bar or a beat. Note timing and lengths are preserved.</HelpText>
       </div>
     </SidebarSection>
   );

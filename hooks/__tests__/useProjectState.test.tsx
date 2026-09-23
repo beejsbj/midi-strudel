@@ -28,7 +28,7 @@ function Harness({ dependencies }: HarnessProps) {
 
   return (
     <div>
-      <button type="button" onClick={() => state.setConfig((prev) => ({ ...prev, renderingMode: 'structured' }))}>structured</button>
+      <button type="button" onClick={() => state.setConfig((prev) => ({ ...prev, measuresPerLine: 2 }))}>wrap-two</button>
       <button
         type="button"
         onClick={() =>
@@ -127,14 +127,14 @@ describe('useProjectState', () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
-  it('regenerates notation when the representation setting changes', () => {
-    const createNotation = vi.fn((config) => ({ generate: () => config.renderingMode }));
+  it('regenerates notation when line wrapping changes', () => {
+    const createNotation = vi.fn((config) => ({ generate: () => `wrap-${config.measuresPerLine}` }));
     render(<Harness dependencies={{ loadConfig: () => DEFAULT_CONFIG, loadTracks: () => TEST_TRACKS,
       createNotation, debounceMs: 40, saveConfig: vi.fn(), saveTracks: vi.fn() }} />);
-    expect(screen.getByText('expanded')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'structured' }));
+    expect(screen.getByText('wrap-4')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'wrap-two' }));
     act(() => { vi.advanceTimersByTime(50); });
-    expect(createNotation).toHaveBeenLastCalledWith(expect.objectContaining({ renderingMode: 'structured' }));
+    expect(createNotation).toHaveBeenLastCalledWith(expect.objectContaining({ measuresPerLine: 2 }));
   });
 
   it('debounces config persistence during rapid updates', () => {

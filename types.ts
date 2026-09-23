@@ -104,13 +104,8 @@ export interface StrudelConfig {
   key?: KeySignature; // Detected key (Source) used for interval calculation
   playbackKey?: KeySignature; // Playback key (Output) used for .scale()
   
-  // Output Style
-  outputStyle: 'melody+harmony'; 
-  
   // Notation
   notationType: 'absolute' | 'relative';
-  /** Expanded keeps the established exact literal spelling; structured is opt-in. */
-  renderingMode: 'expanded' | 'structured';
   
   // Duration System
   cycleUnit: 'bar' | 'beat';
@@ -125,16 +120,12 @@ export interface StrudelConfig {
   
   // Modifiers
   includeVelocity: boolean;
-  timingStyle: 'absoluteDuration' | 'relativeDivision';
   
   // Quantization
   isQuantized: boolean;
   quantizationThreshold: number; // ms
   quantizationStrength: number; // 0-100%
   
-  // Precision
-  durationPrecision: number;
-
   // Source file metadata
   fileName?: string;
 
@@ -153,22 +144,18 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   sourceBpm: 120,
   timeSignature: { numerator: 4, denominator: 4 },
   sourceTimeSignature: { numerator: 4, denominator: 4 },
-  outputStyle: 'melody+harmony',
   notationType: 'absolute',
-  renderingMode: 'expanded',
   cycleUnit: 'bar',
-  formatPerLineBy: 'note',
+  formatPerLineBy: 'measure',
   measuresPerLine: 4,
   
   useAutoMapping: true,
   globalSound: 'triangle',
   
   includeVelocity: false,
-  timingStyle: 'absoluteDuration',
   isQuantized: false, 
   quantizationThreshold: 50,
   quantizationStrength: 100,
-  durationPrecision: 4,
 
   durationTagStyle: 'sup',
   visualMethods: [],
