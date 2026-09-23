@@ -66,6 +66,7 @@ export function getNotationConfigKey(config: StrudelConfig): string {
     key: config.key,
     measuresPerLine: config.measuresPerLine,
     notationType: config.notationType,
+    renderingMode: config.renderingMode,
     outputStyle: config.outputStyle,
     playbackKey: config.playbackKey,
     quantizationStrength: config.quantizationStrength,

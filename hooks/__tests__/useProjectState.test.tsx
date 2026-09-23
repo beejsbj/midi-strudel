@@ -28,6 +28,7 @@ function Harness({ dependencies }: HarnessProps) {
 
   return (
     <div>
+      <button type="button" onClick={() => state.setConfig((prev) => ({ ...prev, renderingMode: 'structured' }))}>structured</button>
       <button
         type="button"
         onClick={() =>
@@ -124,6 +125,16 @@ describe('useProjectState', () => {
     });
 
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('regenerates notation when the representation setting changes', () => {
+    const createNotation = vi.fn((config) => ({ generate: () => config.renderingMode }));
+    render(<Harness dependencies={{ loadConfig: () => DEFAULT_CONFIG, loadTracks: () => TEST_TRACKS,
+      createNotation, debounceMs: 40, saveConfig: vi.fn(), saveTracks: vi.fn() }} />);
+    expect(screen.getByText('expanded')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'structured' }));
+    act(() => { vi.advanceTimersByTime(50); });
+    expect(createNotation).toHaveBeenLastCalledWith(expect.objectContaining({ renderingMode: 'structured' }));
   });
 
   it('debounces config persistence during rapid updates', () => {
