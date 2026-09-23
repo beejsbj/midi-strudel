@@ -35,6 +35,11 @@ function sanitizeWholeNumber(value: unknown, fallback: number, min: number, max?
   return max == null ? lowerBounded : Math.min(max, lowerBounded);
 }
 
+function sanitizeNumber(value: unknown, fallback: number, min: number, max?: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max ?? Infinity, Math.max(min, value));
+}
+
 function sanitizeTimeSignature(
   value: Partial<StrudelConfig['timeSignature']> | undefined,
   fallback: StrudelConfig['timeSignature'],
@@ -84,8 +89,8 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
   return {
     ...merged,
     renderingMode: merged.renderingMode === 'structured' ? 'structured' : 'expanded',
-    bpm: sanitizeWholeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
-    sourceBpm: sanitizeWholeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
+    bpm: sanitizeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
+    sourceBpm: sanitizeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
     timeSignature: sanitizeTimeSignature(merged.timeSignature, DEFAULT_CONFIG.timeSignature),
     sourceTimeSignature: sanitizeTimeSignature(
       merged.sourceTimeSignature,
@@ -97,13 +102,13 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
       1,
       64,
     ),
-    quantizationThreshold: sanitizeWholeNumber(
+    quantizationThreshold: sanitizeNumber(
       merged.quantizationThreshold,
       DEFAULT_CONFIG.quantizationThreshold,
       0,
       200,
     ),
-    quantizationStrength: sanitizeWholeNumber(
+    quantizationStrength: sanitizeNumber(
       merged.quantizationStrength,
       DEFAULT_CONFIG.quantizationStrength,
       0,

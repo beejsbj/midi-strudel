@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../types';
+import MidiPackage from '@tonejs/midi';
+import { convertMidi } from '../convertMidi';
+import { StrudelNotation } from '../StrudelNotation';
 import {
   CONFIG_STORAGE_KEY,
   TRACKS_STORAGE_KEY,
@@ -69,6 +72,33 @@ describe('sanitizeConfig', () => {
 });
 
 describe('project storage', () => {
+  it.each([false, true])('preserves fractional timing controls and phrases after reload (quantized: %s)', (isQuantized) => {
+    const midi = new MidiPackage.Midi();
+    midi.header.setTempo(123.456);
+    const track = midi.addTrack();
+    for (const bar of [0, 2, 4]) {
+      for (let index = 0; index < 12; index++) {
+        track.addNote({ midi: 60 + index % 5, ticks: bar * 1920 + index * 160, durationTicks: 80 });
+      }
+    }
+    const conversion = convertMidi(midi.toArray().buffer, 'fractional.mid', {
+      renderingMode: 'structured', isQuantized, quantizationStrength: 33.3, quantizationThreshold: 42.5,
+    });
+    expect(conversion.patterns.definitions).toHaveLength(1);
+    const storage = createMemoryStorage();
+    saveConfigToStorage(conversion.config, storage);
+    saveTracksToStorage(conversion.tracks, storage);
+    const restoredConfig = loadConfigFromStorage(storage);
+    expect(restoredConfig).toEqual(conversion.config);
+    const restored = new StrudelNotation(restoredConfig).generateWithDiagnostics(loadTracksFromStorage(storage));
+    expect(restored).toEqual({
+      code: conversion.code,
+      sharedSpanSeconds: conversion.sharedSpanSeconds,
+      patterns: conversion.patterns,
+      diagnostics: conversion.diagnostics,
+    });
+  });
+
   it('keeps expanded as the legacy default and persists structured mode', () => {
     expect(sanitizeConfig({}).renderingMode).toBe('expanded');
     expect(sanitizeConfig({ renderingMode: 'invalid' as never }).renderingMode).toBe('expanded');
