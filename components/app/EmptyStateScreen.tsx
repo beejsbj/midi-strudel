@@ -335,7 +335,7 @@ export function EmptyStateScreen({
                     is a browser-based live coding environment for music. instead of a piano roll, you describe repeating patterns and cycles in code.
                   </p>
                   <p className="mb-[14px] text-[13px] leading-[1.78] text-[#9a9484]">
-                    a melody becomes a string of note names and durations. a chord is a bracket group. a rest is a{' '}
+                    a melody becomes a pattern of notes and rhythms. comma-separated notes in brackets form a chord. a rest is a{' '}
                     <span className="inline-flex rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-1.5 py-0.5 font-mono text-[11px] text-[#c8922a]">
                       ~
                     </span>
@@ -357,32 +357,21 @@ export function EmptyStateScreen({
                     what this tool does
                   </h3>
                   <p className="max-w-[920px] text-[13px] leading-[1.82] text-[#9a9484]">
-                    it takes midi note timing, track data, and overlap information, then turns that into strudel-ish code you can read, tweak, and send into the REPL without starting from scratch. it is not trying to be a literal one-to-one export - the goal is to preserve the musical shape in a form that still feels readable once you open it.
+                    it turns midi notes into beat groups and a shared phrase library you can read, tweak, and send into the REPL. repeated passages share a definition, while supported note timing, lengths, and overlaps are preserved.
                   </p>
                 </div>
 
                 <div className="grid gap-px bg-[rgba(200,146,42,0.18)] md:col-span-2 lg:grid-cols-3">
                   <div className="bg-[#111109] px-[26px] py-7">
                     <h3 className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.16em] text-[#8b8679]">
-                      durations
+                      rhythm &amp; durations
                     </h3>
                     <p className="mb-[15px] text-[13px] leading-[1.78] text-[#9a9484]">
-                      every note is just a start time and end time. from that, the converter calculates how long it lasts and emits a duration tag.
+                      brackets group rhythmic subdivisions; @ gives a note more space within its group. clip controls how long notes sound without moving their starts.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                        C4@0.25
-                      </span>
-                      <span className="rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                        E4@0.5
-                      </span>
-                      <span className="rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                        ~@0.75
-                      </span>
-                      <span className="rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                        G4@1
-                      </span>
-                    </div>
+                    <span className="inline-flex break-all rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
+                      {'note("[C4 E4] G4").clip(0.5)'}
+                    </span>
                   </div>
 
                   <div className="bg-[#111109] px-[26px] py-7">
@@ -390,22 +379,22 @@ export function EmptyStateScreen({
                       chords &amp; overlaps
                     </h3>
                     <p className="mb-[15px] text-[13px] leading-[1.78] text-[#9a9484]">
-                      notes starting at the same time collapse into a clean chord token. staggered overlaps need padded bracket lanes so each voice adds up to the same window.
+                      notes with matching starts, lengths, and dynamics can share a chord token. other overlaps keep independent gates, without guessing which notes are melody or harmony.
                     </p>
                     <span className="inline-flex rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                      {'{C#3, E3, G#3}@0.25'}
+                      {'[C#3,E3,G#3]'}
                     </span>
                   </div>
 
                   <div className="bg-[#111109] px-[26px] py-7">
                     <h3 className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.16em] text-[#8b8679]">
-                      measure boundaries
+                      phrases &amp; repeats
                     </h3>
                     <p className="mb-[15px] text-[13px] leading-[1.78] text-[#9a9484]">
-                      overlap groups that spill past a bar boundary aren&apos;t chopped. the block stretches to keep the notation musically coherent instead of splitting mid-chord.
+                      short names select passages from one phrase library. ! repeats a passage; safe boundaries keep sustained notes intact across bars.
                     </p>
                     <span className="inline-flex rounded-[3px] border border-[rgba(200,146,42,0.18)] bg-[rgba(200,146,42,0.08)] px-2 py-1 font-mono text-[12px] text-[#c8922a]">
-                      {'{C4@1 ~@0.5, ~@0.5 E4@1}@1.5'}
+                      {'<a!3 b a!3>'}
                     </span>
                   </div>
                 </div>

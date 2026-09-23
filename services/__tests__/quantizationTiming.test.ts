@@ -19,7 +19,7 @@ it('preserves the minimum gate with zero quantization strength and rejected grid
   const bytes = midi.toArray().buffer;
   const source = new Midi(bytes);
   const result = convertMidi(bytes, 'short-gates.mid', {
-    renderingMode: 'structured', isQuantized: true,
+    isQuantized: true,
     quantizationStrength: 0, quantizationThreshold: 0,
   });
   expect(result.patterns.definitions).toHaveLength(1);

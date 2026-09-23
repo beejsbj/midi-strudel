@@ -143,6 +143,20 @@ describe('convertMidi', () => {
       .toThrow('Failed to parse MIDI file');
   });
 
+  it('ignores retired output choices from untyped callers without changing the music', () => {
+    const bytes = makePercussionMidi([36, 42, 38, 42]);
+    const current = convertMidi(bytes, 'old-options.mid');
+    const legacy = convertMidi(bytes, 'old-options.mid', JSON.parse(JSON.stringify({
+      renderingMode: 'expanded', timingStyle: 'relativeDivision',
+      durationPrecision: 1, outputStyle: 'melody+harmony',
+    })));
+
+    expect(legacy).toEqual(current);
+    for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+      expect(legacy.config).not.toHaveProperty(key);
+    }
+  });
+
   it('keeps filename line breaks out of generated title metadata', async () => {
     const bytes = await readFile(fileURLToPath(fixtureUrl));
     const result = convertMidi(asArrayBuffer(bytes), 'safe\nsetcps(999)\u2028title.mid');
@@ -151,7 +165,7 @@ describe('convertMidi', () => {
     expect(result.code.split('\n')[0]).toBe('// @title safe setcps(999) title');
   });
 
-  it('uses one exact shared literal loop for delayed attacks across two passes', async () => {
+  it('uses one exact shared loop for delayed attacks across two passes', async () => {
     const midi = new Midi();
     midi.header.setTempo(120);
     const track = midi.addTrack();
@@ -174,7 +188,7 @@ describe('convertMidi', () => {
     ]);
   });
 
-  it('does not snap simultaneous duplicates, quintuplets, or septuplets in literal fallback', async () => {
+  it('does not snap simultaneous duplicates, quintuplets, or septuplets in structured output', async () => {
     const midi = new Midi();
     midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 3360 });
     midi.header.setTempo(120);
@@ -189,13 +203,12 @@ describe('convertMidi', () => {
     }
 
     const result = convertMidi(midi.toArray().buffer, 'tuplets.mid', {
-      timingStyle: 'relativeDivision',
       includeVelocity: true,
     });
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
     const firstLoop = observed.events.filter(({ onset }) => onset < 2);
 
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
     expect(firstLoop.filter(({ pitch, onset }) => pitch === 'C4' && onset === 0)).toHaveLength(2);
     expect(firstLoop.filter(({ pitch }) => pitch === 'D4').map(({ onset }) => onset))
       .toEqual([0.5, 0.6, 0.7, 0.8, 0.9]);
@@ -313,14 +326,13 @@ describe('convertMidi', () => {
     }
 
     const result = convertMidi(midi.toArray().buffer, 'structured-tuplets.mid', {
-      renderingMode: 'structured',
       includeVelocity: true,
     });
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
 
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
-    expect(result.code.replace(/\s+/g, ' ')).toContain('D4 D4 D4 D4 D4');
-    expect(result.code.replace(/\s+/g, ' ')).toContain('E4 E4 E4 E4 E4 E4 E4');
+    expect(result.code).toContain('[D4!5]');
+    expect(result.code).toContain('[E4!7]');
     expect(result.code).toContain('.clip(');
     const expected = [
       { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 101 / 127 },
@@ -397,6 +409,36 @@ describe('convertMidi', () => {
     expect(result.sharedSpanSeconds).toBe(2);
   });
 
+  it('preserves imported meter values outside the sidebar input bounds', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    midi.header.timeSignatures.push({ ticks: 0, timeSignature: [3, 64], measures: 0 });
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 45 });
+
+    const result = convertMidi(midi.toArray().buffer, 'small-meter.mid');
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(result.config.timeSignature).toEqual({ numerator: 3, denominator: 64 });
+    expect(result.config.sourceTimeSignature).toEqual({ numerator: 3, denominator: 64 });
+    expect(result.sharedSpanSeconds).toBe(3 / 32);
+    expect(observed.events.map(({ onset }) => onset)).toEqual([0, 3 / 32]);
+    expect(observed.events.map(({ gateEnd }) => gateEnd)).toEqual([3 / 64, 9 / 64]);
+  });
+
+  it('does not impose sidebar limits on explicit public quantization requests', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(30);
+    midi.addTrack().addNote({ midi: 60, ticks: 60, durationTicks: 120 });
+
+    const result = convertMidi(midi.toArray().buffer, 'wide-threshold.mid', {
+      isQuantized: true, quantizationThreshold: 300, quantizationStrength: 100,
+    });
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(result.config.quantizationThreshold).toBe(300);
+    expect(observed.events[0].onset).toBe(0.5);
+  });
+
   it('uses absolute pitch control when relative mode has no detected key', async () => {
     const midi = new Midi();
     midi.header.setTempo(120);
@@ -410,7 +452,8 @@ describe('convertMidi', () => {
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
 
     expect(config.key).toBeUndefined();
-    expect(result.code).toContain('note("C#4")');
+    expect(result.code).toContain('note(');
+    expect(result.code).not.toContain('.scale(');
     expect(observed.events[0].pitch).toBe('C#4');
   });
 
@@ -453,7 +496,8 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'punctuation-name.mid');
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
 
-    expect(result.code).toContain('$TRACK_TRACK_0_MELODY:');
+    expect(result.code).toMatch(/\$[A-Za-z_][A-Za-z_0-9]*:/);
+    expect(result.code).not.toMatch(/_MELODY:|_HARMONY:/);
     expect(observed.events[0].pitch).toBe('C4');
   });
 });

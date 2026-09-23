@@ -36,7 +36,7 @@ if you want the deeper background:
 - [strudel-notation-project-prompt.md](strudel-notation-project-prompt.md) is the extracted project prompt/spec that came out of that process
 - [docs/case-study.md](docs/case-study.md) is the concise case study, including a reproducible CLI conversion and the verified limits of the finished artifact
 
-For the current optional beat-group and phrase-reuse renderer, see
+For the current beat-group and phrase-library renderer, see
 [structured notation](docs/structured-notation.md). It also explains how structural
 weights differ from note gates; the historical examples above describe the
 earlier notation experiments.

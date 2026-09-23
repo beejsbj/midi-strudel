@@ -12,7 +12,7 @@ const numericPitch = (value: unknown): number => {
     + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
-it.each(['expanded', 'structured'] as const)('preserves relative pitches and long gates over a sparse %s score', async (renderingMode) => {
+it('preserves relative pitches and long gates over a sparse structured score', async () => {
   const midi = new Midi();
   midi.header.setTempo(120);
   midi.header.timeSignatures.push({ ticks: 0, timeSignature: [4, 4], measures: 0 });
@@ -28,16 +28,14 @@ it.each(['expanded', 'structured'] as const)('preserves relative pitches and lon
   const bytes = midi.toArray().buffer;
   const source = new Midi(bytes).tracks[0].notes;
   const result = convertMidi(bytes, 'sparse-relative.mid', {
-    renderingMode, notationType: 'relative', includeVelocity: true,
+    notationType: 'relative', includeVelocity: true,
   });
   expect(result.config.key).toBeDefined();
   expect(result.code).toContain('n(');
   expect(result.code).toContain('.scale(');
   expect(result.sharedSpanSeconds).toBe(512);
-  if (renderingMode === 'structured') {
-    expect(result.patterns.definitions).toHaveLength(1);
-    expect(result.patterns.occurrences).toHaveLength(3);
-  }
+  expect(result.patterns.definitions).toHaveLength(1);
+  expect(result.patterns.occurrences).toHaveLength(3);
   const runtime = await evaluateGeneratedStrudelCode(result.code);
   try {
     const expected = [0, 512].flatMap(offset => source.map(note => ({

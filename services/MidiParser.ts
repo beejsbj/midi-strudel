@@ -1,8 +1,10 @@
 
-import MidiPackage from '@tonejs/midi';
+import * as MidiPackage from '@tonejs/midi';
 import { Track, Note, MidiSourceMetadata } from '../types';
 
-const { Midi } = MidiPackage;
+// Vite resolves the package's named exports; Node resolves its CommonJS bundle.
+const Midi = MidiPackage.Midi
+  ?? (MidiPackage as unknown as { default: typeof MidiPackage }).default.Midi;
 
 export interface ParsedMidi {
   tracks: Track[];

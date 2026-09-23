@@ -21,13 +21,13 @@ const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number) => 
   }
 };
 
-describe('literal public converter runtime', () => {
+describe('sparse public converter runtime', () => {
   it('preserves sparse fractional events across a long shared span and repeated loops', async () => {
     const midi = new Midi();
     midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 960 });
     midi.header.setTempo(120);
     const track = midi.addTrack();
-    track.name = 'Sparse literal';
+    track.name = 'Sparse performance';
     const velocity = (midiVelocity: number) => midiVelocity / 127;
     track.addNote({ midi: 60, ticks: 240, durationTicks: 120, velocity: velocity(32) });
     track.addNote({ midi: 64, ticks: 1200, durationTicks: 180, velocity: velocity(96) });
