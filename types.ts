@@ -106,6 +106,9 @@ export interface StrudelConfig {
   
   // Notation
   notationType: 'absolute' | 'relative';
+  // Varying per-note controls: chained `.clip(...)`/`.velocity(...)` patterns,
+  // or colon fields on each note via `.as("note:velocity:clip")`.
+  controlSyntax: 'chained' | 'colon';
   
   // Duration System
   cycleUnit: 'bar' | 'beat';
@@ -145,6 +148,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   timeSignature: { numerator: 4, denominator: 4 },
   sourceTimeSignature: { numerator: 4, denominator: 4 },
   notationType: 'absolute',
+  controlSyntax: 'chained',
   cycleUnit: 'bar',
   formatPerLineBy: 'measure',
   measuresPerLine: 4,
