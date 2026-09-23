@@ -8,9 +8,9 @@
  *   MelodicRenderer — melody + harmony voice splitting and rendering
  */
 
-import { ConversionDiagnostic, Note, PatternMetadata, StrudelConfig, Track } from '../types';
+import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { DRUM_MAP, getAutoSound } from '../constants';
-import { prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
+import { effectiveEventsToNotes, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { splitMelodyHarmony } from './notation/MelodicRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
@@ -249,14 +249,7 @@ export class StrudelNotation {
       return { code: makePattern(events, activeLabel), usedLiteralFallback, fallbackReasons, budgetExhausted };
     }
 
-    const notes: Note[] = events.map((event) => ({
-      note: event.note,
-      midi: event.midi,
-      noteOn: event.onsetSeconds,
-      noteOff: event.releaseSeconds,
-      velocity: event.velocity,
-      source: event.source,
-    }));
+    const notes = effectiveEventsToNotes(events);
     const { melody, harmony } = splitMelodyHarmony(notes);
     const eventsByNote = new Map(notes.map((note, index) => [note, events[index]]));
     const toEvents = (partition: typeof notes): EffectiveEvent[] => partition.map((note) => eventsByNote.get(note)!);
