@@ -4,7 +4,6 @@ import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
-import { getCycleDuration } from '../notation/NotationUtils';
 import { DRUM_MAP } from '../../constants';
 import { StrudelNotation } from '../StrudelNotation';
 
@@ -59,7 +58,7 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const order = (a: typeof expected[number], b: typeof expected[number]) =>
     Math.round(a.onset * 1e7) - Math.round(b.onset * 1e7) || String(a.pitch).localeCompare(String(b.pitch))
     || a.end - b.end || a.velocity - b.velocity;
-  const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
+  const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const queried = period > 1000
       ? expected.flatMap((event) => runtime.querySeconds(event.onset - 1e-6, event.onset + 1e-6))

@@ -3,12 +3,11 @@ import { type StrudelConfig } from '../../types';
 import MidiPackage from '@tonejs/midi';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
-import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 
 const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, config: StrudelConfig) => {
-  const runtime = await evaluateGeneratedStrudelCode(code, { secondsPerCycle: getCycleDuration(config) });
+  const runtime = await evaluateGeneratedStrudelCode(code, { exactBpm: config.bpm });
   try {
     return runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds).twoLoops
       .map((event) => ({

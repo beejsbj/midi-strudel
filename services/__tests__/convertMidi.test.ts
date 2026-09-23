@@ -7,7 +7,6 @@ import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { DEFAULT_CONFIG, type StrudelConfig } from '../../types';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
-import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 
@@ -35,7 +34,7 @@ const makePercussionMidi = (notes: number[]): ArrayBuffer => {
 };
 
 const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, config: StrudelConfig) => {
-  const runtime = await evaluateGeneratedStrudelCode(code, { secondsPerCycle: getCycleDuration(config) });
+  const runtime = await evaluateGeneratedStrudelCode(code, { exactBpm: config.bpm });
   try {
     const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds);
     return {

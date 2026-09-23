@@ -33,6 +33,12 @@ export interface EvaluateOptions {
    * than the emitted (display-rounded) tempo, so positions are compared musically.
    */
   secondsPerCycle?: number;
+  /**
+   * The converter's exact playback BPM. The emitted `const BPM` is rounded for
+   * display; scaling the REPL's cps by exact/emitted recovers exact positions
+   * under every cycle unit and meter.
+   */
+  exactBpm?: number;
 }
 
 export const evaluateGeneratedStrudelCode = async (
@@ -50,7 +56,10 @@ export const evaluateGeneratedStrudelCode = async (
     engine.stop();
     throw engine.state.evalError ?? new Error('Strudel REPL did not return a pattern');
   }
-  const cps = options.secondsPerCycle ? 1 / options.secondsPerCycle : engine.scheduler.cps;
+  const emittedBpm = Number(/const BPM = ([^;]+);/.exec(code)?.[1]);
+  const cps = options.secondsPerCycle ? 1 / options.secondsPerCycle
+    : options.exactBpm && emittedBpm ? engine.scheduler.cps * options.exactBpm / emittedBpm
+      : engine.scheduler.cps;
   const querySeconds = (startSeconds: number, endSeconds: number): RuntimeEvent[] =>
     pattern.queryArc(startSeconds * cps, endSeconds * cps)
       .filter((event) => event.hasOnset())

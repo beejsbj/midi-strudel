@@ -3,7 +3,6 @@ import { type StrudelConfig } from '../../types';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
-import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 
@@ -26,7 +25,7 @@ it('preserves the minimum gate with zero quantization strength and rejected grid
   });
   expect(result.patterns.definitions).toHaveLength(1);
   expect(result.patterns.occurrences).toHaveLength(3);
-  const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
+  const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const expected = [0, result.sharedSpanSeconds].flatMap(offset =>
       source.tracks[0].notes.map(note => ({ onset: note.time + offset, gate: 0.125 })));
