@@ -2,6 +2,7 @@ import {
   DEFAULT_CONFIG,
   type ConversionDiagnostic,
   type MidiSourceMetadata,
+  type PatternMetadata,
   type StrudelConfig,
   type Track,
 } from '../types';
@@ -22,6 +23,7 @@ export interface MidiConversion {
   tracks: Track[];
   source?: MidiSourceMetadata;
   sharedSpanSeconds: number;
+  patterns: PatternMetadata;
 }
 
 export const createMidiProject = (
@@ -58,7 +60,7 @@ export const convertMidi = (
 ): MidiConversion => {
   const parsed = parseMidiBuffer(bytes);
   const { config, tracks } = createMidiProject(parsed, fileName, overrides);
-  const { code, diagnostics, sharedSpanSeconds } = new StrudelNotation(config).generateWithDiagnostics(parsed.tracks);
+  const { code, diagnostics, sharedSpanSeconds, patterns } = new StrudelNotation(config).generateWithDiagnostics(parsed.tracks);
 
   return {
     code,
@@ -68,5 +70,6 @@ export const convertMidi = (
     tracks,
     source: parsed.source,
     sharedSpanSeconds,
+    patterns,
   };
 };

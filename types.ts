@@ -58,11 +58,32 @@ export interface Track {
 }
 
 export interface ConversionDiagnostic {
-  code: 'unmapped-drum-note' | 'precise-literal-fallback';
+  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget';
   severity: 'warning';
   midiNote?: number;
   count?: number;
   message: string;
+}
+
+/** Accepted, emitted reuse only; seconds use the effective source-time axis. */
+export interface PatternMetadata {
+  definitions: Array<{
+    id: string;
+    name: string;
+    trackId: string;
+    measureCount: number;
+    durationSeconds: number;
+    sourceNoteIds: string[];
+  }>;
+  occurrences: Array<{
+    definitionId: string;
+    trackId: string;
+    sourceStartMeasure: number;
+    measureCount: number;
+    startSeconds: number;
+    endSeconds: number;
+    sourceNoteIds: string[];
+  }>;
 }
 
 export interface KeySignature {

@@ -24,6 +24,11 @@ export interface StructuredRhythmInput {
   /** Absolute source and effective-time origins. Source identities are never rewritten. */
   originTicks?: number;
   originSeconds?: number;
+  /** Integer coordinates on an effective tick/scale lattice after quantization. */
+  effectiveTiming?: {
+    scale: number;
+    events: ReadonlyMap<EffectiveEvent, { onsetTicks: number; durationTicks: number }>;
+  };
 }
 
 export type StructuredRhythmResult =
@@ -42,7 +47,7 @@ const MAX_CELLS = 200000;
  * same tree, so their structural spans cannot drift apart.
  */
 export const renderStructuredRhythm = ({
-  track, events, span, config, control, originTicks = 0, originSeconds = 0,
+  track, events, span, config, control, originTicks = 0, originSeconds = 0, effectiveTiming,
 }: StructuredRhythmInput): StructuredRhythmResult => {
   const timing = track.sourceTiming;
   if (!timing || !Number.isSafeInteger(timing.ppq) || timing.ppq <= 0) {
@@ -55,8 +60,11 @@ export const renderStructuredRhythm = ({
   }
   const bpm = tempos[0]?.bpm ?? 120;
   const meter = meters[0] ?? { numerator: 4, denominator: 4 };
-  const secondsPerTick = 60 / bpm / timing.ppq;
-  const beatTicks = timing.ppq * 4 / meter.denominator;
+  const tickScale = effectiveTiming?.scale ?? 1;
+  if (!Number.isSafeInteger(tickScale) || tickScale <= 0) return { ok: false, reason: 'Invalid effective tick scale' };
+  const secondsPerTick = 60 / bpm / timing.ppq / tickScale;
+  const beatTicks = timing.ppq * 4 / meter.denominator * tickScale;
+  originTicks *= tickScale;
   const spanTicks = Math.round(span.durationSeconds / secondsPerTick);
   const beatCount = spanTicks / beatTicks;
   if (!Number.isSafeInteger(beatTicks) || !Number.isSafeInteger(originTicks)
@@ -65,9 +73,12 @@ export const renderStructuredRhythm = ({
     return { ok: false, reason: 'Unsupported finite rhythmic span' };
   }
   const byOnset = new Map<number, StructuredEvent[]>();
+  const durations = new Map<EffectiveEvent, number>();
   for (const item of events) {
     const { event } = item;
-    const source = event.source;
+    const original = event.source;
+    const effective = effectiveTiming?.events.get(event);
+    const source = effective ? { ticks: effective.onsetTicks, durationTicks: effective.durationTicks } : original;
     if (!source || !Number.isSafeInteger(source.ticks) || !Number.isSafeInteger(source.durationTicks)
       || source.durationTicks <= 0
       || Math.abs((source.ticks - originTicks) * secondsPerTick - (event.onsetSeconds - originSeconds)) > 1e-9
@@ -75,6 +86,7 @@ export const renderStructuredRhythm = ({
       return { ok: false, reason: 'Effective timing differs from source rhythm' };
     }
     const onset = source.ticks - originTicks;
+    durations.set(event, source.durationTicks);
     if (onset < 0 || onset >= spanTicks || onset + source.durationTicks > spanTicks) {
       return { ok: false, reason: 'Event crosses finite passage boundary' };
     }
@@ -84,7 +96,7 @@ export const renderStructuredRhythm = ({
   }
   for (const group of byOnset.values()) {
     group.sort((a, b) => a.event.midi - b.event.midi
-      || a.event.source!.durationTicks - b.event.source!.durationTicks
+      || durations.get(a.event)! - durations.get(b.event)!
       || a.event.velocity - b.event.velocity || a.event.id.localeCompare(b.event.id));
   }
   let laneCount = 1;
@@ -116,7 +128,7 @@ export const renderStructuredRhythm = ({
         const ticks = boundaries[index + 1] - offset;
         const item = byOnset.get(start + offset)?.[lane];
         return item
-          ? { kind: 'event', ticks, gateTicks: item.event.source!.durationTicks, source: item }
+          ? { kind: 'event', ticks, gateTicks: durations.get(item.event)!, source: item }
           : { kind: 'rest', ticks };
       });
       beats.push({ kind: 'sequence', ticks: beatTicks, grouping: equal ? 'subdivision' : 'weighted', children });

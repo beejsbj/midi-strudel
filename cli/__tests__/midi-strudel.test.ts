@@ -68,6 +68,14 @@ describe('midi-strudel CLI', () => {
     const output = JSON.parse(result.stdout);
     expect(output.config.renderingMode).toBe('structured');
     expect(output.code).toContain('note(`');
+    expect(output.schemaVersion).toBe(1);
+    expect(output.patterns.definitions.length).toBeGreaterThan(0);
+    const piano = output.tracks.find((track: { name: string }) => track.name === 'Grand Piano (Classic)');
+    const definition = output.patterns.definitions.find((entry: { trackId: string }) => entry.trackId === piano.id);
+    expect(output.patterns.occurrences.filter((entry: { definitionId: string }) => entry.definitionId === definition.id)
+      .map((entry: { sourceStartMeasure: number }) => entry.sourceStartMeasure)).toEqual([3, 4, 5, 7, 8, 9]);
+    expect(runCli(fixture, '--rendering', 'structured', '--format', 'code').stdout).toBe(output.code);
+    expect(runCli(fixture, '--rendering', 'structured', '--format', 'url').stdout.trim()).toBe(output.url);
     expect(Buffer.from(new URL(output.url).hash.slice(1), 'base64').toString('utf8')).toBe(output.code);
   });
 
@@ -86,6 +94,7 @@ describe('midi-strudel CLI', () => {
     expect(result.status).toBe(0);
     expect(parsed).toMatchObject({
       schemaVersion: 1,
+      patterns: { definitions: [], occurrences: [] },
       input: 'warrior-of-the-mind-epic-the-musical.mid',
       code: expect.stringContaining('setcps('),
       url: expect.stringMatching(/^https:\/\/strudel\.cc\/#/),

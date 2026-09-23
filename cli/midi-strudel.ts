@@ -144,6 +144,7 @@ const serializeJsonOutput = (input: string, conversion: MidiConversion): string 
   // Additive schema-v1 field: existing consumers may continue reading the
   // stable code/url/config fields while agents can inspect dropped events.
   diagnostics: conversion.diagnostics,
+  patterns: conversion.patterns,
   code: conversion.code,
   url: conversion.link,
 }, null, 2);
