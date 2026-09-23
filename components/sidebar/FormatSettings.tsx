@@ -60,6 +60,24 @@ export const FormatSettings: React.FC<Props> = ({
         />
         <HelpText>Sets whether one Strudel cycle represents a bar or a beat. Note timing and lengths are preserved.</HelpText>
       </div>
+
+      <div>
+        <label className={fieldLabelClass}>Note Controls</label>
+        <SegmentedControl
+          aria-label="Control syntax"
+          value={config.controlSyntax}
+          onChange={(value) => updateConfigValue(setConfig, 'controlSyntax', value as StrudelConfig['controlSyntax'])}
+          options={[
+            { value: 'chained', label: 'Chained' },
+            { value: 'colon', label: 'Colon (.as)' },
+          ]}
+        />
+        <HelpText>
+          {config.controlSyntax === 'chained'
+            ? "Chained controls like `.clip()` and `.velocity()`. Good for readable patterns."
+            : "Colon-separated fields on each note via `.as(\"note:velocity:clip\")`. Good for compact notation."}
+        </HelpText>
+      </div>
     </SidebarSection>
   );
 };

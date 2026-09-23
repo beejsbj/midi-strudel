@@ -27,6 +27,7 @@ Output:
 Conversion:
   --bpm <number>                 output playback tempo
   --notation <absolute|relative>
+  --control-syntax <chained|colon>
   --cycle-unit <bar|beat>
   --format-per-line <measure|note>
   --items-per-line <integer>
@@ -84,6 +85,7 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       case '--format': format = choice(consumeValue(), arg, ['code', 'json', 'url']); break;
       case '--bpm': overrides.bpm = numberValue(consumeValue(), arg, 1); break;
       case '--notation': overrides.notationType = choice(consumeValue(), arg, ['absolute', 'relative']); break;
+      case '--control-syntax': overrides.controlSyntax = choice(consumeValue(), arg, ['chained', 'colon']); break;
       case '--cycle-unit': overrides.cycleUnit = choice(consumeValue(), arg, ['bar', 'beat']); break;
       case '--format-per-line': overrides.formatPerLineBy = choice(consumeValue(), arg, ['measure', 'note']); break;
       case '--items-per-line': overrides.measuresPerLine = integerValue(consumeValue(), arg); break;

@@ -17,6 +17,10 @@ const VALID_DURATION_TAG_STYLES: StrudelConfig['durationTagStyle'][] = [
   'hidden',
   'hover',
 ];
+const VALID_CONTROL_SYNTAXES: StrudelConfig['controlSyntax'][] = [
+  'chained',
+  'colon',
+];
 const DEFAULT_CONFIG_SERIALIZED = JSON.stringify(DEFAULT_CONFIG);
 
 function resolveStorage(storage?: StorageLike): StorageLike | undefined {
@@ -133,6 +137,11 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
       VALID_DURATION_TAG_STYLES.includes(merged.durationTagStyle as StrudelConfig['durationTagStyle'])
         ? (merged.durationTagStyle as StrudelConfig['durationTagStyle'])
         : DEFAULT_CONFIG.durationTagStyle,
+    controlSyntax:
+      typeof merged.controlSyntax === 'string' &&
+      VALID_CONTROL_SYNTAXES.includes(merged.controlSyntax as StrudelConfig['controlSyntax'])
+        ? (merged.controlSyntax as StrudelConfig['controlSyntax'])
+        : DEFAULT_CONFIG.controlSyntax,
     key: sanitizeKeySignature(merged.key),
     playbackKey: sanitizeKeySignature(merged.playbackKey),
   };
