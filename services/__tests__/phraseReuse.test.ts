@@ -104,6 +104,8 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions[0].name).toMatch(/^phrases\.[a-z0-9_]+\.a$/);
     expect(result.patterns.occurrences.flatMap((occurrence) => occurrence.sourceNoteIds)).toHaveLength(36);
     expect(result.code).toContain('<~ a b@2 a!2>');
+    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\.pickRestart\(phrases\.\w+\)/);
+    expect(result.code).not.toContain('cat(');
     expect(result.code).not.toContain('.slow(8)');
   });
 

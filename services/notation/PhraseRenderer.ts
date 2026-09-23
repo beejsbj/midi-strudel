@@ -80,7 +80,8 @@ export function renderPhraseTimeline(input: {
   if (cursor < measures) tokens.push(token('~', measures - cursor));
   const slow = measureSeconds === cycleSeconds ? '' : `.slow(${ratioExpression(measureSeconds, cycleSeconds)})`;
   let expression = entries.length
-    ? `cat(${JSON.stringify(`<${compactSelectors(tokens)}>`)})${slow}.pickRestart(phrases.${trackKey})`
+    // The REPL transpiles double-quoted strings to mini patterns; no cat() wrapper.
+    ? `${JSON.stringify(`<${compactSelectors(tokens)}>`)}${slow}.pickRestart(phrases.${trackKey})`
     : '';
   // A lone passage already owns the complete loop; a selector would add noise.
   if (entries.length === 1 && entries[0].start === 0 && entries[0].length === measures) {
