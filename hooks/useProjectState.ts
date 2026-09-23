@@ -108,7 +108,6 @@ export function useProjectState({ examples, dependencies }: UseProjectStateOptio
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const notationConfigKey = getNotationConfigKey(config);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const notationConfig = useMemo(
     () => getNotationConfig(config),
     [notationConfigKey],
