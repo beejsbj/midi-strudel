@@ -1,5 +1,4 @@
 import MidiPackage from '@tonejs/midi';
-import { type StrudelConfig } from '../../types';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';

@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { type StrudelConfig } from '../../types';
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';

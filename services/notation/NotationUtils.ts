@@ -48,9 +48,8 @@ export function gcd(a: number, b: number): number {
  * E.g. 135.000135000135 → "135", 123.45602804920958 → "123.456"
  */
 export function formatBpm(bpm: number): string {
-  const rounded = Math.round(bpm * 1000) / 1000;
-  // Remove trailing zeros after decimal point
-  return rounded.toString().replace(/\.?0+$/, '');
+  // Number→string never keeps trailing zeros; do not strip integer zeros (120).
+  return String(Math.round(bpm * 1000) / 1000);
 }
 
 export function getMeterBeatDuration(config: StrudelConfig): number {

@@ -501,3 +501,17 @@ describe('convertMidi', () => {
     expect(observed.events[0].pitch).toBe('C4');
   });
 });
+
+describe('emitted tempo', () => {
+  it('emits a display-rounded BPM within 0.0005 of the exact tempo', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(135);
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 480 });
+    const result = convertMidi(midi.toArray().buffer, 'tempo.mid');
+    const emitted = Number(/const BPM = ([^;]+);/.exec(result.code)![1]);
+    expect(result.config.bpm).not.toBe(135);
+    expect(emitted).toBe(135);
+    expect(Math.abs(emitted - result.config.bpm)).toBeLessThanOrEqual(0.0005);
+    expect(result.code).toContain('// @details BPM: 135 |');
+  });
+});
