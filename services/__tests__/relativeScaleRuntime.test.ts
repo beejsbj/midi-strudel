@@ -1,7 +1,9 @@
 import MidiPackage from '@tonejs/midi';
+import { type StrudelConfig } from '../../types';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 const numericPitch = (value: unknown): number => {
@@ -36,7 +38,7 @@ it('preserves relative pitches and long gates over a sparse structured score', a
   expect(result.sharedSpanSeconds).toBe(512);
   expect(result.patterns.definitions).toHaveLength(1);
   expect(result.patterns.occurrences).toHaveLength(3);
-  const runtime = await evaluateGeneratedStrudelCode(result.code);
+  const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
   try {
     const expected = [0, 512].flatMap(offset => source.map(note => ({
       onset: note.time + offset, end: note.time + note.duration + offset,

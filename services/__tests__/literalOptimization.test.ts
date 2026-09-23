@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { type StrudelConfig } from '../../types';
 import MidiPackage from '@tonejs/midi';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 
-const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number) => {
-  const runtime = await evaluateGeneratedStrudelCode(code);
+const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, config: StrudelConfig) => {
+  const runtime = await evaluateGeneratedStrudelCode(code, { secondsPerCycle: getCycleDuration(config) });
   try {
     return runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds).twoLoops
       .map((event) => ({
@@ -36,7 +38,7 @@ describe('sparse public converter runtime', () => {
     track.addNote({ midi: 67, ticks: 58530, durationTicks: 150, velocity: velocity(64) });
 
     const result = convertMidi(midi.toArray().buffer, 'long-sparse.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     // At 120 BPM and 960 PPQ, one tick is 1/1920 second. The last event
     // ends before 30.7 seconds, so source-meter rounding gives a 32-second

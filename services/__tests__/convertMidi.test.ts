@@ -5,8 +5,9 @@ import MidiPackage from '@tonejs/midi';
 import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
-import { DEFAULT_CONFIG } from '../../types';
+import { DEFAULT_CONFIG, type StrudelConfig } from '../../types';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { getCycleDuration } from '../notation/NotationUtils';
 
 const { Midi } = MidiPackage;
 
@@ -33,8 +34,8 @@ const makePercussionMidi = (notes: number[]): ArrayBuffer => {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 };
 
-const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number) => {
-  const runtime = await evaluateGeneratedStrudelCode(code);
+const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, config: StrudelConfig) => {
+  const runtime = await evaluateGeneratedStrudelCode(code, { secondsPerCycle: getCycleDuration(config) });
   try {
     const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds);
     return {
@@ -173,7 +174,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 64, ticks: 480, durationTicks: 240, velocity: 0.6 });
 
     const result = convertMidi(midi.toArray().buffer, 'delayed.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     // Independently worked out from 120 BPM/4-4: the two-second source bar
     // is one Strudel cycle, and every event must recur one cycle later.
@@ -205,7 +206,7 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'tuplets.mid', {
       includeVelocity: true,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
     const firstLoop = observed.events.filter(({ onset }) => onset < 2);
 
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
@@ -231,7 +232,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 64, ticks: 960, durationTicks: 240, velocity: 0.6 });
 
     const result = convertMidi(midi.toArray().buffer, 'changing-map.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     // Calculated from the retained source map, not the renderer: tick 480
     // changes from 123.5 to 100 BPM. C4 crosses that boundary; E4 begins at
@@ -293,7 +294,7 @@ describe('convertMidi', () => {
     }];
 
     const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics(legacyTracks);
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, DEFAULT_CONFIG);
 
     expect(legacyTracks[0].notes.every((note) => !Object.hasOwn(note, 'source'))).toBe(true);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -328,7 +329,7 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'structured-tuplets.mid', {
       includeVelocity: true,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
     expect(result.code).toContain('[D4!5]');
@@ -390,7 +391,7 @@ describe('convertMidi', () => {
     }
 
     const result = convertMidi(midi.toArray().buffer, 'duplicate-names.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(observed.events.filter(({ onset }) => onset === 0).map(({ pitch }) => pitch)).toEqual(['C4', 'E4']);
   });
@@ -416,7 +417,7 @@ describe('convertMidi', () => {
     midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 45 });
 
     const result = convertMidi(midi.toArray().buffer, 'small-meter.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.config.timeSignature).toEqual({ numerator: 3, denominator: 64 });
     expect(result.config.sourceTimeSignature).toEqual({ numerator: 3, denominator: 64 });
@@ -433,7 +434,7 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'wide-threshold.mid', {
       isQuantized: true, quantizationThreshold: 300, quantizationStrength: 100,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.config.quantizationThreshold).toBe(300);
     expect(observed.events[0].onset).toBe(0.5);
@@ -449,7 +450,7 @@ describe('convertMidi', () => {
       notationType: 'relative',
     }, () => null);
     const result = new StrudelNotation(config).generateWithDiagnostics(tracks);
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, config);
 
     expect(config.key).toBeUndefined();
     expect(result.code).toContain('note(');
@@ -466,7 +467,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 62, ticks: 2, durationTicks: 1 });
 
     const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
     const tickSeconds = 0.5 / 960;
 
     expect(observed.events).toEqual([
@@ -494,7 +495,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 60, ticks: 0, durationTicks: 120 });
 
     const result = convertMidi(midi.toArray().buffer, 'punctuation-name.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.code).toMatch(/\$[A-Za-z_][A-Za-z_0-9]*:/);
     expect(result.code).not.toMatch(/_MELODY:|_HARMONY:/);

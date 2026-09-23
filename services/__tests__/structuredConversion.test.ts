@@ -4,6 +4,7 @@ import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { getCycleDuration } from '../notation/NotationUtils';
 import { DRUM_MAP } from '../../constants';
 
 const { Midi } = MidiPackage;
@@ -28,7 +29,7 @@ describe('structured public conversion', () => {
     expect(result.code).toMatch(/@\d+/);
     expect(result.code).toContain(notationType === 'relative' ? 'n(`' : 'note(`');
     const source = new Midi(bytes).tracks[0].notes;
-    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
     try {
       const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(4);
       const expected = [0, 4].flatMap((offset) => source.map((note) => ({
@@ -59,7 +60,7 @@ describe('structured public conversion', () => {
     const result = convertMidi(midi.toArray().buffer, 'kit.mid', {
       cycleUnit: 'beat', bpm: 90, timeSignature: { numerator: 3, denominator: 4 }, includeVelocity: true,
     });
-    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
     try {
       const events = runtime.querySeconds(0, 16 / 3).sort((a, b) => a.onsetSeconds - b.onsetSeconds || String(a.value.s).localeCompare(String(b.value.s)));
       expect(result.sharedSpanSeconds).toBe(2);
@@ -84,7 +85,7 @@ describe('structured public conversion', () => {
     const result = new StrudelNotation(config).generateWithDiagnostics(tracks);
     expect(JSON.stringify(parsed.tracks)).toBe(before);
     expect(result.diagnostics).toEqual([]);
-    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(config) });
     try {
       const events = runtime.querySeconds(0, 4);
       expect(events.map((event) => event.onsetSeconds)).toEqual([0, 2]);
@@ -116,7 +117,7 @@ describe('structured public conversion', () => {
       expect(result.code).toContain(includeVelocity ? '[C4,C4,E4]' : '[C4,C4,E4,G4]');
     }
     const source = new Midi(bytes).tracks[0].notes;
-    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
     try {
       const pitch = (value: unknown): number => typeof value === 'number' ? value : source.find((note) => note.name === value)!.midi;
       const actual = runtime.querySeconds(0, 4).sort((a, b) => a.onsetSeconds - b.onsetSeconds || pitch(a.value.note) - pitch(b.value.note));
@@ -143,7 +144,7 @@ describe('structured public conversion', () => {
     const result = convertMidi(bytes, 'changing-gates.mid', { includeVelocity: true, isQuantized: false });
     expect(result.code).toContain('0.3333333333333333!2');
     expect(result.code).not.toContain('${');
-    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { secondsPerCycle: getCycleDuration(result.config) });
     try {
       const source = new Midi(bytes).tracks[0].notes;
       const actual = runtime.querySeconds(0, 4).sort((a, b) => a.onsetSeconds - b.onsetSeconds);
