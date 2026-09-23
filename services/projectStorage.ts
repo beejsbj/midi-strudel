@@ -35,13 +35,23 @@ function sanitizeWholeNumber(value: unknown, fallback: number, min: number, max?
   return max == null ? lowerBounded : Math.min(max, lowerBounded);
 }
 
+function sanitizeNumber(value: unknown, fallback: number, min: number, max?: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max ?? Infinity, Math.max(min, value));
+}
+
 function sanitizeTimeSignature(
   value: Partial<StrudelConfig['timeSignature']> | undefined,
   fallback: StrudelConfig['timeSignature'],
 ): StrudelConfig['timeSignature'] {
+  // UI input limits are not MIDI-format limits. Imported meters such as 3/64
+  // and 33/4 must retain their source span when the project is reloaded.
+  const positiveInteger = (candidate: unknown, defaultValue: number): number =>
+    typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0
+      ? candidate : defaultValue;
   return {
-    numerator: sanitizeWholeNumber(value?.numerator, fallback.numerator, 1, 32),
-    denominator: sanitizeWholeNumber(value?.denominator, fallback.denominator, 1, 32),
+    numerator: positiveInteger(value?.numerator, fallback.numerator),
+    denominator: positiveInteger(value?.denominator, fallback.denominator),
   };
 }
 
@@ -76,15 +86,25 @@ export function sanitizeKeySignature(value: unknown): KeySignature | undefined {
   };
 }
 
+export function removeRetiredNotationSettings(config: StrudelConfig): StrudelConfig {
+  const current = { ...config };
+  // Older projects stored rendering choices that are now automatic. Discard
+  // only these settings; public conversion must not inherit UI input bounds.
+  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+    Reflect.deleteProperty(current, key);
+  }
+  return current;
+}
+
 export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
-  const merged = { ...DEFAULT_CONFIG, ...config };
+  const merged = removeRetiredNotationSettings({ ...DEFAULT_CONFIG, ...config });
   const defaultSourceTimeSignature =
     DEFAULT_CONFIG.sourceTimeSignature ?? DEFAULT_CONFIG.timeSignature;
 
   return {
     ...merged,
-    bpm: sanitizeWholeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
-    sourceBpm: sanitizeWholeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
+    bpm: sanitizeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
+    sourceBpm: sanitizeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
     timeSignature: sanitizeTimeSignature(merged.timeSignature, DEFAULT_CONFIG.timeSignature),
     sourceTimeSignature: sanitizeTimeSignature(
       merged.sourceTimeSignature,
@@ -96,23 +116,17 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
       1,
       64,
     ),
-    quantizationThreshold: sanitizeWholeNumber(
+    quantizationThreshold: sanitizeNumber(
       merged.quantizationThreshold,
       DEFAULT_CONFIG.quantizationThreshold,
       0,
       200,
     ),
-    quantizationStrength: sanitizeWholeNumber(
+    quantizationStrength: sanitizeNumber(
       merged.quantizationStrength,
       DEFAULT_CONFIG.quantizationStrength,
       0,
       100,
-    ),
-    durationPrecision: sanitizeWholeNumber(
-      merged.durationPrecision,
-      DEFAULT_CONFIG.durationPrecision,
-      1,
-      8,
     ),
     durationTagStyle:
       typeof merged.durationTagStyle === 'string' &&
@@ -142,7 +156,7 @@ export function saveConfigToStorage(config: StrudelConfig, storage?: StorageLike
   try {
     if (!resolvedStorage) return;
 
-    const serializedConfig = JSON.stringify(config);
+    const serializedConfig = JSON.stringify(sanitizeConfig(config));
     if (serializedConfig === DEFAULT_CONFIG_SERIALIZED) {
       resolvedStorage.removeItem(CONFIG_STORAGE_KEY);
       return;

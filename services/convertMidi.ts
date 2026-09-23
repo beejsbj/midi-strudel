@@ -1,6 +1,8 @@
 import {
   DEFAULT_CONFIG,
   type ConversionDiagnostic,
+  type MidiSourceMetadata,
+  type PatternMetadata,
   type StrudelConfig,
   type Track,
 } from '../types';
@@ -8,6 +10,7 @@ import { detectKey } from './KeyDetector';
 import { parseMidiBuffer, type ParsedMidi } from './MidiParser';
 import { StrudelNotation } from './StrudelNotation';
 import { createStrudelLink } from './strudelLink';
+import { removeRetiredNotationSettings } from './projectStorage';
 
 export type ConversionOverrides = Partial<Omit<StrudelConfig,
   'fileName' | 'key' | 'playbackKey' | 'sourceBpm' | 'sourceTimeSignature'
@@ -19,6 +22,9 @@ export interface MidiConversion {
   diagnostics: ConversionDiagnostic[];
   link: string;
   tracks: Track[];
+  source?: MidiSourceMetadata;
+  sharedSpanSeconds: number;
+  patterns: PatternMetadata;
 }
 
 export const createMidiProject = (
@@ -34,7 +40,7 @@ export const createMidiProject = (
     .trim() || 'MIDI Conversion';
   return {
     tracks: parsed.tracks,
-    config: {
+    config: removeRetiredNotationSettings({
       ...DEFAULT_CONFIG,
       ...overrides,
       bpm: overrides.bpm ?? parsed.bpm,
@@ -44,7 +50,7 @@ export const createMidiProject = (
       fileName: baseName,
       key,
       playbackKey: key,
-    },
+    }),
   };
 };
 
@@ -55,7 +61,7 @@ export const convertMidi = (
 ): MidiConversion => {
   const parsed = parseMidiBuffer(bytes);
   const { config, tracks } = createMidiProject(parsed, fileName, overrides);
-  const { code, diagnostics } = new StrudelNotation(config).generateWithDiagnostics(parsed.tracks);
+  const { code, diagnostics, sharedSpanSeconds, patterns } = new StrudelNotation(config).generateWithDiagnostics(parsed.tracks);
 
   return {
     code,
@@ -63,5 +69,8 @@ export const convertMidi = (
     diagnostics,
     link: createStrudelLink(code),
     tracks,
+    source: parsed.source,
+    sharedSpanSeconds,
+    patterns,
   };
 };

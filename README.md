@@ -36,11 +36,16 @@ if you want the deeper background:
 - [strudel-notation-project-prompt.md](strudel-notation-project-prompt.md) is the extracted project prompt/spec that came out of that process
 - [docs/case-study.md](docs/case-study.md) is the concise case study, including a reproducible CLI conversion and the verified limits of the finished artifact
 
+For the current beat-group and phrase-library renderer, see
+[structured notation](docs/structured-notation.md). It also explains how structural
+weights differ from note gates; the historical examples above describe the
+earlier notation experiments.
+
 ## what you can do with it
 
 - drop in a `.mid` or `.midi` file
 - detect tempo, time signature, drum tracks, and a likely key
-- convert tracks into melody / harmony strudel output
+- convert MIDI tracks into one phrase library with compact Strudel arrangements
 - switch between absolute note names and relative scale degrees
 - adjust playback, quantization, formatting, visuals, and per-track mapping
 - preview the result in the embedded strudel player
@@ -86,10 +91,15 @@ npm run --silent convert -- song.mid --format json
 
 # An openable strudel.cc URL containing the same encoded code payload as the web app
 npm run --silent convert -- song.mid --format url
+
+# Adjust line wrapping without changing musical timing
+npm run --silent convert -- song.mid --format-per-line measure --items-per-line 2
 ```
 
 The schema-v1 JSON object includes a `diagnostics` array. This is an additive,
 backward-compatible field; each dropped percussion entry contains a stable
 diagnostic code, severity, MIDI note number, event count, and message.
 
-Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--timing absoluteDuration|relativeDivision`, `--quantize` / `--no-quantize`, `--quantization-threshold`, `--quantization-strength`, and `--duration-precision`. Run `npm run --silent convert -- --help` for the complete contract.
+Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--format-per-line measure|note`, `--items-per-line`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--quantize` / `--no-quantize`, `--quantization-threshold`, and `--quantization-strength`. Run `npm run --silent convert -- --help` for the complete contract.
+
+All conversions use structured notation, combining subdivisions, relative weights, note gates, and exact phrase reuse automatically. The retired `--rendering`, `--timing`, and `--duration-precision` flags now return an explanatory error; remove them from existing commands. Saved browser projects migrate these settings away while retaining their MIDI notes and other preferences.

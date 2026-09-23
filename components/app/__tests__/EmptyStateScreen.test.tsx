@@ -40,7 +40,7 @@ describe('EmptyStateScreen', () => {
     ).toBe(true);
     expect(screen.getByTestId('live-player').textContent).toContain('Ruthlessness / first track');
     expect(screen.getByRole('heading', { name: /durations/i })).toBeTruthy();
-    expect(screen.getByText(/C4@0.25/i)).toBeTruthy();
+    expect(screen.getByText('note("[C4 E4] G4").clip(0.5)')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /load example/i })).toHaveLength(2);
   });
 

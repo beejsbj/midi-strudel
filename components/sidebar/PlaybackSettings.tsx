@@ -25,6 +25,9 @@ export const PlaybackSettings: React.FC<Props> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
+  // Display precision is independent of the source tempo used for conversion.
+  const displayBpm = Number(config.bpm.toFixed(2)).toString();
+  const displaySourceBpm = Number(config.sourceBpm.toFixed(2)).toString();
   const updatePlaybackKey = (field: keyof KeySignature, value: string | number) => {
       if (!config.playbackKey) return;
       updateConfigValue(setConfig, 'playbackKey', { ...config.playbackKey, [field]: value });
@@ -43,15 +46,15 @@ export const PlaybackSettings: React.FC<Props> = ({
     >
       <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)] gap-2">
         <div className={`min-w-0 flex flex-col justify-between ${controlCardClass}`}>
-          <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="mb-3 flex min-w-0 flex-col items-start gap-2">
             <span className="font-display text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">Tempo</span>
-            <span className={valuePillClass}>Orig: {config.sourceBpm}</span>
+            <span className={`${valuePillClass} max-w-full truncate`} title={`Source tempo: ${config.sourceBpm} BPM`}>Orig: {displaySourceBpm}</span>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-semibold tracking-tight text-white">{config.bpm}</span>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-1">
+                <span className="max-w-full truncate text-2xl font-semibold tracking-tight text-white" title={`${config.bpm} BPM`}>{displayBpm}</span>
                 <span className="font-display text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">BPM</span>
               </div>
               {config.bpm !== config.sourceBpm && (
@@ -71,7 +74,7 @@ export const PlaybackSettings: React.FC<Props> = ({
               min="20"
               max="300"
               value={config.bpm}
-              aria-label={`Tempo ${config.bpm} BPM`}
+              aria-label={`Tempo ${displayBpm} BPM`}
               onChange={(e) => updateConfigValue(setConfig, 'bpm', getBoundedNumberInputValue(e, config.bpm, 20, 300))}
               className={`h-1.5 bg-zinc-800 ${sliderClass}`}
             />

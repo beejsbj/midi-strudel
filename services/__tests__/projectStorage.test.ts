@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../types';
+import MidiPackage from '@tonejs/midi';
+import { convertMidi } from '../convertMidi';
+import { StrudelNotation } from '../StrudelNotation';
 import {
   CONFIG_STORAGE_KEY,
   TRACKS_STORAGE_KEY,
@@ -37,6 +40,15 @@ describe('normalizeConfidence', () => {
 });
 
 describe('sanitizeConfig', () => {
+  it.each([0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid meter components: %s', (value) => {
+    const config = sanitizeConfig({
+      timeSignature: { numerator: value, denominator: value },
+      sourceTimeSignature: { numerator: value, denominator: value },
+    });
+    expect(config.timeSignature).toEqual(DEFAULT_CONFIG.timeSignature);
+    expect(config.sourceTimeSignature).toEqual(DEFAULT_CONFIG.sourceTimeSignature);
+  });
+
   it('applies the current default toggles to partial persisted config', () => {
     const config = sanitizeConfig({
       globalSound: 'sawtooth',
@@ -69,14 +81,94 @@ describe('sanitizeConfig', () => {
 });
 
 describe('project storage', () => {
+  it.each([
+    { numerator: 3, denominator: 64 },
+    { numerator: 33, denominator: 4 },
+  ])('preserves imported $numerator/$denominator meter and loop span after save/reload', (timeSignature) => {
+    const midi = new MidiPackage.Midi();
+    midi.header.setTempo(120);
+    midi.header.timeSignatures = [{ ticks: 0,
+      timeSignature: [timeSignature.numerator, timeSignature.denominator], measures: 0 }];
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 30, velocity: 0.8 });
+    const conversion = convertMidi(midi.toArray().buffer, 'unusual-meter.mid');
+    expect(conversion.config.timeSignature).toEqual(timeSignature);
+    expect(conversion.config.sourceTimeSignature).toEqual(timeSignature);
+    expect(conversion.sharedSpanSeconds).toBe(0.5 * 4 * timeSignature.numerator / timeSignature.denominator);
+    const storage = createMemoryStorage();
+    saveConfigToStorage(conversion.config, storage);
+    saveTracksToStorage(conversion.tracks, storage);
+    const config = loadConfigFromStorage(storage);
+    expect(config.timeSignature).toEqual(timeSignature);
+    expect(config.sourceTimeSignature).toEqual(timeSignature);
+    const restored = new StrudelNotation(config).generateWithDiagnostics(loadTracksFromStorage(storage));
+    expect(restored.code).toBe(conversion.code);
+    expect(restored.sharedSpanSeconds).toBe(conversion.sharedSpanSeconds);
+  });
+
+  it.each([false, true])('preserves fractional timing controls and phrases after reload (quantized: %s)', (isQuantized) => {
+    const midi = new MidiPackage.Midi();
+    midi.header.setTempo(123.456);
+    const track = midi.addTrack();
+    for (const bar of [0, 2, 4]) {
+      for (let index = 0; index < 12; index++) {
+        track.addNote({ midi: 60 + index % 5, ticks: bar * 1920 + index * 160, durationTicks: 80 });
+      }
+    }
+    const conversion = convertMidi(midi.toArray().buffer, 'fractional.mid', {
+      isQuantized, quantizationStrength: 33.3, quantizationThreshold: 42.5,
+    });
+    expect(conversion.patterns.definitions).toHaveLength(1);
+    const storage = createMemoryStorage();
+    saveConfigToStorage(conversion.config, storage);
+    saveTracksToStorage(conversion.tracks, storage);
+    const restoredConfig = loadConfigFromStorage(storage);
+    expect(restoredConfig).toEqual(conversion.config);
+    const restored = new StrudelNotation(restoredConfig).generateWithDiagnostics(loadTracksFromStorage(storage));
+    expect(restored).toEqual({
+      code: conversion.code,
+      sharedSpanSeconds: conversion.sharedSpanSeconds,
+      patterns: conversion.patterns,
+      diagnostics: conversion.diagnostics,
+    });
+  });
+
+  it.each(['expanded', 'structured'])('migrates retired %s settings without changing notes or timing', (renderingMode) => {
+    const storage = createMemoryStorage();
+    const legacyConfig = { ...DEFAULT_CONFIG, renderingMode, timingStyle: 'relativeDivision',
+      durationPrecision: 2, outputStyle: 'melody+harmony', bpm: 135.000135000135,
+      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'measure' as const };
+    const tracks = [{ id: 'legacy', name: 'Piano', isDrum: false,
+      notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }] }];
+    storage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(legacyConfig));
+    saveTracksToStorage(tracks, storage);
+    const restored = loadConfigFromStorage(storage);
+    expect(restored).toMatchObject({ bpm: legacyConfig.bpm, sourceBpm: legacyConfig.sourceBpm,
+      measuresPerLine: 2, formatPerLineBy: 'measure' });
+    expect(loadTracksFromStorage(storage)).toEqual(tracks);
+    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+      expect(restored).not.toHaveProperty(field);
+      expect(DEFAULT_CONFIG).not.toHaveProperty(field);
+    }
+    saveConfigToStorage(legacyConfig, storage);
+    expect(JSON.parse(storage.getItem(CONFIG_STORAGE_KEY)!)).toEqual(restored);
+  });
+
   it('round-trips config and tracks without a separate key state', () => {
     const storage = createMemoryStorage();
     const tracks = [
       {
         id: 'track-1',
         name: 'Piano',
-        notes: [],
+        notes: [{
+          note: 'C4', midi: 60, noteOn: 0, noteOff: 0.5, velocity: 0.8,
+          source: { id: 'track-1:note-0:0', ticks: 0, durationTicks: 480 },
+        }],
         isDrum: false,
+        sourceTiming: {
+          ppq: 480,
+          tempos: [{ ticks: 0, bpm: 120 }],
+          timeSignatures: [{ ticks: 0, numerator: 4, denominator: 4 }],
+        },
       },
     ];
     const config = {
@@ -105,6 +197,20 @@ describe('project storage', () => {
       playbackKey: config.playbackKey,
     });
     expect(loadTracksFromStorage(storage)).toEqual(tracks);
+  });
+
+  it('loads legacy seconds-only tracks without manufacturing source timing', () => {
+    const storage = createMemoryStorage();
+    const legacyTracks = [{
+      id: 'legacy-piano',
+      name: 'Legacy Piano',
+      isDrum: false,
+      notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }],
+    }];
+
+    saveTracksToStorage(legacyTracks, storage);
+
+    expect(loadTracksFromStorage(storage)).toEqual(legacyTracks);
   });
 
   it('clears both persisted keys', () => {
