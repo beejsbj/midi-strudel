@@ -26,3 +26,6 @@ export const numberExpression = (value: number): string => {
   }
   return shortest;
 };
+
+/** Readable control values: at most three decimals, no trailing zeros. */
+export const roundedDecimal = (value: number): string => String(Math.round(value * 1000) / 1000);
