@@ -15,6 +15,11 @@ export interface SharedLiteralSpan {
 export interface PreciseLiteralOptions {
   control: 'note' | 'n' | 's';
   includeVelocity: boolean;
+  formatting?: {
+    by: 'note' | 'measure';
+    itemsPerLine: number;
+    measureSeconds: number;
+  };
 }
 
 const numberLiteral = (value: number): string => {
@@ -47,6 +52,15 @@ export const renderPreciseLiteral = (
       : '';
     return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)}).clip(${numberLiteral(gate / span.durationSeconds)})${velocity}`;
   });
-  const pattern = lines.length === 1 ? lines[0] : `stack(\n    ${lines.join(',\n    ')}\n  )`;
+  const formatting = options.formatting;
+  const itemsPerLine = Math.max(1, formatting?.itemsPerLine ?? 1);
+  const lineGroup = (index: number): number => formatting?.by === 'measure'
+    ? Math.floor(events[index].onsetSeconds / formatting.measureSeconds / itemsPerLine)
+    : Math.floor(index / itemsPerLine);
+  const body = lines.map((line, index) => {
+    if (!index) return line;
+    return `${lineGroup(index) === lineGroup(index - 1) ? ', ' : ',\n    '}${line}`;
+  }).join('');
+  const pattern = lines.length === 1 ? lines[0] : `stack(\n    ${body}\n  )`;
   return `${pattern}.slow(${numberLiteral(spanCycles)})`;
 };

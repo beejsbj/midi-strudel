@@ -188,7 +188,15 @@ export class StrudelNotation {
       if (structured && structured.ok === false) fallbackReasons.add(structured.reason);
       const literal = structured?.ok
         ? structured.expression
-        : renderPreciseLiteral(values, span, { control, includeVelocity: this.config.includeVelocity });
+        : renderPreciseLiteral(values, span, {
+          control,
+          includeVelocity: this.config.includeVelocity,
+          formatting: {
+            by: this.config.formatPerLineBy,
+            itemsPerLine: this.config.measuresPerLine,
+            measureSeconds: getSourceMeasureDuration(this.config),
+          },
+        });
       if (
         (this.config.renderingMode === 'structured' && !structured?.ok)
         || (this.config.renderingMode !== 'structured' && this.config.timingStyle === 'relativeDivision')
