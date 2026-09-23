@@ -466,22 +466,26 @@ describe('convertMidi', () => {
     track.addNote({ midi: 62, ticks: 2, durationTicks: 1 });
 
     const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
     const tickSeconds = 0.5 / 960;
     const expected = [
-      { pitch: 'C4', onset: 0, gateEnd: tickSeconds, velocity: undefined },
-      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3, velocity: undefined },
-      { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds, velocity: undefined },
-      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3), velocity: undefined },
+      { pitch: 'C4', onset: 0, gateEnd: tickSeconds },
+      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3 },
+      { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds },
+      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3) },
     ];
-
-    expect(observed.events).toHaveLength(expected.length);
-    observed.events.forEach((event, index) => {
-      expect(event.pitch).toBe(expected[index].pitch);
-      expect(event.onset).toBe(expected[index].onset);
-      expect(event.velocity).toBe(expected[index].velocity);
-      expect(Math.abs(event.gateEnd - expected[index].gateEnd)).toBeLessThanOrEqual(gateTolerance({ onsetSeconds: event.onset, gateEndSeconds: event.gateEnd, wholeEndSeconds: event.gateEnd, value: {} }));
-    });
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      const events = runtime.querySeconds(0, result.sharedSpanSeconds * 2).sort((a, b) => a.onsetSeconds - b.onsetSeconds);
+      expect(events).toHaveLength(expected.length);
+      events.forEach((event, index) => {
+        expect(event.value.note).toBe(expected[index].pitch);
+        expect(event.onsetSeconds).toBe(expected[index].onset);
+        expect(event.value.velocity).toBeUndefined();
+        // Distinct one-tick gate and gap survive; the gate is within 0.0005 of its slot.
+        expect(Math.abs(event.gateEndSeconds - expected[index].gateEnd)).toBeLessThanOrEqual(gateTolerance(event));
+        expect(event.gateEndSeconds).toBeLessThan(expected[index].onset + tickSeconds * 2);
+      });
+    } finally { runtime.stop(); }
   });
 
   it('does not clip a real event infinitesimally after a source bar boundary', () => {

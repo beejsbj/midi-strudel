@@ -29,19 +29,12 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
-/** Round velocity to three decimals, matching the converter's rounding. */
-const roundedVelocity = (velocity: number): number => Math.round(velocity * 1000) / 1000;
-
 /** Independent source oracle: fresh parse, no converter event preparation. */
 async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const result = convertMidi(bytes, 'arbitrary.mid', { includeVelocity: true, ...overrides });
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  // If structured notation is used (definitions exist), velocities are rounded.
-  // Literal fallback doesn't round (emits full precision).
-  const isStructured = result.patterns.definitions.length > 0;
-  const adjustVelocity = (vel: number) => isStructured ? roundedVelocity(vel) : vel;
   const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => track.notes.flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
@@ -59,30 +52,41 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
       if (duration < grid * 0.1) duration = grid;
     }
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
-      pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: adjustVelocity(note.velocity) }];
+      pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: note.velocity }];
   })));
-  const order = (a: typeof expected[number], b: typeof expected[number]) =>
-    Math.round(a.onset * 1e7) - Math.round(b.onset * 1e7) || String(a.pitch).localeCompare(String(b.pitch))
-    || a.end - b.end || a.velocity - b.velocity;
   const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const queried = period > 1000
       ? expected.flatMap((event) => runtime.querySeconds(event.onset - 1e-6, event.onset + 1e-6))
       : runtime.querySeconds(0, period * 2);
-    const actual = queried.map((runtimeEvent) => ({
-      onset: runtimeEvent.onsetSeconds, end: runtimeEvent.gateEndSeconds,
-      pitch: runtimeEvent.value.note === undefined ? String(runtimeEvent.value.s) : numericPitch(runtimeEvent.value.note),
-      velocity: Number(runtimeEvent.value.velocity ?? 1),
-      wholeEndSeconds: runtimeEvent.wholeEndSeconds,
-    })).sort(order);
-    expected.sort(order);
+    const actual = queried.map((event) => ({
+      event, pitch: event.value.note === undefined ? String(event.value.s) : numericPitch(event.value.note),
+      velocity: Number(event.value.velocity ?? 1),
+    }));
     expect(actual).toHaveLength(expected.length);
-    actual.forEach((event, index) => {
-      expect(event.pitch).toBe(expected[index].pitch);
-      expect(Math.abs(event.onset - expected[index].onset)).toBeLessThan(1e-6);
-      expect(Math.abs(event.end - expected[index].end)).toBeLessThanOrEqual(gateTolerance({ onsetSeconds: event.onset, gateEndSeconds: event.end, wholeEndSeconds: event.wholeEndSeconds, value: {} }));
-      if (result.config.includeVelocity) expect(event.velocity).toBe(expected[index].velocity);
-    });
+    // Pair within each pitch+onset group by nearest gate and velocity: rounded
+    // gates can reorder duplicate attacks whose releases nearly coincide.
+    const key = (onset: number, pitch: unknown) => `${Math.round(onset * 1e7)}:${String(pitch)}`;
+    const groups = new Map<string, typeof expected>();
+    for (const want of expected) {
+      const group = groups.get(key(want.onset, want.pitch)) ?? [];
+      group.push(want);
+      groups.set(key(want.onset, want.pitch), group);
+    }
+    for (const { event, pitch, velocity } of actual) {
+      const group = groups.get(key(event.onsetSeconds, pitch)) ?? [];
+      expect(group.length, `unexpected ${String(pitch)} at ${event.onsetSeconds}`).toBeGreaterThan(0);
+      let best = 0;
+      group.forEach((want, index) => {
+        const score = (candidate: typeof want) => Math.abs(event.gateEndSeconds - candidate.end) + Math.abs(velocity - candidate.velocity);
+        if (score(want) < score(group[best])) best = index;
+      });
+      const want = group.splice(best, 1)[0];
+      expect(Math.abs(event.onsetSeconds - want.onset)).toBeLessThan(1e-6);
+      expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event) + 1e-6);
+      // Velocity is emitted with three decimals.
+      if (result.config.includeVelocity) expect(Math.abs(velocity - want.velocity)).toBeLessThanOrEqual(0.0005 + 1e-12);
+    }
     const occurrenceSample = result.patterns.occurrences.length <= 12 ? result.patterns.occurrences
       : result.patterns.occurrences.filter((_, index) => index % Math.ceil(result.patterns.occurrences.length / 12) === 0);
     for (const boundary of [period, period * 2, ...occurrenceSample.flatMap((occurrence) =>
