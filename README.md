@@ -36,6 +36,11 @@ if you want the deeper background:
 - [strudel-notation-project-prompt.md](strudel-notation-project-prompt.md) is the extracted project prompt/spec that came out of that process
 - [docs/case-study.md](docs/case-study.md) is the concise case study, including a reproducible CLI conversion and the verified limits of the finished artifact
 
+For the current optional beat-group and phrase-reuse renderer, see
+[structured notation](docs/structured-notation.md). It also explains how structural
+weights differ from note gates; the historical examples above describe the
+earlier notation experiments.
+
 ## what you can do with it
 
 - drop in a `.mid` or `.midi` file
@@ -86,6 +91,9 @@ npm run --silent convert -- song.mid --format json
 
 # An openable strudel.cc URL containing the same encoded code payload as the web app
 npm run --silent convert -- song.mid --format url
+
+# Readable beat groups and exact phrase reuse (expanded remains the default)
+npm run --silent convert -- song.mid --rendering structured
 ```
 
 The schema-v1 JSON object includes a `diagnostics` array. This is an additive,
