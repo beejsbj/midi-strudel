@@ -44,16 +44,16 @@ describe('sparse public converter runtime', () => {
     // shared span and each source event repeats one span later.
     expect(result.sharedSpanSeconds).toBe(32);
     expect(observed).toEqual([
-      { pitch: 'C4', onset: 1 / 8, gateEnd: 3 / 16, velocity: 32 / 127 },
-      { pitch: 'E4', onset: 5 / 8, gateEnd: 23 / 32, velocity: 96 / 127 },
-      { pitch: 'C4', onset: 41 / 64, gateEnd: 11 / 16, velocity: 48 / 127 },
-      { pitch: 'G4', onset: 121 / 4, gateEnd: 243 / 8, velocity: 112 / 127 },
-      { pitch: 'G4', onset: 1951 / 64, gateEnd: 1951 / 64 + 5 / 64, velocity: 64 / 127 },
-      { pitch: 'C4', onset: 257 / 8, gateEnd: 257 / 8 + 1 / 16, velocity: 32 / 127 },
-      { pitch: 'E4', onset: 261 / 8, gateEnd: 261 / 8 + 3 / 32, velocity: 96 / 127 },
-      { pitch: 'C4', onset: 2089 / 64, gateEnd: 2092 / 64, velocity: 48 / 127 },
-      { pitch: 'G4', onset: 249 / 4, gateEnd: 499 / 8, velocity: 112 / 127 },
-      { pitch: 'G4', onset: 3999 / 64, gateEnd: 4004 / 64, velocity: 64 / 127 },
+      { pitch: 'C4', onset: 1 / 8, gateEnd: 3 / 16, velocity: 0.252 },
+      { pitch: 'E4', onset: 5 / 8, gateEnd: 23 / 32, velocity: 0.756 },
+      { pitch: 'C4', onset: 41 / 64, gateEnd: 11 / 16, velocity: 0.378 },
+      { pitch: 'G4', onset: 121 / 4, gateEnd: 243 / 8, velocity: 0.882 },
+      { pitch: 'G4', onset: 1951 / 64, gateEnd: 1951 / 64 + 5 / 64, velocity: 0.504 },
+      { pitch: 'C4', onset: 257 / 8, gateEnd: 257 / 8 + 1 / 16, velocity: 0.252 },
+      { pitch: 'E4', onset: 261 / 8, gateEnd: 261 / 8 + 3 / 32, velocity: 0.756 },
+      { pitch: 'C4', onset: 2089 / 64, gateEnd: 2092 / 64, velocity: 0.378 },
+      { pitch: 'G4', onset: 249 / 4, gateEnd: 499 / 8, velocity: 0.882 },
+      { pitch: 'G4', onset: 3999 / 64, gateEnd: 4004 / 64, velocity: 0.504 },
     ]);
   });
 });

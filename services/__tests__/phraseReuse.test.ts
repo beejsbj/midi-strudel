@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { DRUM_MAP } from '../../constants';
 import { StrudelNotation } from '../StrudelNotation';
 
@@ -29,12 +29,19 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
+/** Round velocity to three decimals, matching the converter's rounding. */
+const roundedVelocity = (velocity: number): number => Math.round(velocity * 1000) / 1000;
+
 /** Independent source oracle: fresh parse, no converter event preparation. */
 async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const result = convertMidi(bytes, 'arbitrary.mid', { includeVelocity: true, ...overrides });
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
+  // If structured notation is used (definitions exist), velocities are rounded.
+  // Literal fallback doesn't round (emits full precision).
+  const isStructured = result.patterns.definitions.length > 0;
+  const adjustVelocity = (vel: number) => isStructured ? roundedVelocity(vel) : vel;
   const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => track.notes.flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
@@ -52,7 +59,7 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
       if (duration < grid * 0.1) duration = grid;
     }
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
-      pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: note.velocity }];
+      pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: adjustVelocity(note.velocity) }];
   })));
   const order = (a: typeof expected[number], b: typeof expected[number]) =>
     Math.round(a.onset * 1e7) - Math.round(b.onset * 1e7) || String(a.pitch).localeCompare(String(b.pitch))
@@ -62,17 +69,18 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
     const queried = period > 1000
       ? expected.flatMap((event) => runtime.querySeconds(event.onset - 1e-6, event.onset + 1e-6))
       : runtime.querySeconds(0, period * 2);
-    const actual = queried.map((event) => ({
-      onset: event.onsetSeconds, end: event.gateEndSeconds,
-      pitch: event.value.note === undefined ? String(event.value.s) : numericPitch(event.value.note),
-      velocity: Number(event.value.velocity ?? 1),
+    const actual = queried.map((runtimeEvent) => ({
+      onset: runtimeEvent.onsetSeconds, end: runtimeEvent.gateEndSeconds,
+      pitch: runtimeEvent.value.note === undefined ? String(runtimeEvent.value.s) : numericPitch(runtimeEvent.value.note),
+      velocity: Number(runtimeEvent.value.velocity ?? 1),
+      wholeEndSeconds: runtimeEvent.wholeEndSeconds,
     })).sort(order);
     expected.sort(order);
     expect(actual).toHaveLength(expected.length);
     actual.forEach((event, index) => {
       expect(event.pitch).toBe(expected[index].pitch);
       expect(Math.abs(event.onset - expected[index].onset)).toBeLessThan(1e-6);
-      expect(Math.abs(event.end - expected[index].end)).toBeLessThan(1e-6);
+      expect(Math.abs(event.end - expected[index].end)).toBeLessThanOrEqual(gateTolerance({ onsetSeconds: event.onset, gateEndSeconds: event.end, wholeEndSeconds: event.wholeEndSeconds, value: {} }));
       if (result.config.includeVelocity) expect(event.velocity).toBe(expected[index].velocity);
     });
     const occurrenceSample = result.patterns.occurrences.length <= 12 ? result.patterns.occurrences

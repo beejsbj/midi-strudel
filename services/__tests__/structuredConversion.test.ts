@@ -3,8 +3,11 @@ import MidiPackage from '@tonejs/midi';
 import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { DRUM_MAP } from '../../constants';
+
+/** Round velocity to three decimals, matching the converter's rounding. */
+const roundedVelocity = (velocity: number): number => Math.round(velocity * 1000) / 1000;
 
 const { Midi } = MidiPackage;
 
@@ -32,7 +35,7 @@ describe('structured public conversion', () => {
     try {
       const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(4);
       const expected = [0, 4].flatMap((offset) => source.map((note) => ({
-        onset: note.time + offset, end: note.time + note.duration + offset, velocity: note.velocity, midi: note.midi,
+        onset: note.time + offset, end: note.time + note.duration + offset, velocity: roundedVelocity(note.velocity), midi: note.midi,
       }))).sort((a, b) => a.onset - b.onset || a.midi - b.midi || a.velocity - b.velocity);
       const pitch = (value: unknown): number => typeof value === 'number' ? value : source.find((note) => note.name === value)?.midi;
       const actual = twoLoops.sort((a, b) => a.onsetSeconds - b.onsetSeconds || pitch(a.value.note) - pitch(b.value.note) || Number(a.value.velocity) - Number(b.value.velocity));
@@ -40,7 +43,7 @@ describe('structured public conversion', () => {
       expected.forEach((note, index) => {
         expect(pitch(actual[index].value.note)).toBe(note.midi);
         expect(actual[index].onsetSeconds).toBeCloseTo(note.onset, 9);
-        expect(actual[index].gateEndSeconds).toBeCloseTo(note.end, 9);
+        expect(Math.abs(actual[index].gateEndSeconds - note.end)).toBeLessThanOrEqual(gateTolerance(actual[index]));
         expect(actual[index].value.velocity).toBe(note.velocity);
       });
       expect(firstBoundary).toHaveLength(2);
@@ -120,13 +123,13 @@ describe('structured public conversion', () => {
     try {
       const pitch = (value: unknown): number => typeof value === 'number' ? value : source.find((note) => note.name === value)!.midi;
       const actual = runtime.querySeconds(0, 4).sort((a, b) => a.onsetSeconds - b.onsetSeconds || pitch(a.value.note) - pitch(b.value.note));
-      const expected = [0, 2].flatMap((offset) => source.map((note) => ({ ...note, onset: note.time + offset, end: note.time + note.duration + offset })))
+      const expected = [0, 2].flatMap((offset) => source.map((note) => ({ ...note, velocity: roundedVelocity(note.velocity), onset: note.time + offset, end: note.time + note.duration + offset })))
         .sort((a, b) => a.onset - b.onset || a.midi - b.midi);
       expect(actual).toHaveLength(expected.length);
       expected.forEach((note, index) => {
         expect(pitch(actual[index].value.note)).toBe(note.midi);
         expect(actual[index].onsetSeconds).toBeCloseTo(note.onset, 9);
-        expect(actual[index].gateEndSeconds).toBeCloseTo(note.end, 9);
+        expect(Math.abs(actual[index].gateEndSeconds - note.end)).toBeLessThanOrEqual(gateTolerance(actual[index]));
         expect(actual[index].value.velocity).toBe(includeVelocity ? note.velocity : undefined);
       });
     } finally { runtime.stop(); }
@@ -141,7 +144,7 @@ describe('structured public conversion', () => {
     }));
     const bytes = midi.toArray().buffer;
     const result = convertMidi(bytes, 'changing-gates.mid', { includeVelocity: true, isQuantized: false });
-    expect(result.code).toContain('0.3333333333333333!2');
+    expect(result.code).toContain('0.333!2');
     expect(result.code).not.toContain('${');
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {
@@ -151,10 +154,11 @@ describe('structured public conversion', () => {
       actual.forEach((event, index) => {
         const note = source[index % source.length];
         const offset = Math.floor(index / source.length) * 2;
+        const expectedEnd = note.time + note.duration + offset;
         expect(event.value.note).toBe(note.name);
         expect(event.onsetSeconds).toBeCloseTo(note.time + offset, 9);
-        expect(event.gateEndSeconds).toBeCloseTo(note.time + note.duration + offset, 9);
-        expect(event.value.velocity).toBe(note.velocity);
+        expect(Math.abs(event.gateEndSeconds - expectedEnd)).toBeLessThanOrEqual(gateTolerance(event));
+        expect(event.value.velocity).toBe(roundedVelocity(note.velocity));
       });
     } finally { runtime.stop(); }
   });

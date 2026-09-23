@@ -1,7 +1,7 @@
 import MidiPackage from '@tonejs/midi';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
 
@@ -33,7 +33,8 @@ it('preserves the minimum gate with zero quantization strength and rejected grid
     expect(actual).toHaveLength(expected.length);
     actual.forEach((event, index) => {
       expect(event.onsetSeconds).toBeCloseTo(expected[index].onset, 9);
-      expect(event.gateEndSeconds - event.onsetSeconds).toBeCloseTo(expected[index].gate, 9);
+      const actualGate = event.gateEndSeconds - event.onsetSeconds;
+      expect(Math.abs(actualGate - expected[index].gate)).toBeLessThanOrEqual(gateTolerance(event));
     });
   } finally { runtime.stop(); }
 });

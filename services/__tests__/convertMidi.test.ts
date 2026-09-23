@@ -6,7 +6,7 @@ import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { DEFAULT_CONFIG, type StrudelConfig } from '../../types';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
 
@@ -181,10 +181,10 @@ describe('convertMidi', () => {
     expect(observed.cps).toBe(0.5);
     expect(observed.boundary.map(({ onsetSeconds }) => onsetSeconds)).toEqual([2, 4]);
     expect(observed.events).toEqual([
-      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 0.5, gateEnd: 0.75, velocity: 76 / 127 },
-      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 2.5, gateEnd: 2.75, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 0.693 },
+      { pitch: 'E4', onset: 0.5, gateEnd: 0.75, velocity: 0.598 },
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 0.693 },
+      { pitch: 'E4', onset: 2.5, gateEnd: 2.75, velocity: 0.598 },
     ]);
   });
 
@@ -335,21 +335,21 @@ describe('convertMidi', () => {
     expect(result.code).toContain('[E4!7]');
     expect(result.code).toContain('.clip(');
     const expected = [
-      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 101 / 127 },
-      { pitch: 'G4', onset: 0, gateEnd: 0.25, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 0.795 },
+      { pitch: 'G4', onset: 0, gateEnd: 0.25, velocity: 0.598 },
       ...Array.from({ length: 5 }, (_, index) => ({
-        pitch: 'D4', onset: 0.5 + index / 10, gateEnd: 0.55 + index / 10, velocity: 63 / 127,
+        pitch: 'D4', onset: 0.5 + index / 10, gateEnd: 0.55 + index / 10, velocity: 0.496,
       })),
       ...Array.from({ length: 7 }, (_, index) => ({
-        pitch: 'E4', onset: 1 + index / 14, gateEnd: 1 + (index + 1) / 14, velocity: 50 / 127,
+        pitch: 'E4', onset: 1 + index / 14, gateEnd: 1 + (index + 1) / 14, velocity: 0.394,
       })),
-      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 101 / 127 },
-      { pitch: 'G4', onset: 2, gateEnd: 2.25, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 0.795 },
+      { pitch: 'G4', onset: 2, gateEnd: 2.25, velocity: 0.598 },
       ...Array.from({ length: 5 }, (_, index) => ({
-        pitch: 'D4', onset: 2.5 + index / 10, gateEnd: 2.55 + index / 10, velocity: 63 / 127,
+        pitch: 'D4', onset: 2.5 + index / 10, gateEnd: 2.55 + index / 10, velocity: 0.496,
       })),
       ...Array.from({ length: 7 }, (_, index) => ({
-        pitch: 'E4', onset: 3 + index / 14, gateEnd: 3 + (index + 1) / 14, velocity: 50 / 127,
+        pitch: 'E4', onset: 3 + index / 14, gateEnd: 3 + (index + 1) / 14, velocity: 0.394,
       })),
     ];
     expect(observed.events).toHaveLength(expected.length);
@@ -468,13 +468,20 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
     const tickSeconds = 0.5 / 960;
-
-    expect(observed.events).toEqual([
+    const expected = [
       { pitch: 'C4', onset: 0, gateEnd: tickSeconds, velocity: undefined },
       { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3, velocity: undefined },
       { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds, velocity: undefined },
       { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3), velocity: undefined },
-    ]);
+    ];
+
+    expect(observed.events).toHaveLength(expected.length);
+    observed.events.forEach((event, index) => {
+      expect(event.pitch).toBe(expected[index].pitch);
+      expect(event.onset).toBe(expected[index].onset);
+      expect(event.velocity).toBe(expected[index].velocity);
+      expect(Math.abs(event.gateEnd - expected[index].gateEnd)).toBeLessThanOrEqual(gateTolerance({ onsetSeconds: event.onset, gateEndSeconds: event.gateEnd, wholeEndSeconds: event.gateEnd, value: {} }));
+    });
   });
 
   it('does not clip a real event infinitesimally after a source bar boundary', () => {
