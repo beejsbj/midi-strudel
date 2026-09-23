@@ -299,8 +299,9 @@ const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], con
 
 const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean): string => {
   if (node.kind === 'stack') {
-    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps).replace(/\n/g, '\n  '));
-    return expressions.length === 1 ? expressions[0] : `stack(\n  ${expressions.join(',\n  ')}\n)`;
+    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps));
+    return expressions.length === 1 ? expressions[0]
+      : `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
   }
   const notes = leaves(node);
   if (!notes.length) return 'silence';
