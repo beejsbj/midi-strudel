@@ -43,6 +43,16 @@ export function gcd(a: number, b: number): number {
   return !b ? a : gcd(b, a % b);
 }
 
+/**
+ * Round BPM to at most 3 decimals, stripping trailing zeros.
+ * E.g. 135.000135000135 → "135", 123.45602804920958 → "123.456"
+ */
+export function formatBpm(bpm: number): string {
+  const rounded = Math.round(bpm * 1000) / 1000;
+  // Remove trailing zeros after decimal point
+  return rounded.toString().replace(/\.?0+$/, '');
+}
+
 export function getMeterBeatDuration(config: StrudelConfig): number {
   const denominator = config.timeSignature.denominator || 4;
   const quarterNoteDuration = 60 / config.sourceBpm;

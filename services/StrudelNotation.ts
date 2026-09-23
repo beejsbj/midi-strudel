@@ -18,6 +18,7 @@ import { renderPhraseTimeline } from './notation/PhraseRenderer';
 import { renderOneOffPassages } from './notation/OneOffPassages';
 import {
   buildVisualSuffix,
+  formatBpm,
   gcd,
   getCycleDuration,
   getRelativeDegree,
@@ -82,12 +83,14 @@ export class StrudelNotation {
 
     const timeSig = `${this.config.timeSignature.numerator}/${this.config.timeSignature.denominator}`;
     const title = this.config.fileName ?? 'MIDI Conversion';
+    const formattedSourceBpm = formatBpm(this.config.sourceBpm);
+    const formattedBpm = formatBpm(this.config.bpm);
     let output = [
       `// @title ${title}`,
       `// @by midi-strudel`,
-      `// @details BPM: ${this.config.sourceBpm} | Time: ${timeSig}`,
+      `// @details BPM: ${formattedSourceBpm} | Time: ${timeSig}`,
       ``,
-      `const BPM = ${this.config.bpm};`,
+      `const BPM = ${formattedBpm};`,
       `setcps(${cpsFormula});`,
       ``,
       ``,
