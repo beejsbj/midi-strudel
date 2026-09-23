@@ -32,8 +32,8 @@ export const GeneralOptions: React.FC<Props> = ({
   };
 
   const isByNote = config.formatPerLineBy === 'note';
-  const lineModeLabel = isByNote ? 'Notes' : 'Measures';
-  const lineModeHint = 'Controls line wrapping.';
+  const lineModeLabel = isByNote ? 'Note Groups' : 'Measure Groups';
+  const lineModeHint = 'Wraps groups after repetition is compacted. A repeated group counts once.';
 
   return (
     <SidebarSection
@@ -57,7 +57,7 @@ export const GeneralOptions: React.FC<Props> = ({
               type="button"
               onClick={toggleLineMode}
               className="text-gold-500 underline decoration-dotted underline-offset-4 transition-colors hover:text-gold-300 focus:outline-none"
-              title={`Switch to ${isByNote ? 'measures' : 'notes'} per line`}
+              title={`Switch to ${isByNote ? 'measure' : 'note'} groups per line`}
             >
               {lineModeLabel}
             </button>

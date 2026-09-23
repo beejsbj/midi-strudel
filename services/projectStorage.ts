@@ -44,9 +44,14 @@ function sanitizeTimeSignature(
   value: Partial<StrudelConfig['timeSignature']> | undefined,
   fallback: StrudelConfig['timeSignature'],
 ): StrudelConfig['timeSignature'] {
+  // UI input limits are not MIDI-format limits. Imported meters such as 3/64
+  // and 33/4 must retain their source span when the project is reloaded.
+  const positiveInteger = (candidate: unknown, defaultValue: number): number =>
+    typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0
+      ? candidate : defaultValue;
   return {
-    numerator: sanitizeWholeNumber(value?.numerator, fallback.numerator, 1, 32),
-    denominator: sanitizeWholeNumber(value?.denominator, fallback.denominator, 1, 32),
+    numerator: positiveInteger(value?.numerator, fallback.numerator),
+    denominator: positiveInteger(value?.denominator, fallback.denominator),
   };
 }
 
@@ -81,13 +86,18 @@ export function sanitizeKeySignature(value: unknown): KeySignature | undefined {
   };
 }
 
-export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
-  const merged = { ...DEFAULT_CONFIG, ...config };
+export function removeRetiredNotationSettings(config: StrudelConfig): StrudelConfig {
+  const current = { ...config };
   // Older projects stored rendering choices that are now automatic. Discard
-  // them at the boundary so loading and resaving cannot revive retired modes.
+  // only these settings; public conversion must not inherit UI input bounds.
   for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
-    Reflect.deleteProperty(merged, key);
+    Reflect.deleteProperty(current, key);
   }
+  return current;
+}
+
+export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
+  const merged = removeRetiredNotationSettings({ ...DEFAULT_CONFIG, ...config });
   const defaultSourceTimeSignature =
     DEFAULT_CONFIG.sourceTimeSignature ?? DEFAULT_CONFIG.timeSignature;
 

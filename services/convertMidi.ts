@@ -10,7 +10,7 @@ import { detectKey } from './KeyDetector';
 import { parseMidiBuffer, type ParsedMidi } from './MidiParser';
 import { StrudelNotation } from './StrudelNotation';
 import { createStrudelLink } from './strudelLink';
-import { sanitizeConfig } from './projectStorage';
+import { removeRetiredNotationSettings } from './projectStorage';
 
 export type ConversionOverrides = Partial<Omit<StrudelConfig,
   'fileName' | 'key' | 'playbackKey' | 'sourceBpm' | 'sourceTimeSignature'
@@ -40,7 +40,7 @@ export const createMidiProject = (
     .trim() || 'MIDI Conversion';
   return {
     tracks: parsed.tracks,
-    config: sanitizeConfig({
+    config: removeRetiredNotationSettings({
       ...DEFAULT_CONFIG,
       ...overrides,
       bpm: overrides.bpm ?? parsed.bpm,

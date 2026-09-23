@@ -40,6 +40,15 @@ describe('normalizeConfidence', () => {
 });
 
 describe('sanitizeConfig', () => {
+  it.each([0, -1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid meter components: %s', (value) => {
+    const config = sanitizeConfig({
+      timeSignature: { numerator: value, denominator: value },
+      sourceTimeSignature: { numerator: value, denominator: value },
+    });
+    expect(config.timeSignature).toEqual(DEFAULT_CONFIG.timeSignature);
+    expect(config.sourceTimeSignature).toEqual(DEFAULT_CONFIG.sourceTimeSignature);
+  });
+
   it('applies the current default toggles to partial persisted config', () => {
     const config = sanitizeConfig({
       globalSound: 'sawtooth',
@@ -72,6 +81,30 @@ describe('sanitizeConfig', () => {
 });
 
 describe('project storage', () => {
+  it.each([
+    { numerator: 3, denominator: 64 },
+    { numerator: 33, denominator: 4 },
+  ])('preserves imported $numerator/$denominator meter and loop span after save/reload', (timeSignature) => {
+    const midi = new MidiPackage.Midi();
+    midi.header.setTempo(120);
+    midi.header.timeSignatures = [{ ticks: 0,
+      timeSignature: [timeSignature.numerator, timeSignature.denominator], measures: 0 }];
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 30, velocity: 0.8 });
+    const conversion = convertMidi(midi.toArray().buffer, 'unusual-meter.mid');
+    expect(conversion.config.timeSignature).toEqual(timeSignature);
+    expect(conversion.config.sourceTimeSignature).toEqual(timeSignature);
+    expect(conversion.sharedSpanSeconds).toBe(0.5 * 4 * timeSignature.numerator / timeSignature.denominator);
+    const storage = createMemoryStorage();
+    saveConfigToStorage(conversion.config, storage);
+    saveTracksToStorage(conversion.tracks, storage);
+    const config = loadConfigFromStorage(storage);
+    expect(config.timeSignature).toEqual(timeSignature);
+    expect(config.sourceTimeSignature).toEqual(timeSignature);
+    const restored = new StrudelNotation(config).generateWithDiagnostics(loadTracksFromStorage(storage));
+    expect(restored.code).toBe(conversion.code);
+    expect(restored.sharedSpanSeconds).toBe(conversion.sharedSpanSeconds);
+  });
+
   it.each([false, true])('preserves fractional timing controls and phrases after reload (quantized: %s)', (isQuantized) => {
     const midi = new MidiPackage.Midi();
     midi.header.setTempo(123.456);

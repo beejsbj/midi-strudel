@@ -45,7 +45,7 @@ earlier notation experiments.
 
 - drop in a `.mid` or `.midi` file
 - detect tempo, time signature, drum tracks, and a likely key
-- convert tracks into melody / harmony strudel output
+- convert MIDI tracks into one phrase library with compact Strudel arrangements
 - switch between absolute note names and relative scale degrees
 - adjust playback, quantization, formatting, visuals, and per-track mapping
 - preview the result in the embedded strudel player

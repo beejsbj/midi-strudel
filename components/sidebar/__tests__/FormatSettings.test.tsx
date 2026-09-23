@@ -30,11 +30,11 @@ it('offers pitch, cycle and wrapping controls without retired rendering modes', 
   fireEvent.click(screen.getByRole('button', { name: 'Relative' }));
   fireEvent.click(screen.getByRole('button', { name: 'Beat' }));
   expect(configValue()).toMatchObject({ notationType: 'relative', cycleUnit: 'beat' });
-  fireEvent.change(screen.getByRole('spinbutton', { name: 'Measures per line' }), { target: { value: '8' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Measure Groups per line' }), { target: { value: '8' } });
   expect(configValue()).toMatchObject({ formatPerLineBy: 'measure', measuresPerLine: 8 });
-  fireEvent.click(screen.getByRole('button', { name: 'Measures' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Measure Groups' }));
   expect(configValue()).toMatchObject({ formatPerLineBy: 'note', measuresPerLine: 4 });
-  expect(screen.getByRole('spinbutton', { name: 'Notes per line' })).toBeTruthy();
+  expect(screen.getByRole('spinbutton', { name: 'Note Groups per line' })).toBeTruthy();
 });
 
 it('rounds tempo labels while retaining exact source and playback BPM through edits and reset', () => {
