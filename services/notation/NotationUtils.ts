@@ -216,37 +216,49 @@ export function formatNoteVal(
   }
 }
 
+/** Quarter-note subdivisions used by the requested quantization policy. */
+export const QUANTIZATION_DIVISIONS = 4;
+
+/**
+ * Decide quantization in source seconds once. The accepted grid indices and
+ * clamp decision also let phrase discovery apply the same policy in exact ticks.
+ */
+export function quantizeNoteTiming(note: Pick<Note, 'noteOn' | 'noteOff'>, config: StrudelConfig): {
+  onsetSeconds: number;
+  durationSeconds: number;
+  onsetGridIndex: number | undefined;
+  durationGridIndex: number | undefined;
+  durationClamped: boolean;
+} {
+  const duration = note.noteOff - note.noteOn;
+  if (!config.isQuantized) return {
+    onsetSeconds: note.noteOn, durationSeconds: duration,
+    onsetGridIndex: undefined, durationGridIndex: undefined, durationClamped: false,
+  };
+
+  const gridUnit = 60 / config.sourceBpm / QUANTIZATION_DIVISIONS;
+  const strength = config.quantizationStrength / 100;
+  const applyGrid = (seconds: number) => {
+    const index = Math.round(seconds / gridUnit);
+    const delta = index * gridUnit - seconds;
+    const accepted = Math.abs(delta) * 1000 <= config.quantizationThreshold;
+    return { seconds: accepted ? seconds + delta * strength : seconds, index: accepted ? index : undefined };
+  };
+  const onset = applyGrid(note.noteOn);
+  const gate = applyGrid(duration);
+  const durationClamped = gate.seconds < gridUnit * 0.1;
+  return {
+    onsetSeconds: onset.seconds,
+    durationSeconds: durationClamped ? gridUnit : gate.seconds,
+    onsetGridIndex: onset.index, durationGridIndex: gate.index, durationClamped,
+  };
+}
+
 export function prepareNotes(rawNotes: Note[], config: StrudelConfig): Note[] {
-  let notes = [...rawNotes].sort((a, b) => a.noteOn - b.noteOn);
-
-  if (config.isQuantized) {
-    const beatDuration = 60 / config.sourceBpm;
-    const gridUnit = beatDuration / 4;
-    const strength = config.quantizationStrength / 100;
-
-    notes = notes.map(n => {
-      const nearestOn = Math.round(n.noteOn / gridUnit) * gridUnit;
-      const diffOn = nearestOn - n.noteOn;
-      let newOn = n.noteOn;
-
-      if (Math.abs(diffOn) * 1000 <= config.quantizationThreshold) {
-        newOn = n.noteOn + (diffOn * strength);
-      }
-
-      const dur = n.noteOff - n.noteOn;
-      const nearestDur = Math.round(dur / gridUnit) * gridUnit;
-      const diffDur = nearestDur - dur;
-      let newDur = dur;
-
-      if (Math.abs(diffDur) * 1000 <= config.quantizationThreshold) {
-        newDur = dur + (diffDur * strength);
-      }
-
-      if (newDur < gridUnit * 0.1) newDur = gridUnit;
-
-      return { ...n, noteOn: newOn, noteOff: newOn + newDur };
-    });
-  }
-
-  return notes;
+  const notes = [...rawNotes].sort((a, b) => a.noteOn - b.noteOn);
+  if (!config.isQuantized) return notes;
+  return notes.map(note => {
+    const timing = quantizeNoteTiming(note, config);
+    return { ...note, noteOn: timing.onsetSeconds, noteOff: timing.onsetSeconds + timing.durationSeconds };
+  });
 }
