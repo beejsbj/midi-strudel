@@ -21,6 +21,8 @@ export interface StructuredRhythmInput {
   span: SharedLiteralSpan;
   config: StrudelConfig;
   control: 'note' | 'n' | 's';
+  /** Resolve relative pitches before expanding the passage's rhythmic span. */
+  scale?: string;
   /** Absolute source and effective-time origins. Source identities are never rewritten. */
   originTicks?: number;
   originSeconds?: number;
@@ -47,7 +49,7 @@ const MAX_CELLS = 200000;
  * same tree, so their structural spans cannot drift apart.
  */
 export const renderStructuredRhythm = ({
-  track, events, span, config, control, originTicks = 0, originSeconds = 0, effectiveTiming,
+  track, events, span, config, control, scale, originTicks = 0, originSeconds = 0, effectiveTiming,
 }: StructuredRhythmInput): StructuredRhythmResult => {
   const timing = track.sourceTiming;
   if (!timing || !Number.isSafeInteger(timing.ppq) || timing.ppq <= 0) {
@@ -142,7 +144,8 @@ export const renderStructuredRhythm = ({
   }
   const rhythm: RhythmNode = { kind: 'stack', ticks: spanTicks, children: lanes };
   const expression = emitRhythm(rhythm, control, config);
-  return { ok: true, expression: `${expression}.slow(${span.durationSeconds / span.cycleDurationSeconds})`, rhythm };
+  const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
+  return { ok: true, expression: `${expression}${scaleSuffix}.slow(${span.durationSeconds / span.cycleDurationSeconds})`, rhythm };
 };
 
 type Attribute = 'value' | 'gate' | 'velocity';

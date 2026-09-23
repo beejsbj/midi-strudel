@@ -15,6 +15,8 @@ export interface SharedLiteralSpan {
 export interface PreciseLiteralOptions {
   control: 'note' | 'n' | 's';
   includeVelocity: boolean;
+  /** Resolve relative pitches before expanding the event's rhythmic span. */
+  scale?: string;
   formatting?: {
     by: 'note' | 'measure';
     itemsPerLine: number;
@@ -62,5 +64,9 @@ export const renderPreciseLiteral = (
     return `${lineGroup(index) === lineGroup(index - 1) ? ', ' : ',\n    '}${line}`;
   }).join('');
   const pattern = lines.length === 1 ? lines[0] : `stack(\n    ${body}\n  )`;
-  return `${pattern}.slow(${numberLiteral(spanCycles)})`;
+  // scale joins a cyclic pattern; resolving it before slow avoids fragmenting
+  // every long-span event once per playback cycle during runtime queries.
+  const scale = options.control === 'n' && options.scale !== undefined
+    ? `.scale(${JSON.stringify(options.scale)})` : '';
+  return `${pattern}${scale}.slow(${numberLiteral(spanCycles)})`;
 };
