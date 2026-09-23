@@ -242,6 +242,19 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.diagnostics.filter(({ code }) => code === 'phrase-analysis-budget')).toHaveLength(1);
   });
 
+  it('names a short one-bar figure repeated in adjacent bars as one phrase', async () => {
+    const midi = makeMidi();
+    const track = midi.addTrack();
+    for (let bar = 2; bar < 10; bar++) {
+      track.addNote({ midi: 33, ticks: bar * 1920, durationTicks: 480, velocity: 0.8 });
+      track.addNote({ midi: 40, ticks: bar * 1920, durationTicks: 480, velocity: 0.8 });
+    }
+    const result = await verify(midi.toArray().buffer, { includeVelocity: false });
+    expect(result.patterns.definitions).toHaveLength(1);
+    expect(result.patterns.occurrences).toHaveLength(8);
+    expect(result.code).toContain('"<~@2 a!8>"');
+  });
+
   it('does not emit duplicate library entries with identical expressions', async () => {
     // Regression test: identical expressions should share one library key
     const midi = makeMidi();

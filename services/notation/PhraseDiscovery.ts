@@ -70,8 +70,8 @@ export function effectiveCoordinates(track: Track, events: EffectiveEvent[], con
 /**
  * Flat vocabulary selection: highest surviving nonoverlapping use count first,
  * then shortest window, greatest estimated byte saving, full signature, origin.
- * Cost includes declaration/lookup overhead, each selector use, and a window
- * complexity penalty. No nested definitions; minimum net saving is 24 bytes.
+ * Cost is the library entry plus selector tokens (adjacent one-bar uses share
+ * one `a!n` token). No nested definitions; a phrase must save net characters.
  * This intentionally favors reusable local vocabulary over global compression.
  */
 export function discoverPhrases(input: {
@@ -155,9 +155,15 @@ export function discoverPhrases(input: {
       });
       if (occurrences.length < 2) return [];
       const size = occurrences[0].measureCount;
-      const saving = (occurrences.length - 1) * candidate.expression.length
-        - 64 - occurrences.length * 12 - size * 4;
-      return saving >= 24 ? [{ candidate, occurrences, saving, size }] : [];
+      // Costs of the single `phrases` library: one `key: ...,` entry, and one
+      // selector token per use, with adjacent one-bar uses compressing to `a!n`.
+      let tokens = occurrences.length;
+      if (size === 1) {
+        tokens = occurrences.filter((window, index) =>
+          index === 0 || occurrences[index - 1].startMeasure + 1 !== window.startMeasure).length;
+      }
+      const saving = (occurrences.length - 1) * candidate.expression.length - 8 - tokens * 4;
+      return saving > 0 ? [{ candidate, occurrences, saving, size }] : [];
     }).sort((a, b) => {
       selectionVisits++;
       return b.occurrences.length - a.occurrences.length || a.size - b.size
