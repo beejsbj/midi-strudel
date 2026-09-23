@@ -162,6 +162,9 @@ const emitMini = (node: RhythmNode, attribute: Attribute, config: StrudelConfig)
     const value = emitMini(child, attribute, config);
     return equal ? value : `${value}@${child.ticks / unit}`;
   });
+  // An empty beat or measure occupies its parent's span without needing an
+  // expanded row of rests. This applies equally to notes, gates and velocity.
+  if (tokens.every((token) => token === '~')) return '~';
   const chunkSize = Math.max(1, config.measuresPerLine);
   const wrap = node.kind === 'sequence' && ((node.grouping === 'song' && config.formatPerLineBy === 'measure')
     || (['subdivision', 'weighted'].includes(node.grouping) && config.formatPerLineBy === 'note'));
