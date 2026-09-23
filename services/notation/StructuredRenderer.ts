@@ -2,7 +2,7 @@ import type { StrudelConfig, Track } from '../../types';
 import type { EffectiveEvent } from './EffectiveEvents';
 import type { SharedLiteralSpan } from './LiteralRenderer';
 import { assessSourceTimingEligibility } from './SourceEligibility';
-import { numberExpression, ratioExpression, roundedDecimal } from './NumberFormat';
+import { numberExpression, ratioExpression, roundedDecimal, snappedRatio } from './NumberFormat';
 
 export interface StructuredEvent {
   event: EffectiveEvent;
@@ -162,7 +162,7 @@ export const renderStructuredRhythm = ({
   const measureSteps = spanTicks % measureTicks === 0;
   const expression = emitRhythm(rhythm, control, config, measureSteps);
   const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
-  const cycles = (measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds;
+  const cycles = snappedRatio((measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds);
   const slowSuffix = cycles === 1 ? '' : `.slow(${numberExpression(cycles)})`;
   return { ok: true, expression: `${expression}${scaleSuffix}${slowSuffix}`, rhythm };
 };

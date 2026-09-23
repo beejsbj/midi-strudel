@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
 import { DRUM_MAP } from '../../constants';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
+import { snappedRatio } from '../notation/NumberFormat';
 
 const { Midi } = MidiPackage;
 type MidiTrack = ReturnType<InstanceType<typeof Midi>['addTrack']>;
@@ -177,5 +178,14 @@ describe('line wrapping', () => {
   it('does not wrap a passage shorter than the line length', async () => {
     const result = await convertAndVerify(bytes, { formatPerLineBy: 'measure', measuresPerLine: 4 });
     expect(passage(result.code)).not.toContain('\n');
+  });
+});
+
+describe('cycle ratios', () => {
+  it('snaps float noise to exact small fractions and leaves real ratios alone', () => {
+    expect(snappedRatio(1.0000000000000002)).toBe(1);
+    expect(snappedRatio(4 / 3 + 1e-15)).toBe(4 / 3);
+    expect(snappedRatio(103)).toBe(103);
+    expect(snappedRatio(Math.PI)).toBe(Math.PI);
   });
 });
