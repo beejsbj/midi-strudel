@@ -88,6 +88,8 @@ export interface StrudelConfig {
   
   // Notation
   notationType: 'absolute' | 'relative';
+  /** Expanded keeps the established exact literal spelling; structured is opt-in. */
+  renderingMode: 'expanded' | 'structured';
   
   // Duration System
   cycleUnit: 'bar' | 'beat';
@@ -132,6 +134,7 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   sourceTimeSignature: { numerator: 4, denominator: 4 },
   outputStyle: 'melody+harmony',
   notationType: 'absolute',
+  renderingMode: 'expanded',
   cycleUnit: 'bar',
   formatPerLineBy: 'note',
   measuresPerLine: 4,

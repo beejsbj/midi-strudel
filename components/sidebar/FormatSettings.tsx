@@ -47,6 +47,20 @@ export const FormatSettings: React.FC<Props> = ({
       onToggleCollapse={onToggleCollapse}
     >
       <div>
+        <label className={fieldLabelClass}>Representation</label>
+        <SegmentedControl
+          aria-label="Notation representation"
+          value={config.renderingMode}
+          onChange={(value) => updateConfigValue(setConfig, 'renderingMode', value as StrudelConfig['renderingMode'])}
+          options={[
+            { value: 'expanded', label: 'Expanded' },
+            { value: 'structured', label: 'Structured' },
+          ]}
+        />
+        <HelpText>Structured groups exact rhythms into beats. Expanded shows individual events.</HelpText>
+      </div>
+
+      <div>
         <label className={fieldLabelClass}>Notation Type</label>
         <SegmentedControl
           aria-label="Notation type"

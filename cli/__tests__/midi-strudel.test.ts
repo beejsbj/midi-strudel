@@ -59,6 +59,18 @@ const runCli = (...args: string[]): SpawnSyncReturns<string> => {
 };
 
 describe('midi-strudel CLI', () => {
+  it('offers explicit structured output while leaving unchanged invocations expanded', () => {
+    expect(parseArgs([fixture])?.overrides.renderingMode).toBeUndefined();
+    expect(parseArgs([fixture, '--rendering', 'structured'])?.overrides.renderingMode).toBe('structured');
+    expect(() => parseArgs([fixture, '--rendering', 'unknown'])).toThrow('expanded, structured');
+    const result = runCli(fixture, '--rendering', 'structured', '--format', 'json');
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.config.renderingMode).toBe('structured');
+    expect(output.code).toContain('note(`');
+    expect(Buffer.from(new URL(output.url).hash.slice(1), 'base64').toString('utf8')).toBe(output.code);
+  });
+
   it('emits Strudel code on stdout for a real MIDI file', () => {
     const result = runCli(fixture, '--format', 'code');
 

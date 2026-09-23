@@ -13,7 +13,8 @@ import { DRUM_MAP, getAutoSound } from '../constants';
 import { prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { splitMelodyHarmony } from './notation/MelodicRenderer';
-import { assessSourceTimingEligibility, type LiteralFallbackReason } from './notation/SourceEligibility';
+import { assessSourceTimingEligibility } from './notation/SourceEligibility';
+import { renderStructuredRhythm } from './notation/StructuredRenderer';
 import {
   buildVisualSuffix,
   formatTrackName,
@@ -63,10 +64,7 @@ export class StrudelNotation {
       events: track.isDrum ? events.filter((event) => DRUM_MAP[event.midi]) : events,
     }));
 
-    // 1. Calculate Global Song Duration. Literal fallback keeps one
-    // source-origin period, rounded from the initial source meter and large
-    // enough for every event; later source-map changes are not claimed as an
-    // exported dynamic Strudel tempo/meter map.
+    // 1. Calculate Global Song Duration
     let maxDuration = effectiveTracks.reduce((max, entry) => {
       const trackMax = entry.events.reduce((m, event) => Math.max(m, event.releaseSeconds), 0);
       return Math.max(max, trackMax);
@@ -94,21 +92,22 @@ export class StrudelNotation {
       ``,
     ].join('\n');
 
-    const literalFallbackTracks = new Map<string, Set<LiteralFallbackReason | 'relative-division'>>();
+    const literalFallbackTracks = new Map<string, Set<string>>();
     const activeLabels = this.getUniqueActiveLabels(effectiveTracks);
     effectiveTracks.forEach(({ track, events }) => {
       if (track.hidden) return;
       if (!events.length) return;
 
-      // The literal boundary is intentionally used here while structured
-      // notation is still incomplete. It represents all attacks/gates without
-      // the old subdivision whitelist or configured display-decimal loss.
-      output += this.renderLiteralTrack(track, events, maxDuration, activeLabels.get(track)!);
-      const reasons = new Set<LiteralFallbackReason | 'relative-division'>(
-        assessSourceTimingEligibility(track, events).fallbackReasons,
-      );
-      if (this.config.timingStyle === 'relativeDivision') reasons.add('relative-division');
-      if (reasons.size > 0) literalFallbackTracks.set(activeLabels.get(track)!, reasons);
+      // Both renderers consume the same effective events and shared loop span.
+      const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!);
+      output += rendered.code;
+      const eligibility = assessSourceTimingEligibility(track, events);
+      const reasons = new Set<string>(eligibility.fallbackReasons);
+      if (eligibility.structured) rendered.fallbackReasons.forEach((reason) => reasons.add(reason));
+      if (this.config.renderingMode !== 'structured' && this.config.timingStyle === 'relativeDivision') {
+        reasons.add('relative-division');
+      }
+      if (reasons.size) literalFallbackTracks.set(activeLabels.get(track)!, reasons);
       output += '\n';
     });
 
@@ -125,9 +124,9 @@ export class StrudelNotation {
   }
 
   private describeLiteralFallbackReasons(
-    tracks: Map<string, Set<LiteralFallbackReason | 'relative-division'>>,
+    tracks: Map<string, Set<string>>,
   ): string {
-    const reasons = new Set<LiteralFallbackReason | 'relative-division'>();
+    const reasons = new Set<string>();
     tracks.forEach((trackReasons) => trackReasons.forEach((reason) => reasons.add(reason)));
     const descriptions: string[] = [];
     if (reasons.has('legacy-seconds-only')) descriptions.push('saved notes lack source ticks');
@@ -137,23 +136,28 @@ export class StrudelNotation {
     else if (tempoChanges) descriptions.push('the source has tempo changes');
     else if (meterChanges) descriptions.push('the source has meter changes');
     if (reasons.has('relative-division')) descriptions.push('exact subdivision formatting is unavailable');
+    const sourceReasons = new Set(['legacy-seconds-only', 'source-tempo-changes', 'source-meter-changes', 'relative-division']);
+    descriptions.push(...[...reasons].filter((reason) => !sourceReasons.has(reason)).sort());
     return descriptions.join('; ');
   }
 
-  private renderLiteralTrack(
+  private renderTrack(
     track: Track,
     events: EffectiveEvent[],
     sharedSpanSeconds: number,
     activeLabel: string,
-  ): string {
+  ): { code: string; usedLiteralFallback: boolean; fallbackReasons: Set<string> } {
     const cycleDurationSeconds = getCycleDuration(this.config);
     const sound = track.sound
       ?? (this.config.useAutoMapping ? getAutoSound(track) : undefined)
       ?? this.config.globalSound;
     const visualSuffix = buildVisualSuffix(this.config, track);
     const span = { durationSeconds: sharedSpanSeconds, cycleDurationSeconds };
+    let usedLiteralFallback = false;
+    const fallbackReasons = new Set<string>();
     const makePattern = (eventsForPattern: EffectiveEvent[], name: string): string => {
       const values = eventsForPattern.map((event) => ({
+        event,
         id: event.id,
         value: track.isDrum
           ? DRUM_MAP[event.midi]
@@ -172,7 +176,25 @@ export class StrudelNotation {
       }));
       const hasRelativeScale = this.config.notationType === 'relative' && (this.config.key || this.config.playbackKey);
       const control = track.isDrum ? 's' : hasRelativeScale ? 'n' : 'note';
-      const literal = renderPreciseLiteral(values, span, { control, includeVelocity: this.config.includeVelocity });
+      const structured = this.config.renderingMode === 'structured'
+        ? renderStructuredRhythm({
+          track,
+          events: values.map(({ event, value }) => ({ event, value })),
+          span,
+          config: this.config,
+          control,
+        })
+        : undefined;
+      if (structured && structured.ok === false) fallbackReasons.add(structured.reason);
+      const literal = structured?.ok
+        ? structured.expression
+        : renderPreciseLiteral(values, span, { control, includeVelocity: this.config.includeVelocity });
+      if (
+        (this.config.renderingMode === 'structured' && !structured?.ok)
+        || (this.config.renderingMode !== 'structured' && this.config.timingStyle === 'relativeDivision')
+      ) {
+        usedLiteralFallback = true;
+      }
       const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})` : '';
       const scale = !track.isDrum && this.config.notationType === 'relative' && (this.config.key || this.config.playbackKey)
         ? `\n  .scale(${JSON.stringify(`${(this.config.playbackKey || this.config.key!).root}${(this.config.playbackKey || this.config.key!).averageOctave}:${(this.config.playbackKey || this.config.key!).type}`)})`
@@ -181,7 +203,9 @@ export class StrudelNotation {
       return `$${name}: ${literal}${scale}${soundSuffix}${bank}${visualSuffix};\n\n`;
     };
 
-    if (track.isDrum) return makePattern(events, activeLabel);
+    if (track.isDrum) {
+      return { code: makePattern(events, activeLabel), usedLiteralFallback, fallbackReasons };
+    }
 
     const notes: Note[] = events.map((event) => ({
       note: event.note,
@@ -197,7 +221,7 @@ export class StrudelNotation {
     let result = '';
     if (melody.length) result += makePattern(toEvents(melody), `${activeLabel}_MELODY`);
     if (harmony.length) result += makePattern(toEvents(harmony), `${activeLabel}_HARMONY`);
-    return result;
+    return { code: result, usedLiteralFallback, fallbackReasons };
   }
 
   private getUniqueActiveLabels(entries: Array<{ track: Track; events: EffectiveEvent[] }>): Map<Track, string> {

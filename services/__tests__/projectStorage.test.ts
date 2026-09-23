@@ -69,6 +69,14 @@ describe('sanitizeConfig', () => {
 });
 
 describe('project storage', () => {
+  it('keeps expanded as the legacy default and persists structured mode', () => {
+    expect(sanitizeConfig({}).renderingMode).toBe('expanded');
+    expect(sanitizeConfig({ renderingMode: 'invalid' as never }).renderingMode).toBe('expanded');
+    const storage = createMemoryStorage();
+    saveConfigToStorage({ ...DEFAULT_CONFIG, renderingMode: 'structured' }, storage);
+    expect(loadConfigFromStorage(storage).renderingMode).toBe('structured');
+  });
+
   it('round-trips config and tracks without a separate key state', () => {
     const storage = createMemoryStorage();
     const tracks = [

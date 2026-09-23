@@ -295,6 +295,60 @@ describe('convertMidi', () => {
     ]);
   });
 
+  it('renders local tuplet beat groups and independent gates in structured mode over two loops', async () => {
+    const midi = new Midi();
+    midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 3360 });
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.name = 'Structured piano';
+    // Two simultaneous pitches deliberately have unlike releases. The next
+    // beats are exact quintuplet and septuplet groups, not display rounding.
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 3360, velocity: 0.8 });
+    track.addNote({ midi: 67, ticks: 0, durationTicks: 1680, velocity: 0.6 });
+    for (let index = 0; index < 5; index += 1) {
+      track.addNote({ midi: 62, ticks: 3360 + index * 672, durationTicks: 336, velocity: 0.5 });
+    }
+    for (let index = 0; index < 7; index += 1) {
+      track.addNote({ midi: 64, ticks: 6720 + index * 480, durationTicks: 480, velocity: 0.4 });
+    }
+
+    const result = convertMidi(midi.toArray().buffer, 'structured-tuplets.mid', {
+      renderingMode: 'structured',
+      includeVelocity: true,
+    });
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
+    expect(result.code.replace(/\s+/g, ' ')).toContain('D4 D4 D4 D4 D4');
+    expect(result.code.replace(/\s+/g, ' ')).toContain('E4 E4 E4 E4 E4 E4 E4');
+    expect(result.code).toContain('.clip(');
+    const expected = [
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 101 / 127 },
+      { pitch: 'G4', onset: 0, gateEnd: 0.25, velocity: 76 / 127 },
+      ...Array.from({ length: 5 }, (_, index) => ({
+        pitch: 'D4', onset: 0.5 + index / 10, gateEnd: 0.55 + index / 10, velocity: 63 / 127,
+      })),
+      ...Array.from({ length: 7 }, (_, index) => ({
+        pitch: 'E4', onset: 1 + index / 14, gateEnd: 1 + (index + 1) / 14, velocity: 50 / 127,
+      })),
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 101 / 127 },
+      { pitch: 'G4', onset: 2, gateEnd: 2.25, velocity: 76 / 127 },
+      ...Array.from({ length: 5 }, (_, index) => ({
+        pitch: 'D4', onset: 2.5 + index / 10, gateEnd: 2.55 + index / 10, velocity: 63 / 127,
+      })),
+      ...Array.from({ length: 7 }, (_, index) => ({
+        pitch: 'E4', onset: 3 + index / 14, gateEnd: 3 + (index + 1) / 14, velocity: 50 / 127,
+      })),
+    ];
+    expect(observed.events).toHaveLength(expected.length);
+    expected.forEach((event, index) => {
+      expect(observed.events[index].pitch).toBe(event.pitch);
+      expect(observed.events[index].velocity).toBe(event.velocity);
+      expect(observed.events[index].onset).toBeCloseTo(event.onset, 9);
+      expect(observed.events[index].gateEnd).toBeCloseTo(event.gateEnd, 9);
+    });
+  });
+
   it('keeps a hidden loaded track in the source-origin shared span', () => {
     const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics([
       {

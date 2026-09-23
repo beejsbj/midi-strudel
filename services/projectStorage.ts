@@ -83,6 +83,7 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
 
   return {
     ...merged,
+    renderingMode: merged.renderingMode === 'structured' ? 'structured' : 'expanded',
     bpm: sanitizeWholeNumber(merged.bpm, DEFAULT_CONFIG.bpm, 1),
     sourceBpm: sanitizeWholeNumber(merged.sourceBpm, DEFAULT_CONFIG.sourceBpm, 1),
     timeSignature: sanitizeTimeSignature(merged.timeSignature, DEFAULT_CONFIG.timeSignature),
