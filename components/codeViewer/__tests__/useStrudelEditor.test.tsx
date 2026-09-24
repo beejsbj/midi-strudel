@@ -15,6 +15,8 @@ type MockMirrorInstance = {
 };
 
 let latestMirror: MockMirrorInstance | null = null;
+// Real module layout: sample packs load through @strudel/webaudio, not core.
+const { samplesSpy } = vi.hoisted(() => ({ samplesSpy: vi.fn(() => Promise.resolve()) }));
 
 vi.mock('@strudel/codemirror', () => ({
   StrudelMirror: class MockStrudelMirror {
@@ -59,7 +61,6 @@ vi.mock('@strudel/codemirror', () => ({
 
 vi.mock('@strudel/core', () => ({
   evalScope: vi.fn(() => Promise.resolve()),
-  samples: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('@strudel/draw', () => ({}));
@@ -73,6 +74,7 @@ vi.mock('@strudel/webaudio', () => ({
   getAudioContext: () => ({ currentTime: 0 }),
   initAudioOnFirstClick: vi.fn(),
   registerSynthSounds: vi.fn(() => Promise.resolve()),
+  samples: samplesSpy,
   webaudioOutput: {},
 }));
 
@@ -116,6 +118,15 @@ describe('useStrudelEditor', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('loads the drum machine sample pack before playback', async () => {
+    const { unmount } = render(<Harness />);
+    const prebake = latestMirror!.options.prebake as () => Promise<void>;
+    await act(async () => { await prebake(); });
+    // Without it, every .bank("RolandTR909") hit is "not found" and silent.
+    expect(samplesSpy).toHaveBeenCalledWith(expect.stringMatching(/tidal-drum-machines\.json$/));
+    unmount();
   });
 
   it('keeps Strudel pattern highlighting enabled while playback is active', async () => {
