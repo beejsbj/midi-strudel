@@ -319,22 +319,24 @@ const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'],
   // One-shot drums never carry a gate: clip would cut the sample short.
   const gatesVary = control !== 's' && gates.some((gate) => gate !== gates[0]);
   const velocitiesVary = config.includeVelocity && velocities.some((velocity) => velocity !== velocities[0]);
-  const colon = config.controlSyntax === 'colon';
-  const fields: Field[] = colon ? [...(velocitiesVary ? ['velocity' as const] : []), ...(gatesVary ? ['clip' as const] : [])] : [];
+  const hasGate = control !== 's' && gates.some((gate) => gate !== 1);
+  // Colon style carries every control on its notes, constant or not, so the
+  // two spellings can be compared on any passage that has a control at all.
+  const fields: Field[] = config.controlSyntax === 'colon'
+    ? [...(config.includeVelocity ? ['velocity' as const] : []), ...(hasGate ? ['clip' as const] : [])] : [];
   // Template literals keep source beat/measure layout visible to the musician.
   const mini = (attribute: Attribute) => `\`${layoutLane(node, attribute, fields, config, measureSteps)}\``;
-  let expression = fields.length
-    ? `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`
-    : `${control}(${mini('value')})`;
-  if (control !== 's' && !gatesVary && gates[0] !== 1) {
+  if (fields.length) return `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`;
+  let expression = `${control}(${mini('value')})`;
+  if (hasGate && !gatesVary) {
     const leaf = notes[0];
     expression += `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`;
-  } else if (gatesVary && !colon) {
+  } else if (gatesVary) {
     expression += `.clip(${mini('gate')})`;
   }
   if (config.includeVelocity && !velocitiesVary) {
     expression += `.velocity(${roundedDecimal(velocities[0])})`;
-  } else if (velocitiesVary && !colon) {
+  } else if (velocitiesVary) {
     expression += `.velocity(${mini('velocity')})`;
   }
   return expression;

@@ -125,6 +125,20 @@ describe('readable structured notation', () => {
     });
   });
 
+  it('puts constant controls on the notes too, so colon differs whenever a control exists', async () => {
+    const bytes = score((track) => {
+      [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160, velocity: 0.8 }));
+    });
+    const chained = await convertAndVerify(bytes, { controlSyntax: 'chained', includeVelocity: true });
+    expect(chained.code).toContain('note(`C4 D4 E4 F4`).clip(1/3).velocity(0.795)');
+    const colon = await convertAndVerify(bytes, { controlSyntax: 'colon', includeVelocity: true });
+    expect(colon.code).toContain('`C4:0.795:0.333 D4:0.795:0.333 E4:0.795:0.333 F4:0.795:0.333`.as("note:velocity:clip")');
+    // Nothing to attach: full-length notes without velocity read the same in both.
+    const plain = score((track) => [60, 62].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 480 })));
+    expect((await convertAndVerify(plain, { controlSyntax: 'colon' })).code)
+      .toBe((await convertAndVerify(plain, { controlSyntax: 'chained' })).code);
+  });
+
   it('uses colon fields for relative pitches and drums', async () => {
     const relative = score((track) => {
       [60, 62, 64, 65, 67, 69, 71, 72].forEach((midi, index) =>

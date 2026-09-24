@@ -74,8 +74,8 @@ export const FormatSettings: React.FC<Props> = ({
         />
         <HelpText>
           {config.controlSyntax === 'chained'
-            ? "Chained controls like `.clip()` and `.velocity()`. Good for readable patterns."
-            : "Colon-separated fields on each note via `.as(\"note:velocity:clip\")`. Good for compact notation."}
+            ? "Note length and velocity as chained `.clip()` / `.velocity()` calls. Passages with neither look the same in both modes."
+            : "Note length and velocity as fields on each note, read by `.as(\"note:velocity:clip\")`. Passages with neither look the same in both modes."}
         </HelpText>
       </div>
     </SidebarSection>
