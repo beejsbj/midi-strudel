@@ -267,6 +267,23 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.code).toContain('"<~@2 a!8>"');
   });
 
+  describe.each([
+    ['a repeated 4-bar phrase is not chopped around a bar recurring inside it', 'XYXZXYXZ', '"<a@4 a@4>"', 1],
+    ['a 2-bar unit repeated four times is named at its own size', 'XYXYXYXY', '"<a@2 a@2 a@2 a@2>"', 1],
+    ['one bar repeated eight times is one phrase with one selector', 'XXXXXXXX', '"<a!8>"', 1],
+  ])('phrase choice: %s', (_, form, selector, definitions) => {
+    it('prefers the smallest unit that explains the most bars', async () => {
+      const bars: Record<string, number[]> = { X: [60, 62, 64, 65], Y: [67, 65, 64, 62], Z: [60, 55, 57, 59] };
+      const midi = makeMidi();
+      const track = midi.addTrack();
+      [...form].forEach((name, bar) => bars[name].forEach((pitch, beat) =>
+        track.addNote({ midi: pitch, ticks: bar * 1920 + beat * 480, durationTicks: 480, velocity: 0.8 })));
+      const result = await verify(midi.toArray().buffer);
+      expect(result.code).toContain(`${selector}.pickRestart(`);
+      expect(result.patterns.definitions).toHaveLength(definitions);
+    });
+  });
+
   it('does not emit duplicate library entries with identical expressions', async () => {
     // Regression test: identical expressions should share one library key
     const midi = makeMidi();
