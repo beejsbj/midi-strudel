@@ -58,7 +58,7 @@ export interface Track {
 }
 
 export interface ConversionDiagnostic {
-  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget';
+  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes';
   severity: 'warning';
   midiNote?: number;
   count?: number;
@@ -106,13 +106,15 @@ export interface StrudelConfig {
   
   // Notation
   notationType: 'absolute' | 'relative';
+  // Varying per-note controls: chained `.clip(...)`/`.velocity(...)` patterns,
+  // or colon fields on each note via `.as("note:velocity:clip")`.
+  controlSyntax: 'chained' | 'colon';
   
   // Duration System
   cycleUnit: 'bar' | 'beat';
   
   // Formatting
-  formatPerLineBy: 'measure' | 'note';
-  measuresPerLine: number; // items per line (measures or notes depending on formatPerLineBy)
+  measuresPerLine: number; // bars per line inside a multi-bar phrase block
   
   // Sound
   useAutoMapping: boolean;
@@ -145,8 +147,8 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   timeSignature: { numerator: 4, denominator: 4 },
   sourceTimeSignature: { numerator: 4, denominator: 4 },
   notationType: 'absolute',
+  controlSyntax: 'chained',
   cycleUnit: 'bar',
-  formatPerLineBy: 'measure',
   measuresPerLine: 4,
   
   useAutoMapping: true,

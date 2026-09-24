@@ -18,7 +18,7 @@ export interface PreciseLiteralOptions {
   /** Resolve relative pitches before expanding the event's rhythmic span. */
   scale?: string;
   formatting?: {
-    by: 'note' | 'measure';
+    /** Measures per line. */
     itemsPerLine: number;
     measureSeconds: number;
   };
@@ -52,11 +52,13 @@ export const renderPreciseLiteral = (
     const velocity = options.includeVelocity && event.velocity !== undefined
       ? `.velocity(${numberLiteral(event.velocity)})`
       : '';
-    return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)}).clip(${numberLiteral(gate / span.durationSeconds)})${velocity}`;
+    // One-shot drum samples play out; a clip would cut them short.
+    const clip = options.control === 's' ? '' : `.clip(${numberLiteral(gate / span.durationSeconds)})`;
+    return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)})${clip}${velocity}`;
   });
   const formatting = options.formatting;
   const itemsPerLine = Math.max(1, formatting?.itemsPerLine ?? 1);
-  const lineGroup = (index: number): number => formatting?.by === 'measure'
+  const lineGroup = (index: number): number => formatting
     ? Math.floor(events[index].onsetSeconds / formatting.measureSeconds / itemsPerLine)
     : Math.floor(index / itemsPerLine);
   const body = lines.map((line, index) => {

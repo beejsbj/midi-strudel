@@ -26,7 +26,7 @@ export function renderOneOffPassages(input: {
   if (!events.length || !assessSourceTimingEligibility(track, events).structured) return unchanged;
   // Instantaneous MIDI events need the literal gate route, but should not force
   // every neighboring positive-length note into the same fallback expression.
-  const sustained = events.filter((event) => event.releaseSeconds > event.onsetSeconds);
+  const sustained = track.isDrum ? events : events.filter((event) => event.releaseSeconds > event.onsetSeconds);
   const effective = effectiveCoordinates(track, sustained, config);
   if (!effective) return unchanged;
   const meter = config.sourceTimeSignature ?? config.timeSignature;
@@ -37,7 +37,8 @@ export function renderOneOffPassages(input: {
   const groups: Array<{ start: number; end: number; events: EffectiveEvent[] }> = [];
   for (const { event, onset, release } of effective.coordinates) {
     const start = Math.floor(onset / barUnits);
-    const end = Math.ceil(release / barUnits);
+    // A one-shot drum hit belongs to its own bar, whatever its MIDI length.
+    const end = track.isDrum ? start + 1 : Math.ceil(release / barUnits);
     const previous = groups.at(-1);
     if (previous && start < previous.end) {
       previous.end = Math.max(previous.end, end);
@@ -55,7 +56,7 @@ export function renderOneOffPassages(input: {
   // This secondary presentation pass must not undo discovery's bounded work.
   if (windows.length > 2048) return unchanged;
   const passages: OneOffPassage[] = [];
-  const remainder = events.filter((event) => event.releaseSeconds <= event.onsetSeconds);
+  const remainder = track.isDrum ? [] : events.filter((event) => event.releaseSeconds <= event.onsetSeconds);
   for (const group of windows) {
     const window: PhraseWindow = {
       startMeasure: group.start + 1,

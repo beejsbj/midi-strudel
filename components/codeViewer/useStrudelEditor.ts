@@ -11,6 +11,7 @@ import {
   getAudioContext,
   initAudioOnFirstClick,
   registerSynthSounds,
+  samples,
   webaudioOutput,
 } from '@strudel/webaudio';
 import { registerSoundfonts } from '@strudel/soundfonts';
@@ -233,7 +234,6 @@ export function useStrudelEditor({
 
       try {
         initAudioOnFirstClick();
-        const maybeSamples = Reflect.get(StrudelCore as object, 'samples');
         const promises: Promise<unknown>[] = [
           StrudelCore.evalScope(
             Promise.resolve(StrudelCore),
@@ -246,11 +246,10 @@ export function useStrudelEditor({
           registerSoundfonts(),
         ];
 
-        if (typeof maybeSamples === 'function') {
-          for (const file of SAMPLE_JSON_FILES) {
-            promises.push((maybeSamples as (url: string) => Promise<unknown>)(`${DATA_SOURCES_BASE}${file}`));
-          }
-        }
+        // Sample packs (drum machines, piano, Dirt-Samples) come from
+        // @strudel/webaudio. A dynamic lookup on @strudel/core found nothing and
+        // was silently skipped, so every drum hit was "not found".
+        for (const file of SAMPLE_JSON_FILES) promises.push(samples(`${DATA_SOURCES_BASE}${file}`));
 
         await Promise.all(promises);
         setIsReady(true);

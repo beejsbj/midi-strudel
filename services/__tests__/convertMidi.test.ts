@@ -5,8 +5,8 @@ import MidiPackage from '@tonejs/midi';
 import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
-import { DEFAULT_CONFIG } from '../../types';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { DEFAULT_CONFIG, type StrudelConfig } from '../../types';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
 
@@ -33,8 +33,8 @@ const makePercussionMidi = (notes: number[]): ArrayBuffer => {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 };
 
-const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number) => {
-  const runtime = await evaluateGeneratedStrudelCode(code);
+const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, config: StrudelConfig) => {
+  const runtime = await evaluateGeneratedStrudelCode(code, { exactBpm: config.bpm });
   try {
     const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(sharedSpanSeconds);
     return {
@@ -173,7 +173,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 64, ticks: 480, durationTicks: 240, velocity: 0.6 });
 
     const result = convertMidi(midi.toArray().buffer, 'delayed.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     // Independently worked out from 120 BPM/4-4: the two-second source bar
     // is one Strudel cycle, and every event must recur one cycle later.
@@ -181,10 +181,10 @@ describe('convertMidi', () => {
     expect(observed.cps).toBe(0.5);
     expect(observed.boundary.map(({ onsetSeconds }) => onsetSeconds)).toEqual([2, 4]);
     expect(observed.events).toEqual([
-      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 0.5, gateEnd: 0.75, velocity: 76 / 127 },
-      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 88 / 127 },
-      { pitch: 'E4', onset: 2.5, gateEnd: 2.75, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 0.693 },
+      { pitch: 'E4', onset: 0.5, gateEnd: 0.75, velocity: 0.598 },
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 0.693 },
+      { pitch: 'E4', onset: 2.5, gateEnd: 2.75, velocity: 0.598 },
     ]);
   });
 
@@ -205,7 +205,7 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'tuplets.mid', {
       includeVelocity: true,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
     const firstLoop = observed.events.filter(({ onset }) => onset < 2);
 
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
@@ -231,7 +231,7 @@ describe('convertMidi', () => {
     track.addNote({ midi: 64, ticks: 960, durationTicks: 240, velocity: 0.6 });
 
     const result = convertMidi(midi.toArray().buffer, 'changing-map.mid', { includeVelocity: true });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     // Calculated from the retained source map, not the renderer: tick 480
     // changes from 123.5 to 100 BPM. C4 crosses that boundary; E4 begins at
@@ -293,7 +293,7 @@ describe('convertMidi', () => {
     }];
 
     const result = new StrudelNotation(DEFAULT_CONFIG).generateWithDiagnostics(legacyTracks);
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, DEFAULT_CONFIG);
 
     expect(legacyTracks[0].notes.every((note) => !Object.hasOwn(note, 'source'))).toBe(true);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -328,28 +328,28 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'structured-tuplets.mid', {
       includeVelocity: true,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'precise-literal-fallback' }));
     expect(result.code).toContain('[D4!5]');
     expect(result.code).toContain('[E4!7]');
     expect(result.code).toContain('.clip(');
     const expected = [
-      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 101 / 127 },
-      { pitch: 'G4', onset: 0, gateEnd: 0.25, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 0, gateEnd: 0.5, velocity: 0.795 },
+      { pitch: 'G4', onset: 0, gateEnd: 0.25, velocity: 0.598 },
       ...Array.from({ length: 5 }, (_, index) => ({
-        pitch: 'D4', onset: 0.5 + index / 10, gateEnd: 0.55 + index / 10, velocity: 63 / 127,
+        pitch: 'D4', onset: 0.5 + index / 10, gateEnd: 0.55 + index / 10, velocity: 0.496,
       })),
       ...Array.from({ length: 7 }, (_, index) => ({
-        pitch: 'E4', onset: 1 + index / 14, gateEnd: 1 + (index + 1) / 14, velocity: 50 / 127,
+        pitch: 'E4', onset: 1 + index / 14, gateEnd: 1 + (index + 1) / 14, velocity: 0.394,
       })),
-      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 101 / 127 },
-      { pitch: 'G4', onset: 2, gateEnd: 2.25, velocity: 76 / 127 },
+      { pitch: 'C4', onset: 2, gateEnd: 2.5, velocity: 0.795 },
+      { pitch: 'G4', onset: 2, gateEnd: 2.25, velocity: 0.598 },
       ...Array.from({ length: 5 }, (_, index) => ({
-        pitch: 'D4', onset: 2.5 + index / 10, gateEnd: 2.55 + index / 10, velocity: 63 / 127,
+        pitch: 'D4', onset: 2.5 + index / 10, gateEnd: 2.55 + index / 10, velocity: 0.496,
       })),
       ...Array.from({ length: 7 }, (_, index) => ({
-        pitch: 'E4', onset: 3 + index / 14, gateEnd: 3 + (index + 1) / 14, velocity: 50 / 127,
+        pitch: 'E4', onset: 3 + index / 14, gateEnd: 3 + (index + 1) / 14, velocity: 0.394,
       })),
     ];
     expect(observed.events).toHaveLength(expected.length);
@@ -390,7 +390,7 @@ describe('convertMidi', () => {
     }
 
     const result = convertMidi(midi.toArray().buffer, 'duplicate-names.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(observed.events.filter(({ onset }) => onset === 0).map(({ pitch }) => pitch)).toEqual(['C4', 'E4']);
   });
@@ -416,7 +416,7 @@ describe('convertMidi', () => {
     midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 45 });
 
     const result = convertMidi(midi.toArray().buffer, 'small-meter.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.config.timeSignature).toEqual({ numerator: 3, denominator: 64 });
     expect(result.config.sourceTimeSignature).toEqual({ numerator: 3, denominator: 64 });
@@ -433,7 +433,7 @@ describe('convertMidi', () => {
     const result = convertMidi(midi.toArray().buffer, 'wide-threshold.mid', {
       isQuantized: true, quantizationThreshold: 300, quantizationStrength: 100,
     });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.config.quantizationThreshold).toBe(300);
     expect(observed.events[0].onset).toBe(0.5);
@@ -449,7 +449,7 @@ describe('convertMidi', () => {
       notationType: 'relative',
     }, () => null);
     const result = new StrudelNotation(config).generateWithDiagnostics(tracks);
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, config);
 
     expect(config.key).toBeUndefined();
     expect(result.code).toContain('note(');
@@ -466,15 +466,26 @@ describe('convertMidi', () => {
     track.addNote({ midi: 62, ticks: 2, durationTicks: 1 });
 
     const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
     const tickSeconds = 0.5 / 960;
-
-    expect(observed.events).toEqual([
-      { pitch: 'C4', onset: 0, gateEnd: tickSeconds, velocity: undefined },
-      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3, velocity: undefined },
-      { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds, velocity: undefined },
-      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3), velocity: undefined },
-    ]);
+    const expected = [
+      { pitch: 'C4', onset: 0, gateEnd: tickSeconds },
+      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3 },
+      { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds },
+      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3) },
+    ];
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      const events = runtime.querySeconds(0, result.sharedSpanSeconds * 2).sort((a, b) => a.onsetSeconds - b.onsetSeconds);
+      expect(events).toHaveLength(expected.length);
+      events.forEach((event, index) => {
+        expect(event.value.note).toBe(expected[index].pitch);
+        expect(event.onsetSeconds).toBe(expected[index].onset);
+        expect(event.value.velocity).toBeUndefined();
+        // Distinct one-tick gate and gap survive; the gate is within 0.0005 of its slot.
+        expect(Math.abs(event.gateEndSeconds - expected[index].gateEnd)).toBeLessThanOrEqual(gateTolerance(event));
+        expect(event.gateEndSeconds).toBeLessThan(expected[index].onset + tickSeconds * 2);
+      });
+    } finally { runtime.stop(); }
   });
 
   it('does not clip a real event infinitesimally after a source bar boundary', () => {
@@ -494,10 +505,24 @@ describe('convertMidi', () => {
     track.addNote({ midi: 60, ticks: 0, durationTicks: 120 });
 
     const result = convertMidi(midi.toArray().buffer, 'punctuation-name.mid');
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
 
     expect(result.code).toMatch(/\$[A-Za-z_][A-Za-z_0-9]*:/);
     expect(result.code).not.toMatch(/_MELODY:|_HARMONY:/);
     expect(observed.events[0].pitch).toBe('C4');
+  });
+});
+
+describe('emitted tempo', () => {
+  it('emits a display-rounded BPM within 0.0005 of the exact tempo', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(135);
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 480 });
+    const result = convertMidi(midi.toArray().buffer, 'tempo.mid');
+    const emitted = Number(/const BPM = ([^;]+);/.exec(result.code)![1]);
+    expect(result.config.bpm).not.toBe(135);
+    expect(emitted).toBe(135);
+    expect(Math.abs(emitted - result.config.bpm)).toBeLessThanOrEqual(0.0005);
+    expect(result.code).toContain('// @details BPM: 135 |');
   });
 });

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { DRUM_MAP } from '../../constants';
 import { StrudelNotation } from '../StrudelNotation';
 
@@ -20,7 +20,9 @@ const addRiff = (track: ReturnType<InstanceType<typeof Midi>['addTrack']>, start
       durationTicks: 120 + (variation === 'release' && index === 3 ? 1 : 0),
       velocity: variation === 'velocity' ? 0.4 : 0.8 });
   }
-  if (variation === 'duplicate') track.addNote({ midi: 60, ticks: start, durationTicks: 120, velocity: 0.8 });
+  // A deliberate double differs in length; an identical one is an export artifact.
+  if (variation === 'duplicate') track.addNote({ midi: 60, ticks: start, durationTicks: 60, velocity: 0.8 });
+  if (variation === 'identical') track.addNote({ midi: 60, ticks: start, durationTicks: 120, velocity: 0.8 });
 };
 const numericPitch = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -29,13 +31,22 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
+/** Fully identical doubles (pitch, tick, length, velocity; drums ignore length) are expected to merge. */
+const uniqueNotes = <T extends { midi: number; ticks: number; durationTicks: number; velocity: number }>(notes: T[], drum = false): T[] => {
+  const seen = new Set<string>();
+  return notes.filter((note) => {
+    const key = `${note.midi}:${note.ticks}:${drum ? '' : note.durationTicks}:${note.velocity}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+};
+
 /** Independent source oracle: fresh parse, no converter event preparation. */
 async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const result = convertMidi(bytes, 'arbitrary.mid', { includeVelocity: true, ...overrides });
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => track.notes.flatMap((note) => {
+  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(track.notes, track.channel === 9).flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
     let onset = note.time;
@@ -51,30 +62,45 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
       duration = snap(duration);
       if (duration < grid * 0.1) duration = grid;
     }
+    // Zero-length pitched notes are silent and dropped; drum hits are one-shots.
+    if (!drum && duration <= 0) return [];
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
       pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: note.velocity }];
   })));
-  const order = (a: typeof expected[number], b: typeof expected[number]) =>
-    Math.round(a.onset * 1e7) - Math.round(b.onset * 1e7) || String(a.pitch).localeCompare(String(b.pitch))
-    || a.end - b.end || a.velocity - b.velocity;
-  const runtime = await evaluateGeneratedStrudelCode(result.code);
+  const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const queried = period > 1000
       ? expected.flatMap((event) => runtime.querySeconds(event.onset - 1e-6, event.onset + 1e-6))
       : runtime.querySeconds(0, period * 2);
     const actual = queried.map((event) => ({
-      onset: event.onsetSeconds, end: event.gateEndSeconds,
-      pitch: event.value.note === undefined ? String(event.value.s) : numericPitch(event.value.note),
+      event, pitch: event.value.note === undefined ? String(event.value.s) : numericPitch(event.value.note),
       velocity: Number(event.value.velocity ?? 1),
-    })).sort(order);
-    expected.sort(order);
+    }));
     expect(actual).toHaveLength(expected.length);
-    actual.forEach((event, index) => {
-      expect(event.pitch).toBe(expected[index].pitch);
-      expect(Math.abs(event.onset - expected[index].onset)).toBeLessThan(1e-6);
-      expect(Math.abs(event.end - expected[index].end)).toBeLessThan(1e-6);
-      if (result.config.includeVelocity) expect(event.velocity).toBe(expected[index].velocity);
-    });
+    // Pair within each pitch+onset group by nearest gate and velocity: rounded
+    // gates can reorder duplicate attacks whose releases nearly coincide.
+    const key = (onset: number, pitch: unknown) => `${Math.round(onset * 1e7)}:${String(pitch)}`;
+    const groups = new Map<string, typeof expected>();
+    for (const want of expected) {
+      const group = groups.get(key(want.onset, want.pitch)) ?? [];
+      group.push(want);
+      groups.set(key(want.onset, want.pitch), group);
+    }
+    for (const { event, pitch, velocity } of actual) {
+      const group = groups.get(key(event.onsetSeconds, pitch)) ?? [];
+      expect(group.length, `unexpected ${String(pitch)} at ${event.onsetSeconds}`).toBeGreaterThan(0);
+      let best = 0;
+      group.forEach((want, index) => {
+        const score = (candidate: typeof want) => Math.abs(event.gateEndSeconds - candidate.end) + Math.abs(velocity - candidate.velocity);
+        if (score(want) < score(group[best])) best = index;
+      });
+      const want = group.splice(best, 1)[0];
+      expect(Math.abs(event.onsetSeconds - want.onset)).toBeLessThan(1e-6);
+      // Drum samples play out: only their onsets are part of the contract.
+      if (typeof want.pitch === 'number') expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event) + 1e-6);
+      // Velocity is emitted with three decimals.
+      if (result.config.includeVelocity) expect(Math.abs(velocity - want.velocity)).toBeLessThanOrEqual(0.0005 + 1e-12);
+    }
     const occurrenceSample = result.patterns.occurrences.length <= 12 ? result.patterns.occurrences
       : result.patterns.occurrences.filter((_, index) => index % Math.ceil(result.patterns.occurrences.length / 12) === 0);
     for (const boundary of [period, period * 2, ...occurrenceSample.flatMap((occurrence) =>
@@ -104,6 +130,8 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions[0].name).toMatch(/^phrases\.[a-z0-9_]+\.a$/);
     expect(result.patterns.occurrences.flatMap((occurrence) => occurrence.sourceNoteIds)).toHaveLength(36);
     expect(result.code).toContain('<~ a b@2 a!2>');
+    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\.pickRestart\(phrases\.\w+\)/);
+    expect(result.code).not.toContain('cat(');
     expect(result.code).not.toContain('.slow(8)');
   });
 
@@ -149,15 +177,23 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.code).toContain('z ~ aa ~ ab>');
   });
 
-  it('isolates instantaneous gates without expanding their ordinary neighbors', async () => {
+  it('drops a silent zero-length pitched note without disturbing its neighbours', async () => {
     const midi = makeMidi(); const track = midi.addTrack(); track.name = 'Piano';
     addRiff(track, 0);
     track.addNote({ midi: 84, ticks: 480, durationTicks: 0, velocity: 0.4 });
     const result = await verify(midi.toArray().buffer);
-    expect(result.code).toContain('stack(phrases.piano.a, phrases.piano.b)');
-    expect(result.code.match(/\.late\(/g)).toHaveLength(1);
-    expect(result.patterns.definitions).toEqual([]);
-    expect(result.diagnostics.map(({ code }) => code)).toEqual(['precise-literal-fallback']);
+    expect(result.code).not.toContain('.late(');
+    expect(result.code).not.toContain('C6');
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'dropped-silent-notes', count: 1 })]);
+  });
+
+  it('keeps a zero-length drum hit audible as a one-shot without clip', async () => {
+    const midi = makeMidi(); const track = midi.addTrack(); track.channel = 9;
+    for (let beat = 0; beat < 4; beat++) track.addNote({ midi: 36, ticks: beat * 480, durationTicks: beat === 2 ? 0 : 60, velocity: 0.8 });
+    const result = await verify(midi.toArray().buffer);
+    expect(result.code).toContain('s(`bd!4`)');
+    expect(result.code).not.toContain('.clip(');
+    expect(result.diagnostics).toEqual([]);
   });
 
   it.each([2, 4])('extracts safe %i-measure phrases without severing internal sustains', async (measures) => {
@@ -182,6 +218,14 @@ describe('exact phrase reuse through public conversion', () => {
     addRiff(track, 0); addRiff(track, 3840, variation);
     const result = await verify(midi.toArray().buffer);
     expect(result.patterns.definitions).toEqual([]);
+  });
+
+  it('merges an identical double so the repeated phrase still matches', async () => {
+    const midi = makeMidi(); const track = midi.addTrack();
+    addRiff(track, 0); addRiff(track, 3840, 'identical');
+    const result = await verify(midi.toArray().buffer);
+    expect(result.patterns.definitions).toHaveLength(1);
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'merged-duplicate-notes', count: 1 })]);
   });
 
   it('matches only retained velocity and effective quantized timings', async () => {
@@ -240,6 +284,60 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.diagnostics.filter(({ code }) => code === 'phrase-analysis-budget')).toHaveLength(1);
   });
 
+  it('names a short one-bar figure repeated in adjacent bars as one phrase', async () => {
+    const midi = makeMidi();
+    const track = midi.addTrack();
+    for (let bar = 2; bar < 10; bar++) {
+      track.addNote({ midi: 33, ticks: bar * 1920, durationTicks: 480, velocity: 0.8 });
+      track.addNote({ midi: 40, ticks: bar * 1920, durationTicks: 480, velocity: 0.8 });
+    }
+    const result = await verify(midi.toArray().buffer, { includeVelocity: false });
+    expect(result.patterns.definitions).toHaveLength(1);
+    expect(result.patterns.occurrences).toHaveLength(8);
+    expect(result.code).toContain('"<~@2 a!8>"');
+  });
+
+  describe.each([
+    ['a repeated 4-bar phrase is not chopped around a bar recurring inside it', 'XYXZXYXZ', '"<a@4 a@4>"', 1],
+    ['a 2-bar unit repeated four times is named at its own size', 'XYXYXYXY', '"<a@2 a@2 a@2 a@2>"', 1],
+    ['one bar repeated eight times is one phrase with one selector', 'XXXXXXXX', '"<a!8>"', 1],
+  ])('phrase choice: %s', (_, form, selector, definitions) => {
+    it('prefers the smallest unit that explains the most bars', async () => {
+      const bars: Record<string, number[]> = { X: [60, 62, 64, 65], Y: [67, 65, 64, 62], Z: [60, 55, 57, 59] };
+      const midi = makeMidi();
+      const track = midi.addTrack();
+      [...form].forEach((name, bar) => bars[name].forEach((pitch, beat) =>
+        track.addNote({ midi: pitch, ticks: bar * 1920 + beat * 480, durationTicks: 480, velocity: 0.8 })));
+      const result = await verify(midi.toArray().buffer);
+      expect(result.code).toContain(`${selector}.pickRestart(`);
+      expect(result.patterns.definitions).toHaveLength(definitions);
+    });
+  });
+
+  it('does not emit duplicate library entries with identical expressions', async () => {
+    // Regression test: identical expressions should share one library key
+    const midi = makeMidi();
+    const track = midi.addTrack();
+    track.name = 'Bass';
+    const pattern = [60, 62, 64, 65];
+    for (const passageStart of [1920 * 2, 1920 * 5]) {
+      for (let noteIndex = 0; noteIndex < 4; noteIndex++) {
+        track.addNote({
+          midi: pattern[noteIndex],
+          ticks: passageStart + noteIndex * 480,
+          durationTicks: 360,
+          velocity: 0.7,
+        });
+      }
+    }
+    const result = await verify(midi.toArray().buffer);
+    const libraryMatch = result.code.match(/bass: \{([^}]+)\}/s);
+    expect(libraryMatch).toBeDefined();
+    const definitions = libraryMatch![1].match(/^\s+[a-z]+:/gm);
+    // Should have at most 1 definition (one-off passages with identical expressions)
+    expect(definitions?.length).toBeLessThanOrEqual(1);
+  });
+
   it.each([
     ['ruthlessness', 'Grand Piano (Classic)', [3, 4, 5, 7, 8, 9]],
     ['warrior-of-the-mind', 'Grand Piano', [2, 4, 6, 8]],
@@ -254,7 +352,8 @@ describe('exact phrase reuse through public conversion', () => {
     if (file === 'warrior-of-the-mind') {
       const drum = result.tracks.find((entry) => entry.name === '2013 Drum Kit')!;
       const hiHat = result.patterns.definitions.find((definition) => definition.trackId === drum.id && definition.sourceNoteIds.length === 8
-        && result.patterns.occurrences.filter((occurrence) => occurrence.definitionId === definition.id).length === 18);
+        // The 18 known repeats; merging identical doubles lets two more bars match.
+        && result.patterns.occurrences.filter((occurrence) => occurrence.definitionId === definition.id).length >= 18);
       expect(hiHat).toBeDefined();
     }
   }, 60000);

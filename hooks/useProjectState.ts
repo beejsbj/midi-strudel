@@ -55,9 +55,9 @@ export function getNotationConfig(config: StrudelConfig): StrudelConfig {
 export function getNotationConfigKey(config: StrudelConfig): string {
   return JSON.stringify({
     bpm: config.bpm,
+    controlSyntax: config.controlSyntax,
     cycleUnit: config.cycleUnit,
     fileName: config.fileName,
-    formatPerLineBy: config.formatPerLineBy,
     globalSound: config.globalSound,
     includeVelocity: config.includeVelocity,
     isQuantized: config.isQuantized,
