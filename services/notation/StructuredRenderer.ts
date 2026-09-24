@@ -35,8 +35,24 @@ export interface StructuredRhythmInput {
 }
 
 export type StructuredRhythmResult =
-  | { ok: true; expression: string; rhythm: RhythmNode }
+  | {
+    ok: true;
+    expression: string;
+    rhythm: RhythmNode;
+    /** The passage as a bare pattern string for a track that applies `controls` once. */
+    libraryExpression: (controls: TrackControls) => string;
+  }
   | { ok: false; reason: string };
+
+/**
+ * Colon-style controls decided across a whole track: values that vary travel on
+ * each note as `fields`; a value constant across the track is written once.
+ */
+export interface TrackControls {
+  fields: Field[];
+  clip?: string;
+  velocity?: string;
+}
 
 const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
 const MAX_LOCAL_DIVISIONS = 32;
@@ -167,8 +183,38 @@ export const renderStructuredRhythm = ({
   const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
   const cycles = snappedRatio((measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds);
   const slowSuffix = cycles === 1 ? '' : `.slow(${numberExpression(cycles)})`;
-  return { ok: true, expression: `${expression}${scaleSuffix}${slowSuffix}`, rhythm };
+  return {
+    ok: true,
+    expression: `${expression}${scaleSuffix}${slowSuffix}`,
+    rhythm,
+    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls)}${slowSuffix}`,
+  };
 };
+
+/**
+ * Decide a track's colon controls from all of its passages: a gate or velocity
+ * that is the same on every note is hoisted; one that varies becomes a field.
+ * One-shot drums never carry a gate.
+ */
+export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhythmInput['control'], config: StrudelConfig): TrackControls => {
+  const notes = rhythms.flatMap(leaves);
+  const gates = control === 's' ? [] : notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => ({ gate, ticks: leaf.ticks })));
+  const velocities = config.includeVelocity ? notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity)) : [];
+  const controls: TrackControls = { fields: [] };
+  if (velocities.length && velocities.some((velocity) => velocity !== velocities[0])) controls.fields.push('velocity');
+  else if (velocities.length) controls.velocity = roundedDecimal(velocities[0]);
+  const ratio = ({ gate, ticks }: { gate: number; ticks: number }) => gate / ticks;
+  if (gates.some((gate) => ratio(gate) !== ratio(gates[0]))) controls.fields.push('clip');
+  else if (gates.length && ratio(gates[0]) !== 1) controls.clip = constantExpression(gates[0].gate, gates[0].ticks);
+  return controls;
+};
+
+/** The track line's single reading of its pattern strings. */
+export const trackControlSuffix = (control: StructuredRhythmInput['control'], controls: TrackControls, scale?: string): string =>
+  `.as(${JSON.stringify([control, ...controls.fields].join(':'))})`
+  + (controls.clip ? `.clip(${controls.clip})` : '')
+  + (controls.velocity ? `.velocity(${controls.velocity})` : '')
+  + (control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '');
 
 type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
@@ -306,14 +352,19 @@ const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], con
   return rows.length === 1 ? rows[0] : `\n  ${rows.join('\n  ')}\n`;
 };
 
-const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean): string => {
+const emitRhythm = (
+  node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean,
+  library?: TrackControls,
+): string => {
   if (node.kind === 'stack') {
-    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps));
+    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps, library));
     return expressions.length === 1 ? expressions[0]
       : `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
   }
   const notes = leaves(node);
-  if (!notes.length) return 'silence';
+  if (!notes.length) return library ? '`~`' : 'silence';
+  // Library passages are bare strings; the track reads them once.
+  if (library) return `\`${layoutLane(node, 'value', library.fields, config, measureSteps)}\``;
   const gates = notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => gate / leaf.ticks));
   const velocities = notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity));
   // One-shot drums never carry a gate: clip would cut the sample short.

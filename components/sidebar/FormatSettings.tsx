@@ -75,7 +75,7 @@ export const FormatSettings: React.FC<Props> = ({
         <HelpText>
           {config.controlSyntax === 'chained'
             ? "Note length and velocity as chained `.clip()` / `.velocity()` calls. Passages with neither look the same in both modes."
-            : "Note length and velocity as fields on each note, read by `.as(\"note:velocity:clip\")`. Passages with neither look the same in both modes."}
+            : "Phrases are bare pattern strings; each track reads them once with `.as(...)`. A length or velocity constant across the track is written once on the track line; one that varies rides on each note as a colon field."}
         </HelpText>
       </div>
     </SidebarSection>

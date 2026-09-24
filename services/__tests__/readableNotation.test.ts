@@ -125,18 +125,28 @@ describe('readable structured notation', () => {
     });
   });
 
-  it('puts constant controls on the notes too, so colon differs whenever a control exists', async () => {
+  it('keeps colon phrases as bare strings and hoists track-wide constants to the track line', async () => {
     const bytes = score((track) => {
       [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160, velocity: 0.8 }));
     });
     const chained = await convertAndVerify(bytes, { controlSyntax: 'chained', includeVelocity: true });
     expect(chained.code).toContain('note(`C4 D4 E4 F4`).clip(1/3).velocity(0.795)');
     const colon = await convertAndVerify(bytes, { controlSyntax: 'colon', includeVelocity: true });
-    expect(colon.code).toContain('`C4:0.795:0.333 D4:0.795:0.333 E4:0.795:0.333 F4:0.795:0.333`.as("note:velocity:clip")');
-    // Nothing to attach: full-length notes without velocity read the same in both.
-    const plain = score((track) => [60, 62].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 480 })));
-    expect((await convertAndVerify(plain, { controlSyntax: 'colon' })).code)
-      .toBe((await convertAndVerify(plain, { controlSyntax: 'chained' })).code);
+    expect(colon.code).toContain('a: `C4 D4 E4 F4`,');
+    expect(colon.code).toContain('.as("note").clip(1/3).velocity(0.795)');
+    expect(colon.code).not.toContain('note(');
+  });
+
+  it('carries a value as a note field when it differs between phrases of one track', async () => {
+    const bytes = score((track) => {
+      // Bar 1 staccato (1/3), bar 2 legato: each bar is constant, the track is not.
+      [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160 }));
+      [67, 65, 64, 62].forEach((midi, beat) => track.addNote({ midi, ticks: 1920 + beat * 480, durationTicks: 480 }));
+    });
+    const result = await convertAndVerify(bytes, { controlSyntax: 'colon' });
+    expect(result.code).toContain('.as("note:clip")');
+    expect(result.code).toContain('C4:0.333');
+    expect(result.code).not.toContain('.clip(');
   });
 
   it('uses colon fields for relative pitches and drums', async () => {
@@ -154,7 +164,8 @@ describe('readable structured notation', () => {
     }, true);
     // Drums are one-shots: no clip field even when MIDI lengths differ.
     const kitResult = await convertAndVerify(kit, { controlSyntax: 'colon' });
-    expect(kitResult.code).toContain('s(`[bd,cr] sd`)');
+    expect(kitResult.code).toContain('a: `[bd,cr] sd`,');
+    expect(kitResult.code).toContain('.as("s")');
     expect(kitResult.code).not.toMatch(/clip/);
   });
 });

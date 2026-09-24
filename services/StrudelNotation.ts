@@ -12,7 +12,7 @@ import { DRUM_MAP, getAutoSound } from '../constants';
 import { mergeIdenticalDoubles, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
-import { renderStructuredRhythm } from './notation/StructuredRenderer';
+import { renderStructuredRhythm, trackControlSuffix, trackControlsFor, type StructuredRhythmResult } from './notation/StructuredRenderer';
 import { discoverPhrases, type EffectiveTickTiming, type PhraseWindow } from './notation/PhraseDiscovery';
 import { renderPhraseTimeline } from './notation/PhraseRenderer';
 import { renderOneOffPassages } from './notation/OneOffPassages';
@@ -199,6 +199,8 @@ export class StrudelNotation {
     const control = track.isDrum ? 's' : hasRelativeScale ? 'n' : 'note';
     const key = this.config.playbackKey || this.config.key;
     const scale = control === 'n' && key ? `${key.root}${key.averageOctave}:${key.type}` : undefined;
+    // Built passages by emitted text, so a colon track can re-emit them as bare strings.
+    const built = new Map<string, Extract<StructuredRhythmResult, { ok: true }>>();
     const makeExpression = (eventsForPattern: EffectiveEvent[]): string => {
       const values = valuesFor(eventsForPattern);
       const structured = renderStructuredRhythm({
@@ -210,6 +212,7 @@ export class StrudelNotation {
         scale,
       });
       if (structured.ok === false) fallbackReasons.add(structured.reason);
+      else built.set(structured.expression, structured);
       const literal = structured.ok
         ? structured.expression
         : renderPreciseLiteral(values, span, {
@@ -234,18 +237,37 @@ export class StrudelNotation {
       const rendered = renderStructuredRhythm({ track, events: valuesFor(window.events), config: this.config, control, scale,
         span: { durationSeconds: window.durationSeconds, cycleDurationSeconds }, originTicks: window.originTicks,
         originSeconds: window.originSeconds, effectiveTiming: { scale: tickScale, events: timings } });
-      return rendered.ok ? rendered.expression : undefined;
+      if (!rendered.ok) return undefined;
+      built.set(rendered.expression, rendered);
+      return rendered.expression;
     };
     const discovery = discoverPhrases({ track, events, config: this.config, sharedSpanSeconds, render: renderWindow });
     const oneOff = discovery.budgetExhausted ? { passages: [], remainder: discovery.remainder }
       : renderOneOffPassages({ track, events: discovery.remainder, config: this.config, render: renderWindow });
-    const timeline = renderPhraseTimeline({ phrases: discovery.phrases, passages: oneOff.passages,
-      remainderExpression: oneOff.remainder.length ? makeExpression(oneOff.remainder) : undefined,
+    let phrases = discovery.phrases;
+    let passages = oneOff.passages;
+    let remainderExpression = oneOff.remainder.length ? makeExpression(oneOff.remainder) : undefined;
+    let trackSuffix = '';
+    // Colon style: the library holds bare pattern strings and the track line
+    // reads them once. A literal fallback passage is already a full pattern, so
+    // such a track keeps per-passage wrappers.
+    const passageTexts = [...phrases.map((phrase) => phrase.expression), ...passages.map((passage) => passage.expression),
+      ...(remainderExpression ? [remainderExpression] : [])];
+    if (this.config.controlSyntax === 'colon' && passageTexts.every((text) => built.has(text))) {
+      const controls = trackControlsFor(passageTexts.map((text) => built.get(text)!.rhythm), control, this.config);
+      const bare = (text: string) => built.get(text)!.libraryExpression(controls);
+      phrases = phrases.map((phrase) => ({ ...phrase, expression: bare(phrase.expression) }));
+      passages = passages.map((passage) => ({ ...passage, expression: bare(passage.expression) }));
+      remainderExpression = remainderExpression && bare(remainderExpression);
+      trackSuffix = trackControlSuffix(control, controls, scale);
+    }
+    const timeline = renderPhraseTimeline({ phrases, passages,
+      remainderExpression,
       trackId: track.id, trackIndex, trackKey: activeLabel,
       measureSeconds: getSourceMeasureDuration(this.config), cycleSeconds: cycleDurationSeconds, sharedSpanSeconds });
     patterns.definitions.push(...timeline.patterns.definitions);
     patterns.occurrences.push(...timeline.patterns.occurrences);
-    return { code: makePattern(timeline.expression), library: timeline.library,
+    return { code: makePattern(`${timeline.expression}${trackSuffix}`), library: timeline.library,
       fallbackReasons, budgetExhausted: discovery.budgetExhausted };
   }
 
