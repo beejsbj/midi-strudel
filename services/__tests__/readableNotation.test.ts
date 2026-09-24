@@ -72,7 +72,7 @@ describe('readable structured notation', () => {
     });
     const result = await convertAndVerify(bytes);
     const library = phraseLibrary(result.code);
-    expect(library).toContain('<[D2,D3] [E2,E3] [F2,F3] [[G2,G3] ~]>');
+    expect(library).toMatch(/<\s+\[D2,D3\] \[E2,E3\] \[F2,F3\] \[\[G2,G3\] ~\]\s+>/);
     expect(library).not.toContain('.clip(');
     expect(library).not.toContain('.slow(');
   });
@@ -83,7 +83,7 @@ describe('readable structured notation', () => {
       track.addNote({ midi: 62, ticks: 1920 + 480, durationTicks: 480 });
     });
     const result = await convertAndVerify(bytes, { cycleUnit: 'beat' });
-    expect(result.code).toMatch(/<C4 ~!3 \[~ D4 ~!2\]>|<\[C4 ~!3\] \[~ D4 ~!2\]>/);
+    expect(result.code).toMatch(/<\s+\[C4 ~!3\] \[~ D4 ~!2\]\s+>/);
     expect(result.code).toContain('.slow(4)');
   });
 
@@ -182,28 +182,35 @@ describe('line wrapping', () => {
   });
   const passage = (code: string) => /: note\(`([\s\S]*?)`\)/.exec(code)![1];
 
-  it('puts N measures on a line in measure mode', async () => {
-    const result = await convertAndVerify(bytes, { formatPerLineBy: 'measure', measuresPerLine: 1 });
-    const lines = passage(result.code).split('\n').map((line) => line.trim()).filter(Boolean);
+  const blockLines = (code: string) => passage(code).split('\n').map((line) => line.trim()).filter(Boolean);
+
+  it('puts N measures on each line of a multi-bar block', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 1 });
+    const lines = blockLines(result.code);
     expect(lines[0]).toBe('<');
     expect(lines.at(-1)).toBe('>');
     expect(lines.slice(1, -1)).toHaveLength(3);
     lines.slice(1, -1).forEach((line) => expect(line).toMatch(/^\[\[.*\]\]$/));
   });
 
-  it('breaks after N notes only between beats in note mode', async () => {
-    const result = await convertAndVerify(bytes, { formatPerLineBy: 'note', measuresPerLine: 6 });
-    const lines = passage(result.code).split('\n').map((line) => line.trim()).filter((line) => line && line !== '<' && line !== '>');
-    expect(lines).toHaveLength(6);
-    // Every line holds two whole triplet beats; no beat is split. Measure
-    // brackets may open or close across lines.
-    lines.forEach((line) => expect(line.match(/\[[^[\]]+\]/g)).toHaveLength(2));
-    lines.forEach((line) => expect(line).toMatch(/^\[{0,2}[^[\]]+\] \[[^[\]]+\]{1,2}$/));
+  it('writes a multi-bar passage as a block even when it fits on one line', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 4 });
+    const lines = blockLines(result.code);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe('<');
+    expect(lines[1].match(/^\[\[/g)).toHaveLength(1);
+    expect(lines[2]).toBe('>');
   });
 
-  it('does not wrap a passage shorter than the line length', async () => {
-    const result = await convertAndVerify(bytes, { formatPerLineBy: 'measure', measuresPerLine: 4 });
-    expect(passage(result.code)).not.toContain('\n');
+  it('keeps a one-bar passage on its key line', async () => {
+    const oneBar = score((track) => [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 480 })));
+    const result = await convertAndVerify(oneBar, { measuresPerLine: 1 });
+    expect(passage(result.code)).toBe('C4 D4 E4 F4');
+  });
+
+  it('indents the block under its library key', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 2 });
+    expect(result.code).toMatch(/\n {4}a: note\(`<\n {6}\[\[.*\n {6}\[\[.*\n {4}>`\),/);
   });
 });
 

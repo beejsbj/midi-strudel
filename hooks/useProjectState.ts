@@ -58,7 +58,6 @@ export function getNotationConfigKey(config: StrudelConfig): string {
     controlSyntax: config.controlSyntax,
     cycleUnit: config.cycleUnit,
     fileName: config.fileName,
-    formatPerLineBy: config.formatPerLineBy,
     globalSound: config.globalSound,
     includeVelocity: config.includeVelocity,
     isQuantized: config.isQuantized,

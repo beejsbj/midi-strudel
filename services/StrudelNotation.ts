@@ -220,7 +220,6 @@ export class StrudelNotation {
           scale,
           includeVelocity: this.config.includeVelocity,
           formatting: {
-            by: this.config.formatPerLineBy,
             itemsPerLine: this.config.measuresPerLine,
             measureSeconds: getSourceMeasureDuration(this.config),
           },

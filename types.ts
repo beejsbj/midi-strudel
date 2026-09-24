@@ -114,8 +114,7 @@ export interface StrudelConfig {
   cycleUnit: 'bar' | 'beat';
   
   // Formatting
-  formatPerLineBy: 'measure' | 'note';
-  measuresPerLine: number; // items per line (measures or notes depending on formatPerLineBy)
+  measuresPerLine: number; // bars per line inside a multi-bar phrase block
   
   // Sound
   useAutoMapping: boolean;
@@ -150,7 +149,6 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   notationType: 'absolute',
   controlSyntax: 'chained',
   cycleUnit: 'bar',
-  formatPerLineBy: 'measure',
   measuresPerLine: 4,
   
   useAutoMapping: true,

@@ -94,7 +94,7 @@ export function removeRetiredNotationSettings(config: StrudelConfig): StrudelCon
   const current = { ...config };
   // Older projects stored rendering choices that are now automatic. Discard
   // only these settings; public conversion must not inherit UI input bounds.
-  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy']) {
     Reflect.deleteProperty(current, key);
   }
   return current;

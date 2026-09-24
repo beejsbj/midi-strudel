@@ -309,47 +309,28 @@ const segments = (node: RhythmNode, attribute: Attribute, fields: Field[]): Arra
 };
 
 /**
- * Lay out one lane. Whole measures become `<...>` steps (one cycle each).
- * Measure wrapping counts measures, including those folded into `m!n`; note
- * wrapping counts attacks and breaks only between beats or measures.
+ * Lay out one lane. Whole measures become `<...>` steps (one cycle each). A
+ * multi-bar passage is always a block with N measures per line (`m!3` counts
+ * 3 and is never split); a one-bar passage stays on its key line.
  */
 const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], config: StrudelConfig, measureSteps: boolean): string => {
   const measures = lane.kind === 'sequence' ? lane.children : [lane];
-  const perLine = Math.max(1, config.measuresPerLine);
-  const lines: string[][] = [[]];
-  let count = 0;
-  const place = (text: string, amount: number) => {
-    if (count >= perLine && lines[lines.length - 1].length) { lines.push([]); count = 0; }
-    lines[lines.length - 1].push(text);
-    count += amount;
-  };
   if (!measureSteps) {
     // Rare partial final measure: the whole lane is one bracketed cycle.
     const text = measures.map((measure) => emitGroup(measure, attribute, fields)).join(' ');
     return measures.length > 1 ? `[${text}]` : text;
   }
-  const multiStep = measures.length > 1;
-  const runs = repeatCounts(measures.map((measure) => ({ measure, text: emitGroup(measure, attribute, fields) })),
-    (a, b) => a.text === b.text);
+  if (measures.length === 1) return segments(measures[0], attribute, fields).map((part) => part.text).join(' ');
+  const perLine = Math.max(1, config.measuresPerLine);
+  const rows: string[][] = [[]];
+  let count = 0;
+  const runs = repeatCounts(measures.map((measure) => emitGroup(measure, attribute, fields)), (a, b) => a === b);
   for (const { item, count: repeats } of runs) {
-    const folded = repeats > 1 ? `${item.text}!${repeats}` : item.text;
-    if (!multiStep && config.formatPerLineBy === 'measure') {
-      place(segments(item.measure, attribute, fields).map((part) => part.text).join(' '), 1);
-      continue;
-    }
-    if (config.formatPerLineBy === 'measure' || repeats > 1 || item.measure.kind !== 'sequence') {
-      place(folded, config.formatPerLineBy === 'measure' ? repeats : leaves(item.measure).length * repeats);
-      continue;
-    }
-    // A measure's beats may break across lines; a `<...>` step keeps its brackets.
-    const beats = segments(item.measure, attribute, fields);
-    beats.forEach((beat, index) => place(
-      `${multiStep && index === 0 ? '[' : ''}${beat.text}${multiStep && index === beats.length - 1 ? ']' : ''}`,
-      beat.attacks));
+    if (count >= perLine && rows[rows.length - 1].length) { rows.push([]); count = 0; }
+    rows[rows.length - 1].push(repeats > 1 ? `${item}!${repeats}` : item);
+    count += repeats;
   }
-  const rows = lines.map((row) => row.join(' '));
-  if (multiStep) return rows.length === 1 ? `<${rows[0]}>` : `<\n  ${rows.join('\n  ')}\n>`;
-  return rows.length === 1 ? rows[0] : `\n  ${rows.join('\n  ')}\n`;
+  return `<\n  ${rows.map((row) => row.join(' ')).join('\n  ')}\n>`;
 };
 
 const emitRhythm = (
