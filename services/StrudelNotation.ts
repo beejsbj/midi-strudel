@@ -9,7 +9,7 @@
 
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { DRUM_MAP, getAutoSound } from '../constants';
-import { prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
+import { mergeIdenticalDoubles, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
 import { renderStructuredRhythm } from './notation/StructuredRenderer';
@@ -61,10 +61,14 @@ export class StrudelNotation {
         message: `Dropped ${count} unmapped drum note event${count === 1 ? '' : 's'} for MIDI ${midiNote}`,
       }));
 
-    const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events }) => ({
-      track,
-      events: track.isDrum ? events.filter((event) => DRUM_MAP[event.midi]) : events,
-    }));
+    let mergedDoubles = 0;
+    const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events }) => {
+      const merged = mergeIdenticalDoubles(track.isDrum ? events.filter((event) => DRUM_MAP[event.midi]) : events);
+      if (!track.hidden) mergedDoubles += merged.merged;
+      return { track, events: merged.events };
+    });
+    if (mergedDoubles) diagnostics.push({ code: 'merged-duplicate-notes', severity: 'warning', count: mergedDoubles,
+      message: `Merged ${mergedDoubles} fully identical duplicate note${mergedDoubles === 1 ? '' : 's'} (same pitch, start, length and velocity)` });
 
     // 1. Calculate Global Song Duration
     let maxDuration = effectiveTracks.reduce((max, entry) => {

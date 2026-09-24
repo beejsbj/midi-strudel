@@ -105,6 +105,7 @@ describe('midi-strudel CLI', () => {
         { code: 'unmapped-drum-note', midiNote: 78, count: 1 },
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
+        { code: 'merged-duplicate-notes', count: 110 },
         { code: 'precise-literal-fallback', count: expect.any(Number),
           message: expect.stringContaining('Effective timing differs from source rhythm') },
       ],
@@ -164,7 +165,8 @@ describe('midi-strudel CLI', () => {
       const diagnostics = result.stderr.trim().split('\n');
       expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
       expect(diagnostics.filter((line) => line.includes('[precise-literal-fallback]'))).toHaveLength(1);
-      expect(diagnostics).toHaveLength(6);
+      expect(diagnostics.filter((line) => line.includes('[merged-duplicate-notes]'))).toHaveLength(1);
+      expect(diagnostics).toHaveLength(7);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);

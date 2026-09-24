@@ -20,7 +20,9 @@ const addRiff = (track: ReturnType<InstanceType<typeof Midi>['addTrack']>, start
       durationTicks: 120 + (variation === 'release' && index === 3 ? 1 : 0),
       velocity: variation === 'velocity' ? 0.4 : 0.8 });
   }
-  if (variation === 'duplicate') track.addNote({ midi: 60, ticks: start, durationTicks: 120, velocity: 0.8 });
+  // A deliberate double differs in length; an identical one is an export artifact.
+  if (variation === 'duplicate') track.addNote({ midi: 60, ticks: start, durationTicks: 60, velocity: 0.8 });
+  if (variation === 'identical') track.addNote({ midi: 60, ticks: start, durationTicks: 120, velocity: 0.8 });
 };
 const numericPitch = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -29,13 +31,22 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
+/** Fully identical doubles (pitch, tick, length, velocity) are expected to merge. */
+const uniqueNotes = <T extends { midi: number; ticks: number; durationTicks: number; velocity: number }>(notes: T[]): T[] => {
+  const seen = new Set<string>();
+  return notes.filter((note) => {
+    const key = `${note.midi}:${note.ticks}:${note.durationTicks}:${note.velocity}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+};
+
 /** Independent source oracle: fresh parse, no converter event preparation. */
 async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const result = convertMidi(bytes, 'arbitrary.mid', { includeVelocity: true, ...overrides });
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => track.notes.flatMap((note) => {
+  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(track.notes).flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
     let onset = note.time;
@@ -198,6 +209,14 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions).toEqual([]);
   });
 
+  it('merges an identical double so the repeated phrase still matches', async () => {
+    const midi = makeMidi(); const track = midi.addTrack();
+    addRiff(track, 0); addRiff(track, 3840, 'identical');
+    const result = await verify(midi.toArray().buffer);
+    expect(result.patterns.definitions).toHaveLength(1);
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'merged-duplicate-notes', count: 1 })]);
+  });
+
   it('matches only retained velocity and effective quantized timings', async () => {
     const midi = makeMidi(); const track = midi.addTrack();
     addRiff(track, 0); addRiff(track, 3840, 'velocity'); addRiff(track, 7680, 'velocity');
@@ -322,7 +341,8 @@ describe('exact phrase reuse through public conversion', () => {
     if (file === 'warrior-of-the-mind') {
       const drum = result.tracks.find((entry) => entry.name === '2013 Drum Kit')!;
       const hiHat = result.patterns.definitions.find((definition) => definition.trackId === drum.id && definition.sourceNoteIds.length === 8
-        && result.patterns.occurrences.filter((occurrence) => occurrence.definitionId === definition.id).length === 18);
+        // The 18 known repeats; merging identical doubles lets two more bars match.
+        && result.patterns.occurrences.filter((occurrence) => occurrence.definitionId === definition.id).length >= 18);
       expect(hiHat).toBeDefined();
     }
   }, 60000);

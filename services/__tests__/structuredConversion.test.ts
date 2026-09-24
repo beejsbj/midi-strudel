@@ -100,7 +100,7 @@ describe('structured public conversion', () => {
     { notationType: 'relative' as const, includeVelocity: true },
     { notationType: 'absolute' as const, includeVelocity: false },
     { notationType: 'relative' as const, includeVelocity: false },
-  ])('groups matching chord attacks without losing duplicates or retained velocity: %j', async ({ notationType, includeVelocity }) => {
+  ])('groups matching chord attacks, merging identical doubles and keeping retained velocity: %j', async ({ notationType, includeVelocity }) => {
     const midi = new Midi();
     midi.header.setTempo(120);
     const track = midi.addTrack();
@@ -111,14 +111,16 @@ describe('structured public conversion', () => {
     }
     const bytes = midi.toArray().buffer;
     const result = convertMidi(bytes, 'chords.mid', { notationType, includeVelocity, isQuantized: false });
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'merged-duplicate-notes', count: 4 })]);
     expect(result.code).toContain('.clip(1/3)');
     expect(result.code).not.toContain('.slow(1)');
     expect(result.code).toContain('!4');
     if (notationType === 'absolute') {
-      expect(result.code).toContain(includeVelocity ? '[C4,C4,E4]' : '[C4,C4,E4,G4]');
+      expect(result.code).toContain(includeVelocity ? '[C4,E4]' : '[C4,E4,G4]');
     }
-    const source = new Midi(bytes).tracks[0].notes;
+    // Each attack's second C4 is an identical double and merges.
+    const source = new Midi(bytes).tracks[0].notes.filter((note, index, notes) =>
+      notes.findIndex((other) => other.midi === note.midi && other.ticks === note.ticks) === index);
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {
       const pitch = (value: unknown): number => typeof value === 'number' ? value : source.find((note) => note.name === value)!.midi;
