@@ -53,7 +53,7 @@ async function convertAndVerify(bytes: ArrayBuffer, overrides: ConversionOverrid
       const want = expected[index];
       expect(pitch).toBe(want.pitch);
       expect(Math.abs(event.onsetSeconds - want.onset)).toBeLessThan(1e-9);
-      expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event));
+      if (!drum) expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event));
       if (result.config.includeVelocity) expect(event.value.velocity).toBe(Math.round(want.velocity * 1000) / 1000);
     });
   } finally { runtime.stop(); }
@@ -138,9 +138,10 @@ describe('readable structured notation', () => {
       track.addNote({ midi: 49, ticks: 0, durationTicks: 720, velocity: 0.8 });
       track.addNote({ midi: 38, ticks: 960, durationTicks: 120, velocity: 0.8 });
     }, true);
+    // Drums are one-shots: no clip field even when MIDI lengths differ.
     const kitResult = await convertAndVerify(kit, { controlSyntax: 'colon' });
-    expect(kitResult.code).toContain('.as("s:clip")');
-    expect(kitResult.code).not.toContain('stack(');
+    expect(kitResult.code).toContain('s(`[bd,cr] sd`)');
+    expect(kitResult.code).not.toMatch(/clip/);
   });
 });
 

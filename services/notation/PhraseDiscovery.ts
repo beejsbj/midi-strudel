@@ -91,7 +91,12 @@ export function discoverPhrases(input: {
   if (bars > MAX_BARS || events.length > MAX_EVENT_VISITS) return empty(true);
   const effective = effectiveCoordinates(track, events, config);
   if (!effective) return empty();
-  const { coordinates, denominator, timings } = effective;
+  const { denominator, timings } = effective;
+  // Drum lengths are not heard (one-shot samples): a hit neither sustains into
+  // the next window nor distinguishes otherwise identical bars.
+  const coordinates = track.isDrum
+    ? effective.coordinates.map((coordinate) => ({ ...coordinate, release: coordinate.onset }))
+    : effective.coordinates;
   const barUnits = measureTicks * denominator;
   if (!Number.isSafeInteger(barUnits) || !Number.isSafeInteger(barUnits * bars)) return empty();
   let visits = 0;

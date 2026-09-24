@@ -106,13 +106,12 @@ describe('midi-strudel CLI', () => {
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
         { code: 'merged-duplicate-notes', count: 110 },
-        { code: 'precise-literal-fallback', count: expect.any(Number),
-          message: expect.stringContaining('Effective timing differs from source rhythm') },
+        { code: 'dropped-silent-notes', count: 9 },
       ],
     });
     expect(parsed.patterns.definitions.length).toBeGreaterThan(0);
     expect(result.stderr.trim().split('\n')).toHaveLength(parsed.diagnostics.length);
-    expect(result.stderr).toContain('[precise-literal-fallback]');
+    expect(result.stderr).toContain('[dropped-silent-notes]');
     expect(result.stderr).toContain('Dropped 85 unmapped drum note events for MIDI 31');
     expect(result.stderr).toContain('Dropped 159 unmapped drum note events for MIDI 85');
   });
@@ -164,7 +163,7 @@ describe('midi-strudel CLI', () => {
       expect(result.status).toBe(0);
       const diagnostics = result.stderr.trim().split('\n');
       expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
-      expect(diagnostics.filter((line) => line.includes('[precise-literal-fallback]'))).toHaveLength(1);
+      expect(diagnostics.filter((line) => line.includes('[dropped-silent-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('[merged-duplicate-notes]'))).toHaveLength(1);
       expect(diagnostics).toHaveLength(7);
       expect(result.stdout).not.toContain('midi-strudel: warning');

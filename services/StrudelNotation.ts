@@ -62,13 +62,22 @@ export class StrudelNotation {
       }));
 
     let mergedDoubles = 0;
+    let silentNotes = 0;
     const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events }) => {
-      const merged = mergeIdenticalDoubles(track.isDrum ? events.filter((event) => DRUM_MAP[event.midi]) : events);
-      if (!track.hidden) mergedDoubles += merged.merged;
+      // A zero-length pitched note makes no sound; a zero-length drum hit does.
+      const audible = track.isDrum ? events.filter((event) => DRUM_MAP[event.midi])
+        : events.filter((event) => event.releaseSeconds > event.onsetSeconds);
+      const merged = mergeIdenticalDoubles(audible, track.isDrum);
+      if (!track.hidden) {
+        mergedDoubles += merged.merged;
+        if (!track.isDrum) silentNotes += events.length - audible.length;
+      }
       return { track, events: merged.events };
     });
     if (mergedDoubles) diagnostics.push({ code: 'merged-duplicate-notes', severity: 'warning', count: mergedDoubles,
-      message: `Merged ${mergedDoubles} fully identical duplicate note${mergedDoubles === 1 ? '' : 's'} (same pitch, start, length and velocity)` });
+      message: `Merged ${mergedDoubles} fully identical duplicate note${mergedDoubles === 1 ? '' : 's'} (same pitch, start, length and velocity; drums ignore length)` });
+    if (silentNotes) diagnostics.push({ code: 'dropped-silent-notes', severity: 'warning', count: silentNotes,
+      message: `Dropped ${silentNotes} zero-length pitched note${silentNotes === 1 ? '' : 's'}, which make no sound` });
 
     // 1. Calculate Global Song Duration
     let maxDuration = effectiveTracks.reduce((max, entry) => {

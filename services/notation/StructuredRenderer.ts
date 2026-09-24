@@ -76,6 +76,9 @@ export const renderStructuredRhythm = ({
     || Math.abs(spanTicks * secondsPerTick - span.durationSeconds) > 1e-9) {
     return { ok: false, reason: 'Unsupported finite rhythmic span' };
   }
+  // Drum hits are one-shots: the sample plays out whatever the MIDI length,
+  // so a hit's length is ignored and it holds until the next event.
+  const oneShot = control === 's';
   const byOnset = new Map<number, StructuredEvent[]>();
   const durations = new Map<EffectiveEvent, number>();
   for (const item of events) {
@@ -84,14 +87,14 @@ export const renderStructuredRhythm = ({
     const effective = effectiveTiming?.events.get(event);
     const source = effective ? { ticks: effective.onsetTicks, durationTicks: effective.durationTicks } : original;
     if (!source || !Number.isSafeInteger(source.ticks) || !Number.isSafeInteger(source.durationTicks)
-      || source.durationTicks <= 0
+      || (!oneShot && source.durationTicks <= 0)
       || Math.abs((source.ticks - originTicks) * secondsPerTick - (event.onsetSeconds - originSeconds)) > 1e-9
-      || Math.abs(source.durationTicks * secondsPerTick - (event.releaseSeconds - event.onsetSeconds)) > 1e-9) {
+      || (!oneShot && Math.abs(source.durationTicks * secondsPerTick - (event.releaseSeconds - event.onsetSeconds)) > 1e-9)) {
       return { ok: false, reason: 'Effective timing differs from source rhythm' };
     }
     const onset = source.ticks - originTicks;
-    durations.set(event, source.durationTicks);
-    if (onset < 0 || onset >= spanTicks || onset + source.durationTicks > spanTicks) {
+    durations.set(event, oneShot ? spanTicks - onset : source.durationTicks);
+    if (onset < 0 || onset >= spanTicks || (!oneShot && onset + source.durationTicks > spanTicks)) {
       return { ok: false, reason: 'Event crosses finite passage boundary' };
     }
     const group = byOnset.get(onset) ?? [];
@@ -152,7 +155,7 @@ export const renderStructuredRhythm = ({
     const measures: RhythmNode[] = [];
     for (let index = 0; index < beats.length; index += meter.numerator) {
       const children = beats.slice(index, index + meter.numerator);
-      measures.push(simplify({ kind: 'sequence', ticks: children.length * beatTicks, grouping: 'measure', children }));
+      measures.push(simplify({ kind: 'sequence', ticks: children.length * beatTicks, grouping: 'measure', children }, oneShot));
     }
     lanes.push({ kind: 'sequence', ticks: spanTicks, grouping: 'song', children: measures });
   }
@@ -179,17 +182,24 @@ const leaves = (node: RhythmNode): EventNode[] =>
  * child is that child. Bottom-up, so a note held through whole beats reaches
  * the measure level. Partially covered rests stay; the gate then rings (clip > 1).
  */
-const simplify = (node: RhythmNode): RhythmNode => {
+const unitOf = (items: RhythmNode[]) => items.reduce((divisor, child) => gcd(divisor, child.ticks), 0);
+
+const simplify = (node: RhythmNode, oneShot = false): RhythmNode => {
   if (node.kind !== 'sequence') return node;
-  const children: RhythmNode[] = [];
-  for (const child of node.children.map(simplify)) {
-    const previous = children[children.length - 1];
+  const inner = node.children.map((child) => simplify(child, oneShot));
+  const absorbed: RhythmNode[] = [];
+  for (const child of inner) {
+    const previous = absorbed[absorbed.length - 1];
     if (child.kind === 'rest' && previous?.kind === 'event' && previous.gateTicks >= previous.ticks + child.ticks) {
-      children[children.length - 1] = { ...previous, ticks: previous.ticks + child.ticks };
+      absorbed[absorbed.length - 1] = { ...previous, ticks: previous.ticks + child.ticks };
     } else {
-      children.push(child);
+      absorbed.push(child);
     }
   }
+  // A held note owns its rests. A one-shot drum hit has no length to show, so
+  // it absorbs rests only when that coarsens the grid: `[bd ~ sd ~]` is
+  // `[bd sd]`, while `bd!3 ~` stays rather than becoming `bd bd bd@2`.
+  const children = !oneShot || unitOf(absorbed) > unitOf(inner) ? absorbed : inner;
   if (children.every((child) => child.kind === 'rest')) return { kind: 'rest', ticks: node.ticks };
   if (children.length === 1) return { ...children[0], ticks: node.ticks };
   // Adjacent rests merge only when that coarsens the grid: `[X@2 ~ ~]` reads
@@ -200,8 +210,7 @@ const simplify = (node: RhythmNode): RhythmNode => {
     if (child.kind === 'rest' && previous?.kind === 'rest') merged[merged.length - 1] = { kind: 'rest', ticks: previous.ticks + child.ticks };
     else merged.push(child);
   }
-  const unit = (items: RhythmNode[]) => items.reduce((divisor, child) => gcd(divisor, child.ticks), 0);
-  return { ...node, children: unit(merged) > unit(children) ? merged : children };
+  return { ...node, children: unitOf(merged) > unitOf(children) ? merged : children };
 };
 
 const repeatCounts = <T>(items: T[], same: (a: T, b: T) => boolean): Array<{ item: T; count: number }> => {
@@ -307,7 +316,8 @@ const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'],
   if (!notes.length) return 'silence';
   const gates = notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => gate / leaf.ticks));
   const velocities = notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity));
-  const gatesVary = gates.some((gate) => gate !== gates[0]);
+  // One-shot drums never carry a gate: clip would cut the sample short.
+  const gatesVary = control !== 's' && gates.some((gate) => gate !== gates[0]);
   const velocitiesVary = config.includeVelocity && velocities.some((velocity) => velocity !== velocities[0]);
   const colon = config.controlSyntax === 'colon';
   const fields: Field[] = colon ? [...(velocitiesVary ? ['velocity' as const] : []), ...(gatesVary ? ['clip' as const] : [])] : [];
@@ -316,7 +326,7 @@ const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'],
   let expression = fields.length
     ? `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`
     : `${control}(${mini('value')})`;
-  if (!gatesVary && gates[0] !== 1) {
+  if (control !== 's' && !gatesVary && gates[0] !== 1) {
     const leaf = notes[0];
     expression += `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`;
   } else if (gatesVary && !colon) {

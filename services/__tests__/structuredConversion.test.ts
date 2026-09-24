@@ -69,8 +69,8 @@ describe('structured public conversion', () => {
       expect(events).toHaveLength(6);
       expect(events.map((event) => event.value.s)).toEqual([DRUM_MAP[36], DRUM_MAP[42], DRUM_MAP[42], DRUM_MAP[36], DRUM_MAP[42], DRUM_MAP[42]]);
       expect(events.map((event) => event.onsetSeconds)).toEqual([0, 0, 1 / 3, 8 / 3, 8 / 3, 3]);
-      expect(events[1].gateEndSeconds).toBeCloseTo(0.125, 9);
-      expect(events[2].gateEndSeconds).toBeCloseTo(11 / 24, 9);
+      // Drum hits are one-shots: no clip, so samples play out whatever their MIDI length.
+      expect(result.code).not.toContain('.clip(');
       expect(events.every((event) => event.value.bank === 'RolandTR909')).toBe(true);
     } finally { runtime.stop(); }
   });

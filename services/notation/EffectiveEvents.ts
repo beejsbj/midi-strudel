@@ -65,10 +65,11 @@ export const prepareEffectiveTracks = (tracks: Track[], config: StrudelConfig): 
  * has them, none of ~1,300 professional phrase files do. Keep the first.
  * Doubles that differ in length or velocity are deliberate and stay.
  */
-export const mergeIdenticalDoubles = (events: EffectiveEvent[]): { events: EffectiveEvent[]; merged: number } => {
+export const mergeIdenticalDoubles = (events: EffectiveEvent[], oneShot = false): { events: EffectiveEvent[]; merged: number } => {
   const seen = new Set<string>();
   const kept = events.filter((event) => {
-    const key = `${event.midi}:${event.onsetSeconds}:${event.releaseSeconds}:${event.velocity}`;
+    // A one-shot drum's length is not heard, so it does not distinguish a double.
+    const key = `${event.midi}:${event.onsetSeconds}:${oneShot ? '' : event.releaseSeconds}:${event.velocity}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

@@ -52,7 +52,9 @@ export const renderPreciseLiteral = (
     const velocity = options.includeVelocity && event.velocity !== undefined
       ? `.velocity(${numberLiteral(event.velocity)})`
       : '';
-    return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)}).clip(${numberLiteral(gate / span.durationSeconds)})${velocity}`;
+    // One-shot drum samples play out; a clip would cut them short.
+    const clip = options.control === 's' ? '' : `.clip(${numberLiteral(gate / span.durationSeconds)})`;
+    return `${call}.late(${numberLiteral(event.onsetSeconds / span.durationSeconds)})${clip}${velocity}`;
   });
   const formatting = options.formatting;
   const itemsPerLine = Math.max(1, formatting?.itemsPerLine ?? 1);

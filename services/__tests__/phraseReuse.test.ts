@@ -31,11 +31,11 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
-/** Fully identical doubles (pitch, tick, length, velocity) are expected to merge. */
-const uniqueNotes = <T extends { midi: number; ticks: number; durationTicks: number; velocity: number }>(notes: T[]): T[] => {
+/** Fully identical doubles (pitch, tick, length, velocity; drums ignore length) are expected to merge. */
+const uniqueNotes = <T extends { midi: number; ticks: number; durationTicks: number; velocity: number }>(notes: T[], drum = false): T[] => {
   const seen = new Set<string>();
   return notes.filter((note) => {
-    const key = `${note.midi}:${note.ticks}:${note.durationTicks}:${note.velocity}`;
+    const key = `${note.midi}:${note.ticks}:${drum ? '' : note.durationTicks}:${note.velocity}`;
     return seen.has(key) ? false : (seen.add(key), true);
   });
 };
@@ -46,7 +46,7 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(track.notes).flatMap((note) => {
+  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(track.notes, track.channel === 9).flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
     let onset = note.time;
@@ -62,6 +62,8 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
       duration = snap(duration);
       if (duration < grid * 0.1) duration = grid;
     }
+    // Zero-length pitched notes are silent and dropped; drum hits are one-shots.
+    if (!drum && duration <= 0) return [];
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
       pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: note.velocity }];
   })));
@@ -94,7 +96,8 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
       });
       const want = group.splice(best, 1)[0];
       expect(Math.abs(event.onsetSeconds - want.onset)).toBeLessThan(1e-6);
-      expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event) + 1e-6);
+      // Drum samples play out: only their onsets are part of the contract.
+      if (typeof want.pitch === 'number') expect(Math.abs(event.gateEndSeconds - want.end)).toBeLessThanOrEqual(gateTolerance(event) + 1e-6);
       // Velocity is emitted with three decimals.
       if (result.config.includeVelocity) expect(Math.abs(velocity - want.velocity)).toBeLessThanOrEqual(0.0005 + 1e-12);
     }
@@ -174,15 +177,23 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.code).toContain('z ~ aa ~ ab>');
   });
 
-  it('isolates instantaneous gates without expanding their ordinary neighbors', async () => {
+  it('drops a silent zero-length pitched note without disturbing its neighbours', async () => {
     const midi = makeMidi(); const track = midi.addTrack(); track.name = 'Piano';
     addRiff(track, 0);
     track.addNote({ midi: 84, ticks: 480, durationTicks: 0, velocity: 0.4 });
     const result = await verify(midi.toArray().buffer);
-    expect(result.code).toContain('stack(phrases.piano.a, phrases.piano.b)');
-    expect(result.code.match(/\.late\(/g)).toHaveLength(1);
-    expect(result.patterns.definitions).toEqual([]);
-    expect(result.diagnostics.map(({ code }) => code)).toEqual(['precise-literal-fallback']);
+    expect(result.code).not.toContain('.late(');
+    expect(result.code).not.toContain('C6');
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'dropped-silent-notes', count: 1 })]);
+  });
+
+  it('keeps a zero-length drum hit audible as a one-shot without clip', async () => {
+    const midi = makeMidi(); const track = midi.addTrack(); track.channel = 9;
+    for (let beat = 0; beat < 4; beat++) track.addNote({ midi: 36, ticks: beat * 480, durationTicks: beat === 2 ? 0 : 60, velocity: 0.8 });
+    const result = await verify(midi.toArray().buffer);
+    expect(result.code).toContain('s(`bd!4`)');
+    expect(result.code).not.toContain('.clip(');
+    expect(result.diagnostics).toEqual([]);
   });
 
   it.each([2, 4])('extracts safe %i-measure phrases without severing internal sustains', async (measures) => {
