@@ -27,8 +27,14 @@ export const numberExpression = (value: number): string => {
   return shortest;
 };
 
-/** Readable control values: at most three decimals, no trailing zeros. */
-export const roundedDecimal = (value: number): string => String(Math.round(value * 1000) / 1000);
+/**
+ * Readable control values: at most three decimals, no trailing zeros. Values
+ * under 0.1 keep three significant digits instead, so a tiny gate alone in a
+ * long slot (slow tempo, staccato) is not shortened by up to a fifth.
+ */
+export const roundedDecimal = (value: number): string => (value !== 0 && Math.abs(value) < 0.1
+  ? String(Number(value.toPrecision(3)))
+  : String(Math.round(value * 1000) / 1000));
 
 /**
  * A cycle ratio derived through float seconds (60 / bpm / ppq ...) can land a

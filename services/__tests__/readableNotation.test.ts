@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
 import { DRUM_MAP } from '../../constants';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
-import { snappedRatio } from '../notation/NumberFormat';
+import { roundedDecimal, snappedRatio } from '../notation/NumberFormat';
 
 const { Midi } = MidiPackage;
 type MidiTrack = ReturnType<InstanceType<typeof Midi>['addTrack']>;
@@ -187,5 +187,34 @@ describe('cycle ratios', () => {
     expect(snappedRatio(4 / 3 + 1e-15)).toBe(4 / 3);
     expect(snappedRatio(103)).toBe(103);
     expect(snappedRatio(Math.PI)).toBe(Math.PI);
+  });
+});
+
+describe('control values', () => {
+  it('use three decimals, or three significant digits below 0.1', () => {
+    expect(roundedDecimal(1 / 3)).toBe('0.333');
+    expect(roundedDecimal(1.5)).toBe('1.5');
+    expect(roundedDecimal(2)).toBe('2');
+    expect(roundedDecimal(0.00125)).toBe('0.00125');
+    expect(roundedDecimal(1 / 478)).toBe('0.00209');
+    expect(roundedDecimal(0)).toBe('0');
+  });
+
+  it('keep a lone one-tick note at a slow tempo within 0.5% of its length', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(60);
+    midi.header.timeSignatures.push({ ticks: 0, timeSignature: [4, 4], measures: 0 });
+    const track = midi.addTrack();
+    // A one-tick (~2 ms) note alone in a one-second beat slot, plus a varied
+    // neighbour so gates are patterned. Three decimals would give 0.002 (4% short).
+    track.addNote({ midi: 60, ticks: 0, durationTicks: 1 });
+    track.addNote({ midi: 62, ticks: 1920, durationTicks: 960 });
+    const result = convertMidi(midi.toArray().buffer, 'staccato.mid');
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      const [first] = runtime.querySeconds(0, 1);
+      const sourceSeconds = 1 * 60 / 60 / 480;
+      expect(Math.abs((first.gateEndSeconds - first.onsetSeconds) - sourceSeconds) / sourceSeconds).toBeLessThan(0.005);
+    } finally { runtime.stop(); }
   });
 });
