@@ -58,8 +58,9 @@ export interface Track {
 }
 
 export interface ConversionDiagnostic {
-  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes';
-  severity: 'warning';
+  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes'
+    | 'snapped-to-ear';
+  severity: 'warning' | 'info';
   midiNote?: number;
   count?: number;
   message: string;
@@ -120,11 +121,6 @@ export interface StrudelConfig {
   // Modifiers
   includeVelocity: boolean;
   
-  // Quantization
-  isQuantized: boolean;
-  quantizationThreshold: number; // ms
-  quantizationStrength: number; // 0-100%
-  
   // Source file metadata
   fileName?: string;
 
@@ -151,9 +147,6 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   globalSound: 'triangle',
   
   includeVelocity: false,
-  isQuantized: false, 
-  quantizationThreshold: 50,
-  quantizationStrength: 100,
 
   durationTagStyle: 'sup',
   visualMethods: [],

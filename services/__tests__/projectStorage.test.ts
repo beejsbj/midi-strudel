@@ -105,7 +105,7 @@ describe('project storage', () => {
     expect(restored.sharedSpanSeconds).toBe(conversion.sharedSpanSeconds);
   });
 
-  it.each([false, true])('preserves fractional timing controls and phrases after reload (quantized: %s)', (isQuantized) => {
+  it('preserves fractional timing and phrases after reload', () => {
     const midi = new MidiPackage.Midi();
     midi.header.setTempo(123.456);
     const track = midi.addTrack();
@@ -114,9 +114,7 @@ describe('project storage', () => {
         track.addNote({ midi: 60 + index % 5, ticks: bar * 1920 + index * 160, durationTicks: 80 });
       }
     }
-    const conversion = convertMidi(midi.toArray().buffer, 'fractional.mid', {
-      isQuantized, quantizationStrength: 33.3, quantizationThreshold: 42.5,
-    });
+    const conversion = convertMidi(midi.toArray().buffer, 'fractional.mid');
     expect(conversion.patterns.definitions).toHaveLength(1);
     const storage = createMemoryStorage();
     saveConfigToStorage(conversion.config, storage);
@@ -136,7 +134,8 @@ describe('project storage', () => {
     const storage = createMemoryStorage();
     const legacyConfig = { ...DEFAULT_CONFIG, renderingMode, timingStyle: 'relativeDivision',
       durationPrecision: 2, outputStyle: 'melody+harmony', bpm: 135.000135000135,
-      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'note' };
+      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'note', cycleUnit: 'beat',
+      isQuantized: true, quantizationThreshold: 50, quantizationStrength: 100 };
     const tracks = [{ id: 'legacy', name: 'Piano', isDrum: false,
       notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }] }];
     storage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(legacyConfig));
@@ -145,7 +144,8 @@ describe('project storage', () => {
     expect(restored).toMatchObject({ bpm: legacyConfig.bpm, sourceBpm: legacyConfig.sourceBpm,
       measuresPerLine: 2 });
     expect(loadTracksFromStorage(storage)).toEqual(tracks);
-    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy']) {
+    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy',
+      'cycleUnit', 'isQuantized', 'quantizationThreshold', 'quantizationStrength']) {
       expect(restored).not.toHaveProperty(field);
       expect(DEFAULT_CONFIG).not.toHaveProperty(field);
     }

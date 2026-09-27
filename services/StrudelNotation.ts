@@ -10,6 +10,7 @@
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { DRUM_MAP, getAutoSound } from '../constants';
 import { mergeIdenticalDoubles, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
+import { EAR_TOLERANCE_SECONDS } from './notation/EarTiming';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
 import { renderStructuredRhythm, trackControlSuffix, trackControlsFor, type StructuredRhythmResult } from './notation/StructuredRenderer';
@@ -63,7 +64,9 @@ export class StrudelNotation {
 
     let mergedDoubles = 0;
     let silentNotes = 0;
-    const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events }) => {
+    let snappedNotes = 0;
+    let maxSnapSeconds = 0;
+    const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events, snapped }) => {
       // A zero-length pitched note makes no sound; a zero-length drum hit does.
       const audible = track.isDrum ? events.filter((event) => DRUM_MAP[event.midi])
         : events.filter((event) => event.releaseSeconds > event.onsetSeconds);
@@ -71,11 +74,15 @@ export class StrudelNotation {
       if (!track.hidden) {
         mergedDoubles += merged.merged;
         if (!track.isDrum) silentNotes += events.length - audible.length;
+        snappedNotes += snapped.moved;
+        maxSnapSeconds = Math.max(maxSnapSeconds, snapped.maxShiftSeconds);
       }
       return { track, events: merged.events };
     });
     if (mergedDoubles) diagnostics.push({ code: 'merged-duplicate-notes', severity: 'warning', count: mergedDoubles,
       message: `Merged ${mergedDoubles} fully identical duplicate note${mergedDoubles === 1 ? '' : 's'} (same pitch, start, length and velocity; drums ignore length)` });
+    if (snappedNotes) diagnostics.push({ code: 'snapped-to-ear', severity: 'info', count: snappedNotes,
+      message: `Moved ${snappedNotes} note${snappedNotes === 1 ? '' : 's'} onto the beat grid by at most ${(maxSnapSeconds * 1000).toFixed(1)} ms (exact to the ear: ${EAR_TOLERANCE_SECONDS * 1000} ms tolerance)` });
     if (silentNotes) diagnostics.push({ code: 'dropped-silent-notes', severity: 'warning', count: silentNotes,
       message: `Dropped ${silentNotes} zero-length pitched note${silentNotes === 1 ? '' : 's'}, which make no sound` });
 

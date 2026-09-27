@@ -413,7 +413,7 @@ describe('convertMidi', () => {
     const midi = new Midi();
     midi.header.setTempo(120);
     midi.header.timeSignatures.push({ ticks: 0, timeSignature: [3, 64], measures: 0 });
-    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 45 });
+    midi.addTrack().addNote({ midi: 60, ticks: 0, durationTicks: 60 });
 
     const result = convertMidi(midi.toArray().buffer, 'small-meter.mid');
     const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
@@ -422,21 +422,7 @@ describe('convertMidi', () => {
     expect(result.config.sourceTimeSignature).toEqual({ numerator: 3, denominator: 64 });
     expect(result.sharedSpanSeconds).toBe(3 / 32);
     expect(observed.events.map(({ onset }) => onset)).toEqual([0, 3 / 32]);
-    expect(observed.events.map(({ gateEnd }) => gateEnd)).toEqual([3 / 64, 9 / 64]);
-  });
-
-  it('does not impose sidebar limits on explicit public quantization requests', async () => {
-    const midi = new Midi();
-    midi.header.setTempo(30);
-    midi.addTrack().addNote({ midi: 60, ticks: 60, durationTicks: 120 });
-
-    const result = convertMidi(midi.toArray().buffer, 'wide-threshold.mid', {
-      isQuantized: true, quantizationThreshold: 300, quantizationStrength: 100,
-    });
-    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
-
-    expect(result.config.quantizationThreshold).toBe(300);
-    expect(observed.events[0].onset).toBe(0.5);
+    expect(observed.events.map(({ gateEnd }) => gateEnd)).toEqual([1 / 16, 3 / 32 + 1 / 16]);
   });
 
   it('uses absolute pitch control when relative mode has no detected key', async () => {
@@ -457,21 +443,21 @@ describe('convertMidi', () => {
     expect(observed.events[0].pitch).toBe('C#4');
   });
 
-  it('preserves a one-tick gate and gap rather than applying legacy epsilon merging', async () => {
+  it('preserves one-tick gates and an audible 20 ms gap rather than merging them', async () => {
     const midi = new Midi();
     midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 960 });
     midi.header.setTempo(120);
     const track = midi.addTrack();
     track.addNote({ midi: 60, ticks: 0, durationTicks: 1 });
-    track.addNote({ midi: 62, ticks: 2, durationTicks: 1 });
+    track.addNote({ midi: 62, ticks: 40, durationTicks: 1 });
 
     const result = convertMidi(midi.toArray().buffer, 'one-tick-gap.mid');
     const tickSeconds = 0.5 / 960;
     const expected = [
       { pitch: 'C4', onset: 0, gateEnd: tickSeconds },
-      { pitch: 'D4', onset: tickSeconds * 2, gateEnd: tickSeconds * 3 },
+      { pitch: 'D4', onset: tickSeconds * 40, gateEnd: tickSeconds * 41 },
       { pitch: 'C4', onset: 2, gateEnd: 2 + tickSeconds },
-      { pitch: 'D4', onset: 2 + (tickSeconds * 2), gateEnd: 2 + (tickSeconds * 3) },
+      { pitch: 'D4', onset: 2 + (tickSeconds * 40), gateEnd: 2 + (tickSeconds * 41) },
     ];
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {

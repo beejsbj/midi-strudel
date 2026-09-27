@@ -3,6 +3,7 @@ import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
+import { earNotes } from './helpers/earOracle';
 import { DRUM_MAP } from '../../constants';
 import { StrudelNotation } from '../StrudelNotation';
 
@@ -16,8 +17,8 @@ const makeMidi = () => {
 const addRiff = (track: ReturnType<InstanceType<typeof Midi>['addTrack']>, start: number, variation = '') => {
   for (let index = 0; index < 12; index++) {
     track.addNote({ midi: 60 + index % 7 + (variation === 'pitch' && index === 3 ? 1 : 0),
-      ticks: start + index * 160 + (variation === 'jitter' ? 10 : 0),
-      durationTicks: 120 + (variation === 'release' && index === 3 ? 1 : 0),
+      ticks: start + index * 160 + (variation === 'jitter' ? 20 : variation === 'inaudible' ? 5 : 0),
+      durationTicks: 120 + (variation === 'release' && index === 3 ? 30 : 0),
       velocity: variation === 'velocity' ? 0.4 : 0.8 });
   }
   // A deliberate double differs in length; an identical one is an export artifact.
@@ -31,11 +32,12 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
-/** Fully identical doubles (pitch, tick, length, velocity; drums ignore length) are expected to merge. */
-const uniqueNotes = <T extends { midi: number; ticks: number; durationTicks: number; velocity: number }>(notes: T[], drum = false): T[] => {
+/** Fully identical doubles (pitch, start, length, velocity; drums ignore length) are expected to merge. */
+const uniqueNotes = <T extends { midi: number; time: number; duration: number; velocity: number }>(notes: T[], drum = false): T[] => {
   const seen = new Set<string>();
+  const at = (seconds: number) => Math.round(seconds * 1e9);
   return notes.filter((note) => {
-    const key = `${note.midi}:${note.ticks}:${drum ? '' : note.durationTicks}:${note.velocity}`;
+    const key = `${note.midi}:${at(note.time)}:${drum ? '' : at(note.duration)}:${note.velocity}`;
     return seen.has(key) ? false : (seen.add(key), true);
   });
 };
@@ -46,22 +48,10 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(track.notes, track.channel === 9).flatMap((note) => {
+  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(earNotes(track.notes, result.config.sourceBpm, source.header.ppq), track.channel === 9).flatMap((note) => {
     const drum = track.channel === 9;
     if (drum && !DRUM_MAP[note.midi]) return [];
-    let onset = note.time;
-    let duration = note.duration;
-    if (result.config.isQuantized) {
-      const grid = 60 / result.config.sourceBpm / 4;
-      const strength = result.config.quantizationStrength / 100;
-      const snap = (value: number) => {
-        const delta = Math.round(value / grid) * grid - value;
-        return Math.abs(delta) * 1000 <= result.config.quantizationThreshold ? value + delta * strength : value;
-      };
-      onset = snap(onset);
-      duration = snap(duration);
-      if (duration < grid * 0.1) duration = grid;
-    }
+    const { time: onset, duration } = note;
     // Zero-length pitched notes are silent and dropped; drum hits are one-shots.
     if (!drum && duration <= 0) return [];
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
@@ -220,6 +210,13 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions).toEqual([]);
   });
 
+  it('hears a riff played 5 ms late as the same phrase', async () => {
+    const midi = makeMidi(); const track = midi.addTrack();
+    addRiff(track, 0); addRiff(track, 3840, 'inaudible');
+    const result = await verify(midi.toArray().buffer);
+    expect(result.patterns.definitions).toHaveLength(1);
+  });
+
   it('merges an identical double so the repeated phrase still matches', async () => {
     const midi = makeMidi(); const track = midi.addTrack();
     addRiff(track, 0); addRiff(track, 3840, 'identical');
@@ -228,22 +225,18 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'merged-duplicate-notes', count: 1 })]);
   });
 
-  it('matches only retained velocity and effective quantized timings', async () => {
+  it('matches only retained velocity and ear-snapped timings', async () => {
     const midi = makeMidi(); const track = midi.addTrack();
     addRiff(track, 0); addRiff(track, 3840, 'velocity'); addRiff(track, 7680, 'velocity');
     expect((await verify(midi.toArray().buffer, { includeVelocity: false })).patterns.definitions).toHaveLength(1);
-    const quantized = makeMidi(); const qt = quantized.addTrack();
+    // Each legato occurrence is played 5, 7 and 9 ms late: heard on the grid, one phrase.
+    const played = makeMidi(); const pt = played.addTrack();
     for (const start of [0, 3840, 7680]) for (let index = 0; index < 12; index++) {
-      qt.addNote({ midi: 60 + index % 7, ticks: start + index * 120 + (start / 3840 + 1) * 10, durationTicks: 100, velocity: 0.7 });
+      pt.addNote({ midi: 60 + index % 7, ticks: start + index * 120 + 5 + start / 3840 * 2, durationTicks: 120, velocity: 0.7 });
     }
-    expect((await verify(quantized.toArray().buffer, { isQuantized: true })).patterns.definitions).toHaveLength(1);
-    expect((await verify(quantized.toArray().buffer, { isQuantized: true, quantizationStrength: 50 })).patterns.definitions).toHaveLength(0);
-    const fractional = makeMidi(); const ft = fractional.addTrack();
-    for (const start of [0, 3840, 7680]) for (let index = 0; index < 12; index++) {
-      ft.addNote({ midi: 60 + index % 7, ticks: start + index * 120 + 10, durationTicks: 100, velocity: 0.7 });
-    }
-    expect((await verify(fractional.toArray().buffer, { isQuantized: true, quantizationStrength: 33.3 }))
-      .patterns.definitions).toHaveLength(1);
+    const snapped = await verify(played.toArray().buffer);
+    expect(snapped.patterns.definitions).toHaveLength(1);
+    expect(snapped.diagnostics).toContainEqual(expect.objectContaining({ code: 'snapped-to-ear', count: 36 }));
   });
 
   it('keeps musical matches stable under file and source identity changes', () => {

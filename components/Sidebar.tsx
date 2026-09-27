@@ -3,12 +3,11 @@ import { StrudelConfig, Track } from '../types';
 import { Upload, Trash2, Check, X } from 'lucide-react';
 import { PlaybackSettings } from './sidebar/PlaybackSettings';
 import { FormatSettings } from './sidebar/FormatSettings';
-import { QuantizationSettings } from './sidebar/QuantizationSettings';
 import { GeneralOptions } from './sidebar/GeneralOptions';
 import { VisualsSection } from './sidebar/VisualsSection';
 import { TrackList } from './sidebar/TrackList';
 
-type SidebarSectionId = 'playback' | 'format' | 'quantization' | 'options' | 'visuals' | 'tracks';
+type SidebarSectionId = 'playback' | 'format' | 'options' | 'visuals' | 'tracks';
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'midi-strudel-sidebar-collapsed';
 
@@ -16,7 +15,6 @@ function loadCollapsedSections(): Record<SidebarSectionId, boolean> {
   const fallback: Record<SidebarSectionId, boolean> = {
     playback: false,
     format: false,
-    quantization: false,
     options: false,
     visuals: false,
     tracks: false,
@@ -168,13 +166,6 @@ export const Sidebar: React.FC<Props> = ({
           setConfig={setConfig}
           isCollapsed={collapsedSections.format}
           onToggleCollapse={() => toggleSection('format')}
-        />
-
-        <QuantizationSettings
-          config={config}
-          setConfig={setConfig}
-          isCollapsed={collapsedSections.quantization}
-          onToggleCollapse={() => toggleSection('quantization')}
         />
 
         <GeneralOptions

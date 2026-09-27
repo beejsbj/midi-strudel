@@ -32,9 +32,6 @@ Conversion:
   --sound <name>                 fallback Strudel sound
   --auto-mapping / --no-auto-mapping
   --velocity / --no-velocity
-  --quantize / --no-quantize
-  --quantization-threshold <ms>
-  --quantization-strength <0-100>
 
 Other:
   -h, --help
@@ -91,21 +88,17 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       case '--no-auto-mapping': overrides.useAutoMapping = false; break;
       case '--velocity': overrides.includeVelocity = true; break;
       case '--no-velocity': overrides.includeVelocity = false; break;
-      case '--quantize': overrides.isQuantized = true; break;
-      case '--no-quantize': overrides.isQuantized = false; break;
-      case '--quantization-threshold': overrides.quantizationThreshold = numberValue(consumeValue(), arg); break;
-      case '--quantization-strength': {
-        const strength = numberValue(consumeValue(), arg);
-        if (strength > 100) fail(`${arg} must be <= 100`);
-        overrides.quantizationStrength = strength;
-        break;
-      }
       case '--rendering':
       case '--timing':
       case '--duration-precision':
         return fail(`${arg} has been retired; structured notation combines timing automatically. Remove this option.`);
       case '--cycle-unit':
         return fail(`${arg} has been retired; one Strudel cycle is always one bar. Remove this option.`);
+      case '--quantize':
+      case '--no-quantize':
+      case '--quantization-threshold':
+      case '--quantization-strength':
+        return fail(`${arg} has been retired; timing within 10 ms of the beat grid is snapped automatically. Remove this option.`);
       case '--format-per-line':
         return fail(`${arg} has been retired; lines always wrap by measure (see --measures-per-line). Remove this option.`);
       default: fail(`unknown option: ${arg}`);
