@@ -204,14 +204,13 @@ describe('midi-strudel arguments', () => {
   it('parses stable agent-facing conversion flags', () => {
     expect(parseArgs([
       '--format', 'json', '--bpm', '96', '--notation', 'relative',
-      '--cycle-unit', 'beat', '--quantize', '--velocity', 'song.midi',
+      '--quantize', '--velocity', 'song.midi',
     ])).toEqual({
       input: 'song.midi',
       format: 'json',
       overrides: {
         bpm: 96,
         notationType: 'relative',
-        cycleUnit: 'beat',
         isQuantized: true,
         includeVelocity: true,
       },
@@ -223,7 +222,7 @@ describe('midi-strudel arguments', () => {
     expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
   });
 
-  it.each(['--rendering', '--timing', '--duration-precision'])('explains how to migrate retired %s commands', (flag) => {
+  it.each(['--rendering', '--timing', '--duration-precision', '--cycle-unit', '--format-per-line'])('explains how to migrate retired %s commands', (flag) => {
     expect(() => parseArgs([flag, 'expanded', 'song.mid'])).toThrow(`${flag} has been retired`);
     const result = runCli(flag, 'expanded', fixture);
     expect(result.status).not.toBe(0);

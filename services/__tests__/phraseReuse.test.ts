@@ -271,7 +271,7 @@ describe('exact phrase reuse through public conversion', () => {
           durationTicks: pitch === 67 ? 180 : 120, velocity: 0.6 }));
       }
     }
-    const result = await verify(midi.toArray().buffer, { timeSignature: { numerator: 3, denominator: 4 }, cycleUnit: 'beat' });
+    const result = await verify(midi.toArray().buffer, { timeSignature: { numerator: 3, denominator: 4 } });
     expect(result.patterns.definitions).toHaveLength(1);
     expect(result.patterns.occurrences.map((occurrence) => occurrence.sourceStartMeasure)).toEqual([2, 4, 5]);
   });

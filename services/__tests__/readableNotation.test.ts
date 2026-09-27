@@ -77,16 +77,6 @@ describe('readable structured notation', () => {
     expect(library).not.toContain('.slow(');
   });
 
-  it('keeps one .slow per measure when a cycle is a beat', async () => {
-    const bytes = score((track) => {
-      track.addNote({ midi: 60, ticks: 0, durationTicks: 480 });
-      track.addNote({ midi: 62, ticks: 1920 + 480, durationTicks: 480 });
-    });
-    const result = await convertAndVerify(bytes, { cycleUnit: 'beat' });
-    expect(result.code).toMatch(/<\s+\[C4 ~!3\] \[~ D4 ~!2\]\s+>/);
-    expect(result.code).toContain('.slow(4)');
-  });
-
   it('keeps a staccato grid rather than merging its rests', async () => {
     const bytes = score((track) => {
       // Staccato grid stays: C4 sounds one sixteenth of a four-sixteenth beat.

@@ -60,7 +60,7 @@ describe('structured public conversion', () => {
     track.addNote({ midi: 36, ticks: 0, durationTicks: 480, velocity: 0.6 });
     track.addNote({ midi: 42, ticks: 240, durationTicks: 90, velocity: 0.4 });
     const result = convertMidi(midi.toArray().buffer, 'kit.mid', {
-      cycleUnit: 'beat', bpm: 90, timeSignature: { numerator: 3, denominator: 4 }, includeVelocity: true,
+      bpm: 90, timeSignature: { numerator: 3, denominator: 4 }, includeVelocity: true,
     });
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {

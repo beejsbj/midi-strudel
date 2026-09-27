@@ -48,20 +48,6 @@ export const FormatSettings: React.FC<Props> = ({
       </div>
 
       <div>
-        <label className={fieldLabelClass}>Cycle Unit</label>
-        <SegmentedControl
-          aria-label="Cycle unit"
-          value={config.cycleUnit}
-          onChange={(value) => updateConfigValue(setConfig, 'cycleUnit', value as StrudelConfig['cycleUnit'])}
-          options={[
-            { value: 'bar', label: 'Whole Bar' },
-            { value: 'beat', label: 'Beat' },
-          ]}
-        />
-        <HelpText>Sets whether one Strudel cycle represents a bar or a beat. Note timing and lengths are preserved.</HelpText>
-      </div>
-
-      <div>
         <label className={fieldLabelClass}>Note Controls</label>
         <SegmentedControl
           aria-label="Control syntax"

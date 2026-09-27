@@ -21,15 +21,16 @@ function Settings({ initialConfig = DEFAULT_CONFIG }: { initialConfig?: StrudelC
 
 const configValue = (): StrudelConfig => JSON.parse(screen.getByTestId('config').textContent!);
 
-it('offers pitch, cycle and wrapping controls without retired rendering modes', () => {
+it('offers pitch and wrapping controls without retired rendering or cycle modes', () => {
   render(<Settings />);
   for (const label of ['Expanded', 'Structured', 'Duration', 'Division']) {
     expect(screen.queryByRole('button', { name: label })).toBeNull();
   }
   expect(screen.queryByRole('spinbutton', { name: 'Duration precision' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Relative' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Beat' }));
-  expect(configValue()).toMatchObject({ notationType: 'relative', cycleUnit: 'beat' });
+  expect(screen.queryByRole('button', { name: 'Beat' })).toBeNull();
+  expect(configValue()).toMatchObject({ notationType: 'relative' });
+  expect(configValue()).not.toHaveProperty('cycleUnit');
   fireEvent.change(screen.getByRole('spinbutton', { name: 'Measures per line' }), { target: { value: '8' } });
   expect(configValue()).toMatchObject({ measuresPerLine: 8 });
   // Notes-per-line is retired: wrapping is always by measure.
@@ -44,7 +45,7 @@ it('rounds tempo labels while retaining exact source and playback BPM through ed
   expect(screen.getByText('135', { exact: true })).toBeTruthy();
   const tempoSlider = screen.getByRole('slider', { name: 'Tempo 135 BPM' });
   expect(configValue()).toMatchObject({ bpm: exactBpm, sourceBpm: exactBpm });
-  fireEvent.click(screen.getByRole('button', { name: 'Beat' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Relative' }));
   expect(configValue().bpm).toBe(exactBpm);
   fireEvent.change(tempoSlider, { target: { value: '120' } });
   expect(configValue()).toMatchObject({ bpm: 120, sourceBpm: exactBpm });

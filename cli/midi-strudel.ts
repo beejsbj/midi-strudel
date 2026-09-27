@@ -28,7 +28,6 @@ Conversion:
   --bpm <number>                 output playback tempo
   --notation <absolute|relative>
   --control-syntax <chained|colon>
-  --cycle-unit <bar|beat>
   --measures-per-line <integer>  bars per line in multi-bar phrases (alias: --items-per-line)
   --sound <name>                 fallback Strudel sound
   --auto-mapping / --no-auto-mapping
@@ -85,7 +84,6 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       case '--bpm': overrides.bpm = numberValue(consumeValue(), arg, 1); break;
       case '--notation': overrides.notationType = choice(consumeValue(), arg, ['absolute', 'relative']); break;
       case '--control-syntax': overrides.controlSyntax = choice(consumeValue(), arg, ['chained', 'colon']); break;
-      case '--cycle-unit': overrides.cycleUnit = choice(consumeValue(), arg, ['bar', 'beat']); break;
       case '--measures-per-line':
       case '--items-per-line': overrides.measuresPerLine = integerValue(consumeValue(), arg); break;
       case '--sound': overrides.globalSound = consumeValue(); break;
@@ -106,6 +104,10 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       case '--timing':
       case '--duration-precision':
         return fail(`${arg} has been retired; structured notation combines timing automatically. Remove this option.`);
+      case '--cycle-unit':
+        return fail(`${arg} has been retired; one Strudel cycle is always one bar. Remove this option.`);
+      case '--format-per-line':
+        return fail(`${arg} has been retired; lines always wrap by measure (see --measures-per-line). Remove this option.`);
       default: fail(`unknown option: ${arg}`);
     }
   }

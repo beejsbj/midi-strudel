@@ -303,8 +303,7 @@ export class StrudelNotation {
   private getCpsFormula(): string {
     const numerator = this.config.timeSignature.numerator || 4;
     const denominator = this.config.timeSignature.denominator || 4;
-    const quarterNotesPerCycle =
-      this.config.cycleUnit === 'bar' ? numerator * 4 : 4;
+    const quarterNotesPerCycle = numerator * 4;
     const commonFactor = gcd(denominator, quarterNotesPerCycle);
     const scaledNumerator = denominator / commonFactor;
     const scaledDenominator = quarterNotesPerCycle / commonFactor;

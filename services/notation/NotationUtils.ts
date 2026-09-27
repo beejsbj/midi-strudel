@@ -71,8 +71,8 @@ export function getSourceMeasureDuration(config: StrudelConfig): number {
   return quarterNoteDuration * (4 / denominator) * (sourceMeter.numerator || 4);
 }
 
+/** One Strudel cycle is always one bar. */
 export function getCycleDuration(config: StrudelConfig): number {
-  if (config.cycleUnit === 'beat') return getMeterBeatDuration(config);
   return getMeasureDuration(config);
 }
 
