@@ -123,7 +123,7 @@ describe('readable structured notation', () => {
     expect(chained.code).toContain('note(`C4 D4 E4 F4`).clip(1/3).velocity(0.795)');
     const colon = await convertAndVerify(bytes, { controlSyntax: 'colon', includeVelocity: true });
     expect(colon.code).toContain('a: `C4 D4 E4 F4`,');
-    expect(colon.code).toContain('.as("note").clip(1/3).velocity(0.795)');
+    expect(colon.code).toContain('\n  .as("note")\n  .clip(1/3)\n  .velocity(0.795)');
     expect(colon.code).not.toContain('note(');
   });
 
@@ -145,7 +145,7 @@ describe('readable structured notation', () => {
         track.addNote({ midi, ticks: index * 240, durationTicks: index % 2 ? 60 : 240, velocity: 0.8 }));
     });
     const relativeResult = await convertAndVerify(relative, { controlSyntax: 'colon', notationType: 'relative' });
-    expect(relativeResult.code).toContain('.as("n:clip").scale(');
+    expect(relativeResult.code).toContain('.as("n:clip")\n  .scale(');
 
     const kit = score((track) => {
       track.addNote({ midi: 36, ticks: 0, durationTicks: 480, velocity: 0.8 });
@@ -170,6 +170,18 @@ describe('line wrapping', () => {
       }
     }
   });
+  // Three short bars (quarter notes) fit on one row.
+  const narrow = score((track) => {
+    for (let bar = 0; bar < 3; bar++) [0, 1, 2, 3].forEach((beat) =>
+      track.addNote({ midi: 60 + bar * 5 + beat, ticks: bar * 1920 + beat * 480, durationTicks: 480 }));
+  });
+  // Every beat a run of four-note sixteenth chords: one bar is far wider than a line.
+  const dense = (bars: number) => score((track) => {
+    for (let bar = 0; bar < bars; bar++) for (let step = 0; step < 16; step++) {
+      [0, 4, 7, 11].forEach((interval) => track.addNote({
+        midi: 48 + bar * 2 + step % 5 + interval, ticks: bar * 1920 + step * 120, durationTicks: 120 }));
+    }
+  });
   const passage = (code: string) => /: note\(`([\s\S]*?)`\)/.exec(code)![1];
 
   const blockLines = (code: string) => passage(code).split('\n').map((line) => line.trim()).filter(Boolean);
@@ -184,12 +196,31 @@ describe('line wrapping', () => {
   });
 
   it('writes a multi-bar passage as a block even when it fits on one line', async () => {
-    const result = await convertAndVerify(bytes, { measuresPerLine: 4 });
+    const result = await convertAndVerify(narrow, { measuresPerLine: 4 });
     const lines = blockLines(result.code);
     expect(lines).toHaveLength(3);
     expect(lines[0]).toBe('<');
-    expect(lines[1].match(/^\[\[/g)).toHaveLength(1);
+    expect(lines[1]).toBe('[C4 C#4 D4 D#4] [F4 F#4 G4 G#4] [A#4 B4 C5 C#5]');
     expect(lines[2]).toBe('>');
+  });
+
+  it('breaks a row before it passes 100 characters', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 4 });
+    const lines = blockLines(result.code);
+    // Three ~52-character bars: any two together pass 100, so one bar per row.
+    expect(lines.slice(1, -1)).toHaveLength(3);
+    lines.forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
+  });
+
+  it('puts each beat of a too-wide bar on its own line', async () => {
+    const result = await convertAndVerify(dense(2), { measuresPerLine: 4 });
+    const lines = blockLines(result.code);
+    expect(lines).toEqual(['<', '[', expect.any(String), expect.any(String), expect.any(String), expect.any(String), ']',
+      '[', expect.any(String), expect.any(String), expect.any(String), expect.any(String), ']', '>']);
+    lines.forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
+    const oneBar = await convertAndVerify(dense(1));
+    expect(blockLines(oneBar.code)).toHaveLength(6);
+    expect(blockLines(oneBar.code)[0]).toBe('[');
   });
 
   it('keeps a one-bar passage on its key line', async () => {
@@ -199,8 +230,8 @@ describe('line wrapping', () => {
   });
 
   it('indents the block under its library key', async () => {
-    const result = await convertAndVerify(bytes, { measuresPerLine: 2 });
-    expect(result.code).toMatch(/\n {4}a: note\(`<\n {6}\[\[.*\n {6}\[\[.*\n {4}>`\),/);
+    const result = await convertAndVerify(narrow, { measuresPerLine: 2 });
+    expect(result.code).toMatch(/\n {4}a: note\(`<\n {6}\[C4 .*\n {6}\[A#4 .*\n {4}>`\),/);
   });
 });
 

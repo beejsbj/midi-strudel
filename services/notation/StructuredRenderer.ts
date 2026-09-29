@@ -211,10 +211,11 @@ export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhyth
 
 /** The track line's single reading of its pattern strings. */
 export const trackControlSuffix = (control: StructuredRhythmInput['control'], controls: TrackControls, scale?: string): string =>
-  `.as(${JSON.stringify([control, ...controls.fields].join(':'))})`
-  + (controls.clip ? `.clip(${controls.clip})` : '')
-  + (controls.velocity ? `.velocity(${controls.velocity})` : '')
-  + (control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '');
+  // One call per line, like the .sound()/.color() chain that follows.
+  `\n  .as(${JSON.stringify([control, ...controls.fields].join(':'))})`
+  + (controls.clip ? `\n  .clip(${controls.clip})` : '')
+  + (controls.velocity ? `\n  .velocity(${controls.velocity})` : '')
+  + (control === 'n' && scale !== undefined ? `\n  .scale(${JSON.stringify(scale)})` : '');
 
 type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
@@ -308,10 +309,15 @@ const segments = (node: RhythmNode, attribute: Attribute, fields: Field[]): Arra
     ({ text: count > 1 ? `${item.text}!${count}` : item.text, attacks: item.attacks * count }));
 };
 
+/** Rows wrap before this many characters; a wider bar puts each beat on its own line. */
+export const LINE_WIDTH = 100;
+
 /**
  * Lay out one lane. Whole measures become `<...>` steps (one cycle each). A
- * multi-bar passage is always a block with N measures per line (`m!3` counts
- * 3 and is never split); a one-bar passage stays on its key line.
+ * multi-bar passage is always a block with at most N measures per line (`m!3`
+ * counts 3 and is never split) and at most LINE_WIDTH characters per row; a
+ * one-bar passage stays on its key line. Widths are measured on the note lane
+ * so chained control lanes break in the same places.
  */
 const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], config: StrudelConfig, measureSteps: boolean): string => {
   const measures = lane.kind === 'sequence' ? lane.children : [lane];
@@ -320,17 +326,38 @@ const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], con
     const text = measures.map((measure) => emitGroup(measure, attribute, fields)).join(' ');
     return measures.length > 1 ? `[${text}]` : text;
   }
-  if (measures.length === 1) return segments(measures[0], attribute, fields).map((part) => part.text).join(' ');
+  const beats = (measure: RhythmNode) => segments(measure, attribute, fields).map((part) => part.text);
+  const tooWide = (measure: RhythmNode, suffix = '') => measure.kind === 'sequence' && measure.children.length > 1
+    && emitGroup(measure, 'value', fields).length + suffix.length > LINE_WIDTH;
+  if (measures.length === 1) {
+    return tooWide(measures[0]) ? `[\n  ${beats(measures[0]).join('\n  ')}\n]` : beats(measures[0]).join(' ');
+  }
   const perLine = Math.max(1, config.measuresPerLine);
-  const rows: string[][] = [[]];
+  const lines: string[] = [];
+  let row: string[] = [];
+  let rowWidth = 0;
   let count = 0;
-  const runs = repeatCounts(measures.map((measure) => emitGroup(measure, attribute, fields)), (a, b) => a === b);
+  const flush = () => {
+    if (row.length) lines.push(row.join(' '));
+    row = []; rowWidth = 0; count = 0;
+  };
+  const runs = repeatCounts(measures.map((measure) => ({ measure, text: emitGroup(measure, attribute, fields) })),
+    (a, b) => a.text === b.text);
   for (const { item, count: repeats } of runs) {
-    if (count >= perLine && rows[rows.length - 1].length) { rows.push([]); count = 0; }
-    rows[rows.length - 1].push(repeats > 1 ? `${item}!${repeats}` : item);
+    const suffix = repeats > 1 ? `!${repeats}` : '';
+    if (tooWide(item.measure, suffix)) {
+      flush();
+      lines.push('[', ...beats(item.measure).map((beat) => `  ${beat}`), `]${suffix}`);
+      continue;
+    }
+    const width = emitGroup(item.measure, 'value', fields).length + suffix.length;
+    if (row.length && (count >= perLine || rowWidth + 1 + width > LINE_WIDTH)) flush();
+    row.push(`${item.text}${suffix}`);
+    rowWidth += (row.length > 1 ? 1 : 0) + width;
     count += repeats;
   }
-  return `<\n  ${rows.map((row) => row.join(' ')).join('\n  ')}\n>`;
+  flush();
+  return `<\n  ${lines.join('\n  ')}\n>`;
 };
 
 const emitRhythm = (
