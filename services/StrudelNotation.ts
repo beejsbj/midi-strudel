@@ -4,12 +4,12 @@
  * Implementation is split across focused modules under services/notation/:
  *   NotationUtils   — pure helpers (math, formatting, isRest, etc.)
  *   StructuredRenderer — source-timed rhythms and polyphony
- *   PhraseRenderer — one score library and per-track arrangements
+ *   PhraseRenderer — each track's phrase object and arrangement
  */
 
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { DRUM_MAP, getAutoSound } from '../constants';
-import { mergeIdenticalDoubles, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
+import { mergeIdenticalDoubles, mergeSameSampleHits, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { EAR_TOLERANCE_SECONDS } from './notation/EarTiming';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
@@ -25,6 +25,21 @@ import {
   getRelativeDegree,
   getSourceMeasureDuration,
 } from './notation/NotationUtils';
+
+/** Drum samples play at full level; Strudel's soundfonts and synths peak at 0.3. */
+const DRUM_GAIN = 0.3;
+
+/**
+ * A track label names both a `const` phrase object and a `$label:` line, so it
+ * cannot be a JS reserved word or a Strudel global the generated code calls.
+ */
+const RESERVED_LABELS = new Set([
+  'arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do',
+  'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in',
+  'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static',
+  'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'undefined', 'var', 'void', 'while', 'with', 'yield',
+  'mini', 'n', 'note', 's', 'setcps', 'silence', 'sound', 'stack',
+]);
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -63,6 +78,7 @@ export class StrudelNotation {
       }));
 
     let mergedDoubles = 0;
+    let drumLayers = 0;
     let silentNotes = 0;
     let snappedNotes = 0;
     let maxSnapSeconds = 0;
@@ -71,16 +87,20 @@ export class StrudelNotation {
       const audible = track.isDrum ? events.filter((event) => DRUM_MAP[event.midi])
         : events.filter((event) => event.releaseSeconds > event.onsetSeconds);
       const merged = mergeIdenticalDoubles(audible, track.isDrum);
+      const layered = track.isDrum ? mergeSameSampleHits(merged.events, (midi) => DRUM_MAP[midi]) : merged;
       if (!track.hidden) {
         mergedDoubles += merged.merged;
+        drumLayers += track.isDrum ? layered.merged : 0;
         if (!track.isDrum) silentNotes += events.length - audible.length;
         snappedNotes += snapped.moved;
         maxSnapSeconds = Math.max(maxSnapSeconds, snapped.maxShiftSeconds);
       }
-      return { track, events: merged.events };
+      return { track, events: layered.events };
     });
     if (mergedDoubles) diagnostics.push({ code: 'merged-duplicate-notes', severity: 'warning', count: mergedDoubles,
       message: `Merged ${mergedDoubles} fully identical duplicate note${mergedDoubles === 1 ? '' : 's'} (same pitch, start, length and velocity; drums ignore length)` });
+    if (drumLayers) diagnostics.push({ code: 'merged-drum-layers', severity: 'info', count: drumLayers,
+      message: `Merged ${drumLayers} drum hit${drumLayers === 1 ? '' : 's'} that land on the same sample at the same time (one sample twice is only louder)` });
     if (snappedNotes) diagnostics.push({ code: 'snapped-to-ear', severity: 'info', count: snappedNotes,
       message: `Moved ${snappedNotes} note${snappedNotes === 1 ? '' : 's'} onto the beat grid by at most ${(maxSnapSeconds * 1000).toFixed(1)} ms (exact to the ear: ${EAR_TOLERANCE_SECONDS * 1000} ms tolerance)` });
     if (silentNotes) diagnostics.push({ code: 'dropped-silent-notes', severity: 'warning', count: silentNotes,
@@ -118,8 +138,7 @@ export class StrudelNotation {
 
     const literalFallbackTracks = new Map<string, Set<string>>();
     const patterns: PatternMetadata = { definitions: [], occurrences: [] };
-    const libraries: string[] = [];
-    const arrangements: string[] = [];
+    const blocks: string[] = [];
     let budgetTracks = 0;
     const activeLabels = this.getUniqueActiveLabels(effectiveTracks);
     effectiveTracks.forEach(({ track, events }, trackIndex) => {
@@ -128,15 +147,14 @@ export class StrudelNotation {
 
       // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      libraries.push(rendered.library);
-      arrangements.push(rendered.code);
+      blocks.push(`${rendered.library}\n\n${rendered.code}`);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);
       if (eligibility.structured) rendered.fallbackReasons.forEach((reason) => reasons.add(reason));
       if (reasons.size) literalFallbackTracks.set(activeLabels.get(track)!, reasons);
     });
-    if (libraries.length) output += `const phrases = {\n${libraries.join('\n')}\n};\n\n${arrangements.join('\n')}`;
+    output += blocks.join('\n');
 
     if (literalFallbackTracks.size > 0) {
       diagnostics.push({
@@ -234,7 +252,7 @@ export class StrudelNotation {
       return literal;
     };
     const makePattern = (expression: string): string => {
-      const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})` : '';
+      const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})\n  .gain(${DRUM_GAIN})` : '';
       const soundSuffix = track.isDrum ? '' : `\n  .sound(${JSON.stringify(sound)})`;
       return `$${activeLabel}: ${expression}${soundSuffix}${bank}${visualSuffix};\n`;
     };
@@ -284,7 +302,7 @@ export class StrudelNotation {
       if (track.hidden || events.length === 0) return;
       const name = track.name.toLowerCase().replace(/\([^)]*\)/g, '').replace(/\b(grand|classic)\b/g, '')
         .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24).replace(/_$/g, '') || (track.isDrum ? 'drums' : 'track');
-      const base = /^[a-z]/.test(name) && !['constructor', 'prototype'].includes(name) ? name : `track_${name}`;
+      const base = /^[a-z]/.test(name) && !RESERVED_LABELS.has(name) ? name : `track_${name}`;
       let label = base;
       let duplicate = 2;
       while (used.has(label)) {

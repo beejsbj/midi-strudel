@@ -79,6 +79,24 @@ export const mergeIdenticalDoubles = (events: EffectiveEvent[], oneShot = false)
   return { events: kept, merged: events.length - kept.length };
 };
 
+/**
+ * Two drum notes that map to one sample at one instant (GM 35 and 36 are both
+ * `bd`) play that sample twice: no new timbre, only a louder hit. Keep the
+ * loudest.
+ */
+export const mergeSameSampleHits = (events: EffectiveEvent[], sampleOf: (midi: number) => string | undefined)
+  : { events: EffectiveEvent[]; merged: number } => {
+  const loudest = new Map<string, EffectiveEvent>();
+  for (const event of events) {
+    // Snapped ticks are exact; seconds can differ in the last bits.
+    const key = `${sampleOf(event.midi) ?? event.midi}:${event.source ? `t${event.source.ticks}` : event.onsetSeconds}`;
+    const kept = loudest.get(key);
+    if (!kept || event.velocity > kept.velocity) loudest.set(key, event);
+  }
+  const kept = new Set(loudest.values());
+  return { events: events.filter((event) => kept.has(event)), merged: events.length - kept.size };
+};
+
 export const effectiveEventsToNotes = (events: EffectiveEvent[]): Note[] => events.map((event) => ({
   note: event.note,
   midi: event.midi,

@@ -60,7 +60,11 @@ async function convertAndVerify(bytes: ArrayBuffer, overrides: ConversionOverrid
   return result;
 }
 
-const phraseLibrary = (code: string) => code.slice(code.indexOf('const phrases = {'), code.indexOf('\n};') + 3);
+/** The first track's phrase object. */
+const phraseLibrary = (code: string) => {
+  const start = code.search(/^const (?!BPM)\w+ = \{$/m);
+  return code.slice(start, code.indexOf('\n};', start) + 3);
+};
 
 describe('readable structured notation', () => {
   it('writes held chords as structure and whole measures as <...> steps without .slow', async () => {
@@ -72,7 +76,7 @@ describe('readable structured notation', () => {
     });
     const result = await convertAndVerify(bytes);
     const library = phraseLibrary(result.code);
-    expect(library).toMatch(/<\s+\[D2,D3\] \[E2,E3\] \[F2,F3\] \[\[G2,G3\] ~\]\s+>/);
+    expect(library).toMatch(/<\s*\[D2,D3\] \[E2,E3\] \[F2,F3\] \[\[G2,G3\] ~\]\s*>/);
     expect(library).not.toContain('.clip(');
     expect(library).not.toContain('.slow(');
   });
@@ -115,15 +119,16 @@ describe('readable structured notation', () => {
     });
   });
 
-  it('keeps colon phrases as bare strings and hoists track-wide constants to the track line', async () => {
+  it('names colon fields on each phrase and hoists track-wide constants to the track line', async () => {
     const bytes = score((track) => {
       [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160, velocity: 0.8 }));
     });
     const chained = await convertAndVerify(bytes, { controlSyntax: 'chained', includeVelocity: true });
     expect(chained.code).toContain('note(`C4 D4 E4 F4`).clip(1/3).velocity(0.795)');
     const colon = await convertAndVerify(bytes, { controlSyntax: 'colon', includeVelocity: true });
-    expect(colon.code).toContain('a: `C4 D4 E4 F4`,');
-    expect(colon.code).toContain('\n  .as("note")\n  .clip(1/3)\n  .velocity(0.795)');
+    // A phrase pasted on its own still knows its fields.
+    expect(colon.code).toContain('a: `C4 D4 E4 F4`.as("note"),');
+    expect(colon.code).toContain('$track_1: track_1.a\n  .clip(1/3)\n  .velocity(0.795)');
     expect(colon.code).not.toContain('note(');
   });
 
@@ -145,7 +150,8 @@ describe('readable structured notation', () => {
         track.addNote({ midi, ticks: index * 240, durationTicks: index % 2 ? 60 : 240, velocity: 0.8 }));
     });
     const relativeResult = await convertAndVerify(relative, { controlSyntax: 'colon', notationType: 'relative' });
-    expect(relativeResult.code).toContain('.as("n:clip")\n  .scale(');
+    expect(relativeResult.code).toMatch(/`\.as\("n:clip"\),\n/);
+    expect(relativeResult.code).toContain('\n  .scale(');
 
     const kit = score((track) => {
       track.addNote({ midi: 36, ticks: 0, durationTicks: 480, velocity: 0.8 });
@@ -154,9 +160,26 @@ describe('readable structured notation', () => {
     }, true);
     // Drums are one-shots: no clip field even when MIDI lengths differ.
     const kitResult = await convertAndVerify(kit, { controlSyntax: 'colon' });
-    expect(kitResult.code).toContain('a: `[bd,cr] sd`,');
-    expect(kitResult.code).toContain('.as("s")');
+    expect(kitResult.code).toContain('a: `[bd,cr] sd`.as("s"),');
     expect(kitResult.code).not.toMatch(/clip/);
+  });
+
+  it('plays a drum sample once per instant, at the level Strudel gives soundfonts', async () => {
+    const kit = score((track) => {
+      // GM 35 and 36 are both `bd`: together they are one louder kick.
+      track.addNote({ midi: 35, ticks: 0, durationTicks: 120, velocity: 0.5 });
+      track.addNote({ midi: 36, ticks: 0, durationTicks: 120, velocity: 0.9 });
+      track.addNote({ midi: 38, ticks: 960, durationTicks: 120, velocity: 0.8 });
+    }, true);
+    const result = convertMidi(kit, 'kit.mid', { controlSyntax: 'colon' });
+    expect(result.code).toContain('a: `bd sd`.as("s"),');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'merged-drum-layers', count: 1 }));
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      const hits = runtime.querySeconds(0, result.sharedSpanSeconds);
+      expect(hits.map((hit) => hit.value.s)).toEqual(['bd', 'sd']);
+      hits.forEach((hit) => expect(hit.value.gain).toBe(0.3));
+    } finally { runtime.stop(); }
   });
 });
 
@@ -195,13 +218,9 @@ describe('line wrapping', () => {
     lines.slice(1, -1).forEach((line) => expect(line).toMatch(/^\[\[.*\]\]$/));
   });
 
-  it('writes a multi-bar passage as a block even when it fits on one line', async () => {
+  it('keeps a multi-bar passage on its key line when it fits one row', async () => {
     const result = await convertAndVerify(narrow, { measuresPerLine: 4 });
-    const lines = blockLines(result.code);
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe('<');
-    expect(lines[1]).toBe('[C4 C#4 D4 D#4] [F4 F#4 G4 G#4] [A#4 B4 C5 C#5]');
-    expect(lines[2]).toBe('>');
+    expect(passage(result.code)).toBe('<[C4 C#4 D4 D#4] [F4 F#4 G4 G#4] [A#4 B4 C5 C#5]>');
   });
 
   it('breaks a row before it passes 100 characters', async () => {
@@ -229,9 +248,14 @@ describe('line wrapping', () => {
     expect(passage(result.code)).toBe('C4 D4 E4 F4');
   });
 
-  it('indents the block under its library key', async () => {
+  it('indents the block under its phrase key', async () => {
     const result = await convertAndVerify(narrow, { measuresPerLine: 2 });
-    expect(result.code).toMatch(/\n {4}a: note\(`<\n {6}\[C4 .*\n {6}\[A#4 .*\n {4}>`\),/);
+    expect(result.code).toMatch(/\nconst track_1 = \{\n {2}a: note\(`<\n {4}\[C4 .*\n {4}\[A#4 .*\n {2}>`\),\n\};/);
+  });
+
+  it('keeps every line within 100 characters, key and .as included', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 4, controlSyntax: 'colon' });
+    result.code.split('\n').forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
   });
 });
 

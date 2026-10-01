@@ -31,20 +31,24 @@ function compactSelectors(tokens: string[]): string {
 
 /**
  * The REPL transpiles double-quoted and backtick strings to mini patterns; no
- * cat() wrapper. A timeline wider than a line wraps into a backtick block.
+ * cat() wrapper. A timeline wider than its `$label: ` line wraps into a
+ * backtick block.
  */
-function selectorString(selectors: string): string {
-  if (selectors.length + 2 <= LINE_WIDTH) return JSON.stringify(`<${selectors}>`);
+function selectorString(selectors: string, trackKey: string): string {
+  if (`$${trackKey}: "<${selectors}>"`.length <= LINE_WIDTH) return JSON.stringify(`<${selectors}>`);
   const rows: string[] = [];
   for (const token of selectors.split(' ')) {
     const last = rows[rows.length - 1];
-    if (last !== undefined && last.length + 1 + token.length <= LINE_WIDTH) rows[rows.length - 1] = `${last} ${token}`;
+    if (last !== undefined && 2 + last.length + 1 + token.length <= LINE_WIDTH) rows[rows.length - 1] = `${last} ${token}`;
     else rows.push(token);
   }
   return `\`<\n  ${rows.join('\n  ')}\n>\``;
 }
 
-/** A track's values join the single score library; no generated declarations. */
+/**
+ * A track's phrases become its own object, declared just above the track line
+ * that reads it. Keys follow the order phrases first play; the remainder last.
+ */
 export function renderPhraseTimeline(input: {
   phrases: DiscoveredPhrase[];
   passages: OneOffPassage[];
@@ -59,24 +63,25 @@ export function renderPhraseTimeline(input: {
   const { phrases, passages, remainderExpression, trackId, trackIndex, trackKey,
     measureSeconds, cycleSeconds, sharedSpanSeconds } = input;
   const patterns: PatternMetadata = { definitions: [], occurrences: [] };
+
+  // Identical text shares one key, placed by its earliest start.
+  const firstStart = new Map<string, number>();
+  const place = (expression: string, start: number) =>
+    firstStart.set(expression, Math.min(firstStart.get(expression) ?? Infinity, start));
+  for (const phrase of phrases) for (const occurrence of phrase.occurrences) place(phrase.expression, occurrence.startMeasure - 1);
+  for (const { window, expression } of passages) place(expression, window.startMeasure - 1);
+  if (remainderExpression) place(remainderExpression, Infinity);
+  const definitions = [...firstStart].sort((a, b) => a[1] - b[1])
+    .map(([expression], index) => ({ key: phraseKey(index), expression }));
+  const keyOf = new Map(definitions.map(({ key, expression }) => [expression, key]));
+
   const entries: Array<{ token: string; start: number; length: number }> = [];
-  const definitions: Array<{ key: string; expression: string }> = [];
-
-  // Deduplicate expressions within this track: identical text → identical key.
-  const expressionToKey = new Map<string, string>();
-
   for (const [index, phrase] of phrases.entries()) {
-    // Reuse existing key if this expression was already defined.
-    let key = expressionToKey.get(phrase.expression);
-    if (!key) {
-      key = phraseKey(definitions.length);
-      definitions.push({ key, expression: phrase.expression });
-      expressionToKey.set(phrase.expression, key);
-    }
+    const key = keyOf.get(phrase.expression)!;
     // Stable discovery IDs remain independent of the emitted object path.
     const id = `track${trackIndex + 1}Phrase${index + 1}`;
     const first = phrase.occurrences[0];
-    patterns.definitions.push({ id, name: `phrases.${trackKey}.${key}`, trackId, measureCount: first.measureCount,
+    patterns.definitions.push({ id, name: `${trackKey}.${key}`, trackId, measureCount: first.measureCount,
       durationSeconds: first.durationSeconds, sourceNoteIds: first.events.map((event) => event.source!.id) });
     for (const occurrence of phrase.occurrences) {
       entries.push({ token: key, start: occurrence.startMeasure - 1, length: occurrence.measureCount });
@@ -87,14 +92,7 @@ export function renderPhraseTimeline(input: {
     }
   }
   for (const { window, expression } of passages) {
-    // Reuse existing key if this expression was already defined.
-    let key = expressionToKey.get(expression);
-    if (!key) {
-      key = phraseKey(definitions.length);
-      definitions.push({ key, expression });
-      expressionToKey.set(expression, key);
-    }
-    entries.push({ token: key, start: window.startMeasure - 1, length: window.measureCount });
+    entries.push({ token: keyOf.get(expression)!, start: window.startMeasure - 1, length: window.measureCount });
   }
   entries.sort((a, b) => a.start - b.start);
   patterns.occurrences.sort((a, b) => a.startSeconds - b.startSeconds);
@@ -110,24 +108,17 @@ export function renderPhraseTimeline(input: {
   if (cursor < measures) tokens.push(token('~', measures - cursor));
   const slow = measureSeconds === cycleSeconds ? '' : `.slow(${ratioExpression(measureSeconds, cycleSeconds)})`;
   let expression = entries.length
-    ? `${selectorString(compactSelectors(tokens))}${slow}\n  .pickRestart(phrases.${trackKey})`
+    ? `${selectorString(compactSelectors(tokens), trackKey)}${slow}\n  .pickRestart(${trackKey})`
     : '';
   // A lone passage already owns the complete loop; a selector would add noise.
   if (entries.length === 1 && entries[0].start === 0 && entries[0].length === measures) {
-    expression = `phrases.${trackKey}.${entries[0].token}`;
+    expression = `${trackKey}.${entries[0].token}`;
   }
   if (remainderExpression) {
-    // Reuse existing key if this expression was already defined.
-    let key = expressionToKey.get(remainderExpression);
-    if (!key) {
-      key = phraseKey(definitions.length);
-      definitions.push({ key, expression: remainderExpression });
-      expressionToKey.set(remainderExpression, key);
-    }
-    const remainder = `phrases.${trackKey}.${key}`;
+    const remainder = `${trackKey}.${keyOf.get(remainderExpression)!}`;
     expression = expression ? `stack(${expression}, ${remainder})` : remainder;
   }
-  const library = `  ${trackKey}: {\n${definitions.map(({ key, expression: value }) =>
-    `    ${key}: ${value.replace(/\n/g, '\n    ')},`).join('\n')}\n  },`;
+  const library = `const ${trackKey} = {\n${definitions.map(({ key, expression: value }) =>
+    `  ${key}: ${value.replace(/\n/g, '\n  ')},`).join('\n')}\n};`;
   return { library, expression, patterns };
 }
