@@ -168,6 +168,19 @@ describe('exact phrase reuse through public conversion', () => {
     for (const label of labels) expect(result.code).toContain(`const ${label} = {`);
   });
 
+  it('heads each track block with a full-width rule naming the track', async () => {
+    const midi = makeMidi();
+    for (const [index, name] of ['Grand Piano', 'Bass'].entries()) {
+      const track = midi.addTrack(); track.name = name;
+      track.addNote({ midi: 48 + index, ticks: index * 1920, durationTicks: 240, velocity: 0.5 });
+    }
+    const result = await verify(midi.toArray().buffer);
+    const rules = result.code.split('\n').filter((line) => line.startsWith('// ── '));
+    expect(rules.map((line) => /^\/\/ ── (.+?) ─+$/.exec(line)?.[1])).toEqual(['Grand Piano', 'Bass']);
+    rules.forEach((line) => expect(line).toHaveLength(100));
+    expect(result.code).toMatch(/\/\/ ── Bass ─+\nconst bass = \{/);
+  });
+
   it('keeps labels clear of JS reserved words and the Strudel calls the code makes', async () => {
     const midi = makeMidi();
     for (const [index, name] of ['New', 'Note', 'Stack'].entries()) {

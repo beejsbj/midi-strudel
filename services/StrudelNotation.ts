@@ -13,7 +13,7 @@ import { mergeIdenticalDoubles, mergeSameSampleHits, prepareEffectiveTracks, typ
 import { EAR_TOLERANCE_SECONDS } from './notation/EarTiming';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
 import { assessSourceTimingEligibility } from './notation/SourceEligibility';
-import { renderStructuredRhythm, trackControlSuffix, trackControlsFor, type StructuredRhythmResult } from './notation/StructuredRenderer';
+import { LINE_WIDTH, renderStructuredRhythm, trackControlSuffix, trackControlsFor, type StructuredRhythmResult } from './notation/StructuredRenderer';
 import { discoverPhrases, type EffectiveTickTiming, type PhraseWindow } from './notation/PhraseDiscovery';
 import { renderPhraseTimeline } from './notation/PhraseRenderer';
 import { renderOneOffPassages } from './notation/OneOffPassages';
@@ -40,6 +40,12 @@ const RESERVED_LABELS = new Set([
   'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'undefined', 'var', 'void', 'while', 'with', 'yield',
   'mini', 'n', 'note', 's', 'setcps', 'silence', 'sound', 'stack',
 ]);
+
+/** A full-width rule naming the track, so a scan finds each instrument's block. */
+const sectionRule = (name: string): string => {
+  const title = `// ── ${name.replace(/[\r\n\t]+/g, ' ').trim()} `;
+  return title + '─'.repeat(Math.max(2, LINE_WIDTH - title.length));
+};
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -147,7 +153,7 @@ export class StrudelNotation {
 
       // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      blocks.push(`${rendered.library}\n\n${rendered.code}`);
+      blocks.push(`${sectionRule(track.name || activeLabels.get(track)!)}\n${rendered.library}\n\n${rendered.code}`);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);
