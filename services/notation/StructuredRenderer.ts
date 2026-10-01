@@ -179,8 +179,8 @@ export const renderStructuredRhythm = ({
   const measureTicks = meter.numerator * beatTicks;
   // `<...>` gives each whole measure one cycle; a partial measure would be stretched.
   const measureSteps = spanTicks % measureTicks === 0;
-  const expression = emitRhythm(rhythm, control, config, measureSteps);
   const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
+  const expression = emitRhythm(rhythm, control, config, measureSteps, undefined, scaleSuffix);
   const cycles = snappedRatio((measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds);
   const slowSuffix = cycles === 1 ? '' : `.slow(${numberExpression(cycles)})`;
   return {
@@ -188,7 +188,7 @@ export const renderStructuredRhythm = ({
     expression: `${expression}${scaleSuffix}${slowSuffix}`,
     rhythm,
     // Each phrase names its own fields, so it plays wherever it is pasted.
-    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls)}${slowSuffix}`,
+    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls, scaleSuffix)}${slowSuffix}`,
   };
 };
 
@@ -211,11 +211,10 @@ export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhyth
 };
 
 /** Controls every phrase of the track shares, hoisted onto the track line. */
-export const trackControlSuffix = (control: StructuredRhythmInput['control'], controls: TrackControls, scale?: string): string =>
+export const trackControlSuffix = (controls: TrackControls): string =>
   // One call per line, like the .sound()/.color() chain that follows.
   (controls.clip ? `\n  .clip(${controls.clip})` : '')
-  + (controls.velocity ? `\n  .velocity(${controls.velocity})` : '')
-  + (control === 'n' && scale !== undefined ? `\n  .scale(${JSON.stringify(scale)})` : '');
+  + (controls.velocity ? `\n  .velocity(${controls.velocity})` : '');
 
 type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
@@ -378,10 +377,12 @@ const layoutLane = (
 const emitRhythm = (
   node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean,
   library?: TrackControls,
+  scaleSuffix = '',
 ): string => {
   // Library passages are bare strings; the phrase names its own fields once.
   if (library) {
-    const as = `.as(${JSON.stringify([control, ...library.fields].join(':'))})`;
+    // Relative degrees need their scale to mean pitches, so it travels too.
+    const as = `.as(${JSON.stringify([control, ...library.fields].join(':'))})${scaleSuffix}`;
     const lanes = node.kind === 'stack' ? node.children : [node];
     // A stacked lane sits on its own line inside `stack(`, one indent deeper.
     const widths = lanes.length === 1
@@ -394,7 +395,7 @@ const emitRhythm = (
     return `${body}${as}`;
   }
   if (node.kind === 'stack') {
-    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps));
+    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps, undefined, scaleSuffix));
     return expressions.length === 1 ? expressions[0]
       : `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
   }
@@ -413,7 +414,8 @@ const emitRhythm = (
   // Template literals keep source beat/measure layout visible to the musician.
   // Varying gates or velocities add a lane to the same key line; they share it.
   const lanes = 1 + (gatesVary ? 1 : 0) + (velocitiesVary ? 1 : 0);
-  const callWidth = `${control}()`.length + (gatesVary ? '.clip()'.length : 0) + (velocitiesVary ? '.velocity()'.length : 0);
+  // The caller appends scaleSuffix; it still shares the key line.
+  const callWidth = `${control}()`.length + scaleSuffix.length + (gatesVary ? '.clip()'.length : 0) + (velocitiesVary ? '.velocity()'.length : 0);
   const widths = { key: Math.floor((LINE_WIDTH - KEY_LINE_RESERVE - callWidth) / lanes), row: LINE_WIDTH - ROW_INDENT };
   const mini = (attribute: Attribute) => `\`${layoutLane(node, attribute, fields, config, measureSteps, widths)}\``;
   if (fields.length) return `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`;

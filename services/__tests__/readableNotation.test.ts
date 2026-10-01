@@ -150,8 +150,9 @@ describe('readable structured notation', () => {
         track.addNote({ midi, ticks: index * 240, durationTicks: index % 2 ? 60 : 240, velocity: 0.8 }));
     });
     const relativeResult = await convertAndVerify(relative, { controlSyntax: 'colon', notationType: 'relative' });
-    expect(relativeResult.code).toMatch(/`\.as\("n:clip"\),\n/);
-    expect(relativeResult.code).toContain('\n  .scale(');
+    // Degrees mean pitches only with their scale, so each phrase carries it.
+    expect(relativeResult.code).toMatch(/`\.as\("n:clip"\)\.scale\("[^"]+"\),\n/);
+    expect(relativeResult.code).not.toContain('\n  .scale(');
 
     const kit = score((track) => {
       track.addNote({ midi: 36, ticks: 0, durationTicks: 480, velocity: 0.8 });
