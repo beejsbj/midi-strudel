@@ -379,20 +379,21 @@ const emitRhythm = (
   library?: TrackControls,
   scaleSuffix = '',
 ): string => {
-  // Library passages are bare strings; the phrase names its own fields once.
+  // Library passages are bare strings; the phrase names its own fields once,
+  // on a call line under the pattern so every pattern starts in one column.
   if (library) {
     // Relative degrees need their scale to mean pitches, so it travels too.
-    const as = `.as(${JSON.stringify([control, ...library.fields].join(':'))})${scaleSuffix}`;
+    const calls = `.as(${JSON.stringify([control, ...library.fields].join(':'))})${scaleSuffix}`;
     const lanes = node.kind === 'stack' ? node.children : [node];
     // A stacked lane sits on its own line inside `stack(`, one indent deeper.
     const widths = lanes.length === 1
-      ? { key: LINE_WIDTH - KEY_LINE_RESERVE - as.length, row: LINE_WIDTH - ROW_INDENT }
+      ? { key: LINE_WIDTH - '  zz: ``'.length, row: LINE_WIDTH - ROW_INDENT }
       : { key: LINE_WIDTH - ROW_INDENT - '``,'.length, row: LINE_WIDTH - ROW_INDENT - 2 };
     const lane = (child: RhythmNode) => leaves(child).length
       ? `\`${layoutLane(child, 'value', library.fields, config, measureSteps, widths)}\`` : '`~`';
     const body = lanes.length === 1 ? lane(lanes[0])
       : `stack(\n  ${lanes.map((child) => lane(child).replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
-    return `${body}${as}`;
+    return `${body}\n  ${calls}`;
   }
   if (node.kind === 'stack') {
     const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps, undefined, scaleSuffix));

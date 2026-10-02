@@ -89,16 +89,18 @@ $piano: "<~@2 a!3 b a!3 ~@9>"
   .sound("gm_piano");
 ```
 
-In colon syntax each phrase is a mini-notation string that names its own fields,
-so a single phrase still plays when pasted elsewhere; relative-pitch phrases
+In colon syntax each phrase is a mini-notation string that names its own fields
+on a call line beneath it, so a single phrase still plays when pasted elsewhere; relative-pitch phrases
 also carry their `.scale(...)`, since degrees mean pitches only with it. Controls
 every phrase of the track shares, such as a constant clip or velocity, stay on
 the track line:
 
 ```js
 const piano = {
-  a: `[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`.as("note:clip"),
-  b: `[[E6:0.5 D6 C6] [D6 C6 B5] ~ ~]`.as("note:clip"),
+  a: `[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`
+    .as("note:clip"),
+  b: `[[E6:0.5 D6 C6] [D6 C6 B5] ~ ~]`
+    .as("note:clip"),
 };
 ```
 
