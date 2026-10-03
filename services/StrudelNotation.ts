@@ -41,11 +41,18 @@ const RESERVED_LABELS = new Set([
   'mini', 'n', 'note', 's', 'setcps', 'silence', 'sound', 'stack',
 ]);
 
-/** A full-width rule naming the track, so a scan finds each instrument's block. */
-const sectionRule = (name: string): string => {
+/** Rule width for the short separator between a phrase object and its track line. */
+const SHORT_RULE_WIDTH = 40;
+
+/**
+ * Two full-width lines open each track, so a scan finds every instrument; a
+ * short rule then splits its phrase object from the line that plays it.
+ */
+const trackHeader = (name: string): string => {
   const title = `// ── ${name.replace(/[\r\n\t]+/g, ' ').trim()} `;
-  return title + '─'.repeat(Math.max(2, LINE_WIDTH - title.length));
+  return `// ${'─'.repeat(LINE_WIDTH - 3)}\n${title}${'─'.repeat(Math.max(2, LINE_WIDTH - title.length))}`;
 };
+const phraseRule = `// ${'─'.repeat(SHORT_RULE_WIDTH - 3)}`;
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -153,7 +160,7 @@ export class StrudelNotation {
 
       // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      blocks.push(`${sectionRule(track.name || activeLabels.get(track)!)}\n${rendered.library}\n\n${rendered.code}`);
+      blocks.push(`${trackHeader(track.name || activeLabels.get(track)!)}\n${rendered.library}\n\n${phraseRule}\n${rendered.code}`);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);

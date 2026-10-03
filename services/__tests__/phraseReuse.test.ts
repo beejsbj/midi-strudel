@@ -168,17 +168,21 @@ describe('exact phrase reuse through public conversion', () => {
     for (const label of labels) expect(result.code).toContain(`const ${label} = {`);
   });
 
-  it('heads each track block with a full-width rule naming the track', async () => {
+  it('opens each track with a two-line header and splits phrases from the track line with a short rule', async () => {
     const midi = makeMidi();
     for (const [index, name] of ['Grand Piano', 'Bass'].entries()) {
       const track = midi.addTrack(); track.name = name;
       track.addNote({ midi: 48 + index, ticks: index * 1920, durationTicks: 240, velocity: 0.5 });
     }
     const result = await verify(midi.toArray().buffer);
-    const rules = result.code.split('\n').filter((line) => line.startsWith('// ── '));
-    expect(rules.map((line) => /^\/\/ ── (.+?) ─+$/.exec(line)?.[1])).toEqual(['Grand Piano', 'Bass']);
-    rules.forEach((line) => expect(line).toHaveLength(100));
-    expect(result.code).toMatch(/\/\/ ── Bass ─+\nconst bass = \{/);
+    const lines = result.code.split('\n');
+    const names = lines.filter((line) => line.startsWith('// ── ')).map((line) => /^\/\/ ── (.+?) ─+$/.exec(line)?.[1]);
+    expect(names).toEqual(['Grand Piano', 'Bass']);
+    const full = `// ${'─'.repeat(97)}`;
+    const short = `// ${'─'.repeat(37)}`;
+    expect(lines.filter((line) => line === full)).toHaveLength(2);
+    expect(result.code).toMatch(new RegExp(`${full}\\n// ── Bass ─+\\nconst bass = \\{[^}]*\\};\\n\\n${short}\\n\\$bass:`));
+    lines.filter((line) => line.startsWith('// ─')).forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
   });
 
   it('keeps labels clear of JS reserved words and the Strudel calls the code makes', async () => {
