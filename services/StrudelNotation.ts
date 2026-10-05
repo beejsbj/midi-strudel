@@ -146,12 +146,14 @@ export class StrudelNotation {
       message: `Dropped ${silentNotes} zero-length pitched note${silentNotes === 1 ? '' : 's'}, which make no sound` });
 
     // 1. Calculate Global Song Duration
+    const sourceMeasureDuration = getSourceMeasureDuration(this.config);
     let maxDuration = effectiveTracks.reduce((max, entry) => {
-      const trackMax = entry.events.reduce((m, event) => Math.max(m, event.releaseSeconds), 0);
+      // A boundary attack starts the next bar, even when its MIDI gate is zero.
+      const trackMax = entry.events.reduce((m, event) => Math.max(m, event.releaseSeconds,
+        this.roundUpToSourceMeasure(event.onsetSeconds, sourceMeasureDuration, true)), 0);
       return Math.max(max, trackMax);
     }, 0);
 
-    const sourceMeasureDuration = getSourceMeasureDuration(this.config);
     if (maxDuration === 0) maxDuration = sourceMeasureDuration;
     // A single song-origin meter grid is shared even by hidden tracks. Do not
     // let a delayed voice establish a private measure origin or private loop.
@@ -356,12 +358,12 @@ export class StrudelNotation {
     return labels;
   }
 
-  private roundUpToSourceMeasure(endSeconds: number, measureSeconds: number): number {
+  private roundUpToSourceMeasure(endSeconds: number, measureSeconds: number, includeBoundary = false): number {
     const measures = endSeconds / measureSeconds;
     const nearest = Math.round(measures);
     const roundingNoise = Number.EPSILON * Math.max(1, Math.abs(measures)) * 8;
     const roundedMeasures = Math.abs(measures - nearest) <= roundingNoise
-      ? nearest
+      ? nearest + (includeBoundary ? 1 : 0)
       : Math.ceil(measures);
     return Math.max(1, roundedMeasures) * measureSeconds;
   }

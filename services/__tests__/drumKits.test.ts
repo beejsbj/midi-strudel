@@ -27,6 +27,25 @@ describe('drum kits', () => {
     expect(drumSample(78, kit)?.standIn).toBeUndefined();
   });
 
+  it('keeps every hit before favouring a kit with more exact sounds', async () => {
+    const pitches = [...Array<number>(20).fill(86), 57];
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.channel = 9;
+    pitches.forEach((pitch, index) => track.addNote({ midi: pitch, ticks: index * 120, durationTicks: 120 }));
+    const result = convertMidi(midi.toArray().buffer, 'surdo-and-crash.mid');
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      const hits = runtime.querySeconds(0, result.sharedSpanSeconds).sort((a, b) => a.onsetSeconds - b.onsetSeconds);
+      expect(hits).toHaveLength(21);
+      expect(hits.map(({ onsetSeconds }) => onsetSeconds)).toEqual(pitches.map((_, index) => index / 8));
+      expect(hits.at(-1)!.value.s).toBe('cr');
+      expect(result.tracks[0].drumBank).toBe(DEFAULT_DRUM_KIT);
+      expect(result.diagnostics.filter(({ code }) => code === 'unmapped-drum-note')).toEqual([]);
+    } finally { runtime.stop(); }
+  });
+
   it('names indexed samples and stand-ins under a drum track header', () => {
     expect(indexedSampleKey([36, 74, 78, 83, 83], 'RolandMC303'))
       .toEqual(['misc:5 mute cuica', 'perc:24 long guiro', 'tb tambourine (for jingle bell)']);
