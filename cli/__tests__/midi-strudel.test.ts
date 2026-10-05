@@ -106,6 +106,7 @@ describe('midi-strudel CLI', () => {
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
         { code: 'merged-duplicate-notes', count: 110 },
+        { code: 'merged-drum-layers', severity: 'info', count: 18 },
         { code: 'snapped-to-ear', severity: 'info', count: 412 },
         { code: 'dropped-silent-notes', count: 9 },
       ],
@@ -167,7 +168,8 @@ describe('midi-strudel CLI', () => {
       expect(diagnostics.filter((line) => line.includes('[dropped-silent-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('[merged-duplicate-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('info [snapped-to-ear]'))).toHaveLength(1);
-      expect(diagnostics).toHaveLength(8);
+      expect(diagnostics.filter((line) => line.includes('info [merged-drum-layers]'))).toHaveLength(1);
+      expect(diagnostics).toHaveLength(9);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);

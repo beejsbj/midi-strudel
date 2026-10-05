@@ -32,12 +32,23 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
 
-/** Fully identical doubles (pitch, start, length, velocity; drums ignore length) are expected to merge. */
+/**
+ * Fully identical doubles (pitch, start, length, velocity) are expected to
+ * merge. A drum plays its sample once per instant, at the loudest hit.
+ */
 const uniqueNotes = <T extends { midi: number; time: number; duration: number; velocity: number }>(notes: T[], drum = false): T[] => {
-  const seen = new Set<string>();
   const at = (seconds: number) => Math.round(seconds * 1e9);
+  if (drum) {
+    const loudest = new Map<string, T>();
+    for (const note of notes) {
+      const key = `${DRUM_MAP[note.midi] ?? note.midi}:${at(note.time)}`;
+      if (!loudest.has(key) || note.velocity > loudest.get(key)!.velocity) loudest.set(key, note);
+    }
+    return [...loudest.values()];
+  }
+  const seen = new Set<string>();
   return notes.filter((note) => {
-    const key = `${note.midi}:${at(note.time)}:${drum ? '' : at(note.duration)}:${note.velocity}`;
+    const key = `${note.midi}:${at(note.time)}:${at(note.duration)}:${note.velocity}`;
     return seen.has(key) ? false : (seen.add(key), true);
   });
 };
@@ -114,13 +125,13 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions).toHaveLength(1);
     expect(result.patterns.occurrences.map((occurrence) => occurrence.sourceStartMeasure)).toEqual([2, 5, 6]);
     expect(result.code).toContain('.pickRestart(');
-    expect(result.code).toContain('const phrases = {');
+    expect(result.code).toMatch(/^const [a-z0-9_]+ = \{$/m);
     expect(result.code).not.toMatch(/const track\d+(Phrase|Timeline)/);
     expect(result.patterns.definitions[0].id).toBe('track1Phrase1');
-    expect(result.patterns.definitions[0].name).toMatch(/^phrases\.[a-z0-9_]+\.a$/);
+    expect(result.patterns.definitions[0].name).toMatch(/^[a-z0-9_]+\.a$/);
     expect(result.patterns.occurrences.flatMap((occurrence) => occurrence.sourceNoteIds)).toHaveLength(36);
     expect(result.code).toContain('<~ a b@2 a!2>');
-    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\n {2}\.pickRestart\(phrases\.\w+\)/);
+    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\n {2}\.pickRestart\(\w+\)/);
     expect(result.code).not.toContain('cat(');
     expect(result.code).not.toContain('.slow(8)');
   });
@@ -134,9 +145,10 @@ describe('exact phrase reuse through public conversion', () => {
     track.addNote({ midi: 72, ticks: 6 * 1920, durationTicks: 240, velocity: 0.7 });
     const result = await verify(midi.toArray().buffer);
     expect(result.patterns).toEqual({ definitions: [], occurrences: [] });
-    expect(result.code.match(/const phrases =/g)).toHaveLength(1);
+    expect(result.code.match(/^const /gm)).toEqual(['const ', 'const ']);
+    expect(result.code).toContain('const piano = {');
     expect(result.code).toContain('<a@3 ~@3 b>');
-    expect(result.code).toContain('.pickRestart(phrases.piano)');
+    expect(result.code).toContain('.pickRestart(piano)');
     expect(result.code.match(/^\$piano:/gm)).toHaveLength(1);
     expect(result.code).not.toMatch(/_MELODY|_HARMONY|\.slow\(7\)/);
   });
@@ -151,8 +163,37 @@ describe('exact phrase reuse through public conversion', () => {
     const labels = [...result.code.matchAll(/^\$([a-z0-9_]+):/gm)].map((match) => match[1]);
     expect(labels).toHaveLength(6);
     expect(new Set(labels).size).toBe(6);
-    expect(labels).toEqual(['piano', 'piano_2', 'piano_2_2', 'proto', 'track_constructor', 'track_123']);
-    expect(result.code.match(/const phrases =/g)).toHaveLength(1);
+    expect(labels).toEqual(['piano', 'piano_2', 'piano_2_2', 'proto', 'constructor', 'track_123']);
+    // Each track declares its own phrase object under its label.
+    for (const label of labels) expect(result.code).toContain(`const ${label} = {`);
+  });
+
+  it('opens each track with a two-line header and splits phrases from the track line with a short rule', async () => {
+    const midi = makeMidi();
+    for (const [index, name] of ['Grand Piano', 'Bass'].entries()) {
+      const track = midi.addTrack(); track.name = name;
+      track.addNote({ midi: 48 + index, ticks: index * 1920, durationTicks: 240, velocity: 0.5 });
+    }
+    const result = await verify(midi.toArray().buffer);
+    const lines = result.code.split('\n');
+    const names = lines.filter((line) => line.startsWith('// ── ')).map((line) => /^\/\/ ── (.+?) ─+$/.exec(line)?.[1]);
+    expect(names).toEqual(['Grand Piano', 'Bass']);
+    const full = `// ${'─'.repeat(97)}`;
+    const short = `// ${'─'.repeat(37)}`;
+    expect(lines.filter((line) => line === full)).toHaveLength(2);
+    expect(result.code).toMatch(new RegExp(`${full}\\n// ── Bass ─+\\nconst bass = \\{[^}]*\\};\\n\\n${short}\\n\\$bass:`));
+    lines.filter((line) => line.startsWith('// ─')).forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
+  });
+
+  it('keeps labels clear of JS reserved words and the Strudel calls the code makes', async () => {
+    const midi = makeMidi();
+    for (const [index, name] of ['New', 'Note', 'Stack'].entries()) {
+      const track = midi.addTrack(); track.name = name;
+      track.addNote({ midi: 48 + index, ticks: index * 1920, durationTicks: 240, velocity: 0.5 });
+    }
+    const result = await verify(midi.toArray().buffer);
+    expect([...result.code.matchAll(/^\$([a-z0-9_]+):/gm)].map((match) => match[1]))
+      .toEqual(['track_new', 'track_note', 'track_stack']);
   });
 
   it('continues short passage keys beyond z without duplicating notes', async () => {
@@ -162,8 +203,8 @@ describe('exact phrase reuse through public conversion', () => {
     }
     const result = await verify(midi.toArray().buffer);
     expect(result.patterns.definitions).toEqual([]);
-    expect(result.code).toContain('    aa:');
-    expect(result.code).toContain('    ab:');
+    expect(result.code).toContain('\n  aa:');
+    expect(result.code).toContain('\n  ab:');
     expect(result.code).toContain('z ~ aa ~ ab\n>`');
     // The 56-bar timeline is wider than a line, so it wraps into a block.
     expect(result.code).toMatch(/\$piano: `<\n {2}a ~ b ~ /);
@@ -326,7 +367,7 @@ describe('exact phrase reuse through public conversion', () => {
       }
     }
     const result = await verify(midi.toArray().buffer);
-    const libraryMatch = result.code.match(/bass: \{([^}]+)\}/s);
+    const libraryMatch = result.code.match(/const bass = \{([^}]+)\}/s);
     expect(libraryMatch).toBeDefined();
     const definitions = libraryMatch![1].match(/^\s+[a-z]+:/gm);
     // Should have at most 1 definition (one-off passages with identical expressions)

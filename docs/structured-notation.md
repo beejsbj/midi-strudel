@@ -70,25 +70,40 @@ Instrument, velocity, and visual settings are omitted from that example.
 
 ## Phrase library and arrangement
 
-One `phrases` object collects named passages under each track. A short selector
-places those passages on the song timeline. Repeated selector tokens can use `!`
-without replacing repeated attacks with one sustained selection.
+Each track declares its own phrase object directly above the track line that
+plays it. A short selector places those passages on the song timeline. Keys are
+lettered in the order the phrases first play. Repeated selector tokens can use
+`!` without replacing repeated attacks with one sustained selection.
 
 For example, Ruthlessness's piano part can be organized as follows, with velocity,
 visuals, and the unchanged tempo header omitted:
 
 ```js
-const phrases = {
-  piano: {
-    a: note(`[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`),
-    b: note(`[[E6 D6 C6] [D6 C6 B5] ~ ~]`),
-  },
+const piano = {
+  a: note(`[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`),
+  b: note(`[[E6 D6 C6] [D6 C6 B5] ~ ~]`),
 };
 
-$piano: cat("<~@2 a!3 b a!3 ~@9>")
-  .pickRestart(phrases.piano)
+$piano: "<~@2 a!3 b a!3 ~@9>"
+  .pickRestart(piano)
   .sound("gm_piano");
 ```
+
+In colon syntax each phrase is a mini-notation string that names its own fields,
+so a single phrase still plays when pasted elsewhere. Controls every phrase of
+the track shares, such as a constant clip or the relative-pitch scale, stay on
+the track line:
+
+```js
+const piano = {
+  a: `[[E6 D6 C6] [D6 C6 B5] [C6 B5 A5] [B5 A5 G5]]`.as("note:clip"),
+  b: `[[E6:0.5 D6 C6] [D6 C6 B5] ~ ~]`.as("note:clip"),
+};
+```
+
+Drum tracks play at `.gain(0.3)`: samples otherwise play at full level, while
+Strudel's soundfonts and synths peak at 0.3. Drum notes that map to the same
+sample at the same instant (GM 35 and 36 are both `bd`) are merged into one hit.
 
 Here `a` is the repeated riff and `b` is intervening one-off material. Presentation
 can name a one-off passage without claiming to have discovered a repetition.
