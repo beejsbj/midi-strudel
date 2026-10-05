@@ -24,8 +24,9 @@ import {
   strudelPlaybackHighlightExtension,
   updatePlaybackHighlightOptions,
 } from '../strudelPlaybackHighlight';
+import { SAMPLE_SOURCES_BASE } from '../../services/sampleSources';
 
-const DATA_SOURCES_BASE = 'https://raw.githubusercontent.com/felixroos/dough-samples/main/';
+const DATA_SOURCES_BASE = SAMPLE_SOURCES_BASE;
 const SAMPLE_JSON_FILES = [
   'tidal-drum-machines.json',
   'piano.json',

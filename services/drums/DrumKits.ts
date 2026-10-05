@@ -84,3 +84,24 @@ export const pickDrumKit = (midiNotes: number[]): string => {
 /** A track's kit: its chosen bank when that bank exists, else the best match for its notes. */
 export const drumKitFor = (track: { drumBank?: string; notes: Array<{ midi: number }> }): string =>
   track.drumBank && DRUM_KITS[track.drumBank] ? track.drumBank : pickDrumKit(track.notes.map((note) => note.midi));
+
+/**
+ * What each indexed sample (`perc:6`) in a part is, since the token alone does
+ * not say: `perc:6 sticks`, or `perc:11 high woodblock (for castanets)` when it
+ * stands in for a sound the kit lacks. A plain folder name (`bd`) is listed only
+ * when it stands in for another sound.
+ */
+export const indexedSampleKey = (midiNotes: Iterable<number>, kit: string): string[] => {
+  const entries = new Map<string, { sound: number; standsFor: Set<number> }>();
+  for (const midi of new Set(midiNotes)) {
+    const sample = drumSample(midi, kit);
+    if (!sample || (!sample.token.includes(':') && sample.standIn === undefined)) continue;
+    const entry = entries.get(sample.token) ?? { sound: sample.standIn ?? midi, standsFor: new Set<number>() };
+    if (sample.standIn !== undefined) entry.standsFor.add(midi);
+    entries.set(sample.token, entry);
+  }
+  const name = (midi: number) => (GM_PERCUSSION[midi] ?? `MIDI ${midi}`).toLowerCase();
+  const order = (token: string) => token.split(':').map((part, index) => index ? part.padStart(3, '0') : part).join(':');
+  return [...entries].sort(([a], [b]) => order(a).localeCompare(order(b))).map(([token, { sound, standsFor }]) =>
+    `${token} ${name(sound)}${standsFor.size ? ` (for ${[...standsFor].sort((a, b) => a - b).map(name).join(', ')})` : ''}`);
+};

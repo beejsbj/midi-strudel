@@ -9,8 +9,9 @@
  *   bunx tsx scripts/generate-drum-kits.mts
  */
 import { writeFileSync } from 'node:fs';
+import { SAMPLE_SOURCES_BASE } from '../services/sampleSources';
 
-const MANIFEST = 'https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json';
+const MANIFEST = `${SAMPLE_SOURCES_BASE}tidal-drum-machines.json`;
 
 /** Folders that are a single GM sound whatever their files are called. */
 const FOLDER_NOTES: Record<string, number[]> = {

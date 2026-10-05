@@ -1,7 +1,7 @@
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
-import { DEFAULT_DRUM_KIT, DRUM_KITS, drumSample, pickDrumKit } from '../drums/DrumKits';
+import { DEFAULT_DRUM_KIT, DRUM_KITS, drumSample, indexedSampleKey, pickDrumKit } from '../drums/DrumKits';
 import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
@@ -25,6 +25,19 @@ describe('drum kits', () => {
     const kit = pickDrumKit([36, 38, 74, 78, 78]);
     expect(drumSample(74, kit)?.standIn).toBeUndefined();
     expect(drumSample(78, kit)?.standIn).toBeUndefined();
+  });
+
+  it('names indexed samples and stand-ins under a drum track header', () => {
+    expect(indexedSampleKey([36, 74, 78, 83, 83], 'RolandMC303'))
+      .toEqual(['misc:5 mute cuica', 'perc:24 long guiro', 'tb tambourine (for jingle bell)']);
+    expect(indexedSampleKey([36, 38, 42], DEFAULT_DRUM_KIT)).toEqual([]);
+    const midi = new Midi();
+    const track = midi.addTrack();
+    track.channel = 9;
+    track.name = 'Kit';
+    [36, 74, 78].forEach((note, index) => track.addNote({ midi: note, ticks: index * 480, durationTicks: 120 }));
+    const { code } = convertMidi(midi.toArray().buffer, 'kit.mid');
+    expect(code).toMatch(/\/\/ ── Kit ─+\n\/\/ misc:5 mute cuica · perc:24 long guiro\nconst kit = \{/);
   });
 
   it.each(['chained', 'colon'] as const)('makes sticks, jingle bells and castanets audible in %s syntax', async (controlSyntax) => {

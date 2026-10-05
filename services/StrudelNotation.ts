@@ -9,7 +9,7 @@
 
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
 import { getAutoSound } from '../constants';
-import { drumKitFor, drumSample, GM_PERCUSSION } from './drums/DrumKits';
+import { drumKitFor, drumSample, GM_PERCUSSION, indexedSampleKey } from './drums/DrumKits';
 import { mergeIdenticalDoubles, mergeSameSampleHits, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { EAR_TOLERANCE_SECONDS } from './notation/EarTiming';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
@@ -54,6 +54,17 @@ const trackHeader = (name: string): string => {
   return `// ${'─'.repeat(LINE_WIDTH - 3)}\n${title}${'─'.repeat(Math.max(2, LINE_WIDTH - title.length))}`;
 };
 const phraseRule = `// ${'─'.repeat(SHORT_RULE_WIDTH - 3)}`;
+
+/** A drum part's indexed samples named under its header, wrapped at the line width. */
+const sampleKeyLines = (entries: string[]): string => {
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const last = lines.length - 1;
+    if (last >= 0 && `${lines[last]} · ${entry}`.length <= LINE_WIDTH) lines[last] += ` · ${entry}`;
+    else lines.push(`// ${entry}`);
+  }
+  return lines.map((line) => `${line}\n`).join('');
+};
 
 export class StrudelNotation {
   private config: StrudelConfig;
@@ -175,7 +186,8 @@ export class StrudelNotation {
 
       // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      blocks.push(`${trackHeader(track.name || activeLabels.get(track)!)}\n${rendered.library}\n\n${phraseRule}\n${rendered.code}`);
+      const key = track.isDrum ? sampleKeyLines(indexedSampleKey(events.map((event) => event.midi), drumKitFor(track))) : '';
+      blocks.push(`${trackHeader(track.name || activeLabels.get(track)!)}\n${key}${rendered.library}\n\n${phraseRule}\n${rendered.code}`);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);
