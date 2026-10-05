@@ -11,6 +11,7 @@ npm test
 npm run build
 npm run typecheck
 npm run lint
+npm run verify:songs   # full-song playback check, 12 configurations (a few minutes)
 ```
 
 The dev server is configured for `http://localhost:3000`.
@@ -46,6 +47,11 @@ Primary test areas:
 - `services/notation/__tests__/`
 - `services/__tests__/KeyDetector.test.ts`
 - `services/__tests__/projectStorage.test.ts`
+
+`scripts/verify-songs.mts` (`verify:songs`) plays both bundled songs in 12
+configurations through Strudel's evaluator and checks every note against an
+independent oracle. It is slower than the unit suite, so run it before merging
+notation changes rather than on every edit.
 
 ## Repo notes
 
