@@ -120,6 +120,34 @@ describe('readable structured notation', () => {
     });
   });
 
+  describe('colon chords with shared fields', () => {
+    // Two chords on separate beats so the clip varies and stays a per-note field.
+    const chordsScore = (secondClip: number, secondVelocity: number) => score((track) => {
+      track.addNote({ midi: 60, ticks: 0, durationTicks: 160, velocity: 0.8 });
+      track.addNote({ midi: 64, ticks: 0, durationTicks: 160, velocity: 0.8 });
+      track.addNote({ midi: 67, ticks: 480, durationTicks: secondClip, velocity: 0.8 });
+      track.addNote({ midi: 71, ticks: 480, durationTicks: 480, velocity: secondVelocity });
+    });
+
+    it('writes a clip every member shares once after the chord', async () => {
+      const result = await convertAndVerify(chordsScore(480, 0.8), { controlSyntax: 'colon' });
+      expect(result.code).toContain('[C4,E4]:0.333');
+      expect(result.code).not.toContain('C4:0.333');
+    });
+
+    it('keeps per-note fields when members differ', async () => {
+      const result = await convertAndVerify(chordsScore(160, 0.8), { controlSyntax: 'colon' });
+      expect(result.code).toContain('[G4:0.333,B4]');
+      expect(result.code).toContain('[C4,E4]:0.333');
+    });
+
+    it('does not factor velocities that differ', async () => {
+      const result = await convertAndVerify(chordsScore(480, 0.5), { controlSyntax: 'colon', includeVelocity: true });
+      expect(result.code).toContain('[C4,E4]:0.795:0.333');
+      expect(result.code).toContain('[G4:0.795,B4:0.496]');
+    });
+  });
+
   it('names colon fields on each phrase and hoists track-wide constants to the track line', async () => {
     const bytes = score((track) => {
       [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160, velocity: 0.8 }));
