@@ -277,7 +277,7 @@ const noteToken = (node: EventNode, attribute: Attribute, fields: Field[]): stri
   // interpolation, so changing controls are three-decimal numbers.
   if (attribute === 'gate') return roundedDecimal(node.gateTicks / node.ticks);
   if (attribute === 'velocity') return roundedDecimal(node.sources[0].event.velocity);
-  const values = node.sources.map((source, index) => {
+  const parts = node.sources.map((source, index) => {
     // An indexed drum value (`perc:24`) already holds its `n` field.
     const [value, sampleIndex = '0'] = fields[0] === 'n' ? String(source.value).split(':') : [String(source.value)];
     const extra = fields.map((field) => field === 'n' ? sampleIndex
@@ -286,9 +286,14 @@ const noteToken = (node: EventNode, attribute: Attribute, fields: Field[]): stri
     // Trailing defaults (a clip of 1, the first sample) can be left off.
     while (extra.length && ((fields[extra.length - 1] === 'clip' && extra[extra.length - 1] === '1')
       || (fields[extra.length - 1] === 'n' && extra[extra.length - 1] === '0'))) extra.pop();
-    return [value, ...extra].join(':');
+    return { value, suffix: extra.join(':') };
   });
-  return values.length === 1 ? values[0] : `[${values.join(',')}]`;
+  if (parts.length === 1) return [parts[0].value, parts[0].suffix].filter(Boolean).join(':');
+  // Mini applies a suffix on a group to every member, so `[a,b]:4` replaces
+  // `[a:4,b:4]` when all members carry the same fields.
+  const shared = parts.every(({ suffix }) => suffix === parts[0].suffix) ? parts[0].suffix : '';
+  const members = parts.map(({ value, suffix }) => shared ? value : [value, suffix].filter(Boolean).join(':'));
+  return `[${members.join(',')}]${shared ? `:${shared}` : ''}`;
 };
 
 /** One bracketed group, or its bare contents at the top of a passage. */
