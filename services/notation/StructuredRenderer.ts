@@ -201,7 +201,7 @@ export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhyth
   const notes = rhythms.flatMap(leaves);
   const gates = control === 's' ? [] : notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => ({ gate, ticks: leaf.ticks })));
   const velocities = config.includeVelocity ? notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity)) : [];
-  const controls: TrackControls = { fields: [] };
+  const controls: TrackControls = { fields: control === 's' && usesSampleIndex(notes) ? ['n'] : [] };
   if (velocities.length && velocities.some((velocity) => velocity !== velocities[0])) controls.fields.push('velocity');
   else if (velocities.length) controls.velocity = roundedDecimal(velocities[0]);
   const ratio = ({ gate, ticks }: { gate: number; ticks: number }) => gate / ticks;
@@ -218,7 +218,11 @@ export const trackControlSuffix = (controls: TrackControls): string =>
 
 type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
-type Field = 'velocity' | 'clip';
+type Field = 'n' | 'velocity' | 'clip';
+
+/** A drum sample past a folder's first file is written `perc:24`; colon tracks then read an `n` field. */
+const usesSampleIndex = (notes: EventNode[]) =>
+  notes.some((leaf) => leaf.sources.some((source) => String(source.value).includes(':')));
 const leaves = (node: RhythmNode): EventNode[] =>
   node.kind === 'event' ? [node] : node.kind === 'rest' ? [] : node.children.flatMap(leaves);
 
@@ -274,12 +278,15 @@ const noteToken = (node: EventNode, attribute: Attribute, fields: Field[]): stri
   if (attribute === 'gate') return roundedDecimal(node.gateTicks / node.ticks);
   if (attribute === 'velocity') return roundedDecimal(node.sources[0].event.velocity);
   const values = node.sources.map((source, index) => {
-    const extra = fields.map((field) => field === 'velocity'
-      ? roundedDecimal(source.event.velocity)
-      : roundedDecimal(node.sourceGateTicks[index] / node.ticks));
-    // A trailing clip of 1 is the default; the field can be left off.
-    while (fields[extra.length - 1] === 'clip' && extra[extra.length - 1] === '1') extra.pop();
-    return [String(source.value), ...extra].join(':');
+    // An indexed drum value (`perc:24`) already holds its `n` field.
+    const [value, sampleIndex = '0'] = fields[0] === 'n' ? String(source.value).split(':') : [String(source.value)];
+    const extra = fields.map((field) => field === 'n' ? sampleIndex
+      : field === 'velocity' ? roundedDecimal(source.event.velocity)
+        : roundedDecimal(node.sourceGateTicks[index] / node.ticks));
+    // Trailing defaults (a clip of 1, the first sample) can be left off.
+    while (extra.length && ((fields[extra.length - 1] === 'clip' && extra[extra.length - 1] === '1')
+      || (fields[extra.length - 1] === 'n' && extra[extra.length - 1] === '0'))) extra.pop();
+    return [value, ...extra].join(':');
   });
   return values.length === 1 ? values[0] : `[${values.join(',')}]`;
 };
@@ -421,7 +428,8 @@ const emitRhythm = (
   // Colon style carries every control on its notes, constant or not, so the
   // two spellings can be compared on any passage that has a control at all.
   const fields: Field[] = config.controlSyntax === 'colon'
-    ? [...(config.includeVelocity ? ['velocity' as const] : []), ...(hasGate ? ['clip' as const] : [])] : [];
+    ? [...(control === 's' && usesSampleIndex(notes) ? ['n' as const] : []),
+      ...(config.includeVelocity ? ['velocity' as const] : []), ...(hasGate ? ['clip' as const] : [])] : [];
   // Template literals keep source beat/measure layout visible to the musician.
   // Calls sit on a line under the pattern; a call carrying its own pattern
   // (a varying clip or velocity lane) takes a line of its own, one indent in.

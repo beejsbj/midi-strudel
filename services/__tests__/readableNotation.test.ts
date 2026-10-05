@@ -1,7 +1,7 @@
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
-import { DRUM_MAP } from '../../constants';
+import { expectedDrum, kitForNotes, playedDrum } from './helpers/drumOracle';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { roundedDecimal, snappedRatio } from '../notation/NumberFormat';
 
@@ -35,9 +35,10 @@ async function convertAndVerify(bytes: ArrayBuffer, overrides: ConversionOverrid
   const result = convertMidi(bytes, 'readable.mid', overrides);
   const source = new Midi(bytes).tracks[0];
   const drum = source.channel === 9;
+  const kit = kitForNotes(source.notes);
   const span = result.sharedSpanSeconds;
   const expected = [0, span].flatMap((offset) => source.notes.map((note) => ({
-    pitch: drum ? DRUM_MAP[note.midi] : note.midi,
+    pitch: drum ? expectedDrum(note.midi, kit) : note.midi,
     onset: note.time + offset,
     end: note.time + note.duration + offset,
     velocity: note.velocity,
@@ -45,7 +46,7 @@ async function convertAndVerify(bytes: ArrayBuffer, overrides: ConversionOverrid
   const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const actual = runtime.querySeconds(0, span * 2).map((event) => ({
-      event, pitch: drum ? event.value.s : numericPitch(event.value.note),
+      event, pitch: drum ? playedDrum(event.value) : numericPitch(event.value.note),
     })).sort((a, b) => a.event.onsetSeconds - b.event.onsetSeconds
       || String(a.pitch).localeCompare(String(b.pitch)) || a.event.gateEndSeconds - b.event.gateEndSeconds);
     expect(actual).toHaveLength(expected.length);

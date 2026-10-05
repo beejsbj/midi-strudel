@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { convertMidi, type ConversionOverrides } from '../convertMidi';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { earNotes } from './helpers/earOracle';
-import { DRUM_MAP } from '../../constants';
+import { expectedDrum, kitForNotes, playedDrum } from './helpers/drumOracle';
 import { StrudelNotation } from '../StrudelNotation';
 
 const { Midi } = MidiPackage;
@@ -36,12 +36,12 @@ const numericPitch = (value: unknown): number => {
  * Fully identical doubles (pitch, start, length, velocity) are expected to
  * merge. A drum plays its sample once per instant, at the loudest hit.
  */
-const uniqueNotes = <T extends { midi: number; time: number; duration: number; velocity: number }>(notes: T[], drum = false): T[] => {
+const uniqueNotes = <T extends { midi: number; time: number; duration: number; velocity: number }>(notes: T[], kit?: string): T[] => {
   const at = (seconds: number) => Math.round(seconds * 1e9);
-  if (drum) {
+  if (kit) {
     const loudest = new Map<string, T>();
     for (const note of notes) {
-      const key = `${DRUM_MAP[note.midi] ?? note.midi}:${at(note.time)}`;
+      const key = `${expectedDrum(note.midi, kit) ?? note.midi}:${at(note.time)}`;
       if (!loudest.has(key) || note.velocity > loudest.get(key)!.velocity) loudest.set(key, note);
     }
     return [...loudest.values()];
@@ -59,22 +59,25 @@ async function verify(bytes: ArrayBuffer, overrides: ConversionOverrides = {}) {
   const source = new Midi(bytes);
   const ratio = result.config.sourceBpm / result.config.bpm;
   const period = result.sharedSpanSeconds * ratio;
-  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => uniqueNotes(earNotes(track.notes, result.config.sourceBpm, source.header.ppq), track.channel === 9).flatMap((note) => {
-    const drum = track.channel === 9;
-    if (drum && !DRUM_MAP[note.midi]) return [];
+  const expected = [0, period].flatMap((offset) => source.tracks.flatMap((track) => {
+    const kit = track.channel === 9 ? kitForNotes(track.notes) : undefined;
+    return uniqueNotes(earNotes(track.notes, result.config.sourceBpm, source.header.ppq), kit).flatMap((note) => {
+    const drum = kit !== undefined;
+    if (drum && !expectedDrum(note.midi, kit)) return [];
     const { time: onset, duration } = note;
     // Zero-length pitched notes are silent and dropped; drum hits are one-shots.
     if (!drum && duration <= 0) return [];
     return [{ onset: onset * ratio + offset, end: (onset + duration) * ratio + offset,
-      pitch: drum ? DRUM_MAP[note.midi] : note.midi, velocity: note.velocity }];
-  })));
+      pitch: drum ? expectedDrum(note.midi, kit)! : note.midi, velocity: note.velocity }];
+    });
+  }));
   const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const queried = period > 1000
       ? expected.flatMap((event) => runtime.querySeconds(event.onset - 1e-6, event.onset + 1e-6))
       : runtime.querySeconds(0, period * 2);
     const actual = queried.map((event) => ({
-      event, pitch: event.value.note === undefined ? String(event.value.s) : numericPitch(event.value.note),
+      event, pitch: event.value.note === undefined ? playedDrum(event.value) : numericPitch(event.value.note),
       velocity: Number(event.value.velocity ?? 1),
     }));
     expect(actual).toHaveLength(expected.length);

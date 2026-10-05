@@ -1,4 +1,5 @@
 
+import { pickDrumKit } from './drums/DrumKits';
 import * as MidiPackage from '@tonejs/midi';
 import { Track, Note, MidiSourceMetadata } from '../types';
 
@@ -61,7 +62,8 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
       notes: notes,
       hidden: notes.length === 0,
       isDrum: isDrum,
-      drumBank: isDrum ? "RolandTR909" : undefined, // Default bank
+      // The kit with the most of this part's sounds; the sidebar can change it.
+      drumBank: isDrum ? pickDrumKit(notes.map((note) => note.midi)) : undefined,
       color: String(Math.round((index * 360) / Math.max(midi.tracks.length, 8))),
       sourceTiming: source,
     };

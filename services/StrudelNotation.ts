@@ -8,7 +8,8 @@
  */
 
 import { ConversionDiagnostic, PatternMetadata, StrudelConfig, Track } from '../types';
-import { DRUM_MAP, getAutoSound } from '../constants';
+import { getAutoSound } from '../constants';
+import { drumKitFor, drumSample, GM_PERCUSSION, indexedSampleKey } from './drums/DrumKits';
 import { mergeIdenticalDoubles, mergeSameSampleHits, prepareEffectiveTracks, type EffectiveEvent } from './notation/EffectiveEvents';
 import { EAR_TOLERANCE_SECONDS } from './notation/EarTiming';
 import { renderPreciseLiteral } from './notation/LiteralRenderer';
@@ -54,6 +55,17 @@ const trackHeader = (name: string): string => {
 };
 const phraseRule = `// ${'─'.repeat(SHORT_RULE_WIDTH - 3)}`;
 
+/** A drum part's indexed samples named under its header, wrapped at the line width. */
+const sampleKeyLines = (entries: string[]): string => {
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const last = lines.length - 1;
+    if (last >= 0 && `${lines[last]} · ${entry}`.length <= LINE_WIDTH) lines[last] += ` · ${entry}`;
+    else lines.push(`// ${entry}`);
+  }
+  return lines.map((line) => `${line}\n`).join('');
+};
+
 export class StrudelNotation {
   private config: StrudelConfig;
 
@@ -72,15 +84,23 @@ export class StrudelNotation {
     patterns: PatternMetadata;
   } {
     const droppedNoteCounts = new Map<number, number>();
+    const standIns = new Map<string, { midi: number; standIn: number; kit: string; count: number }>();
     tracks.forEach((track) => {
       if (!track.isDrum || track.hidden) return;
+      const kit = drumKitFor(track);
       track.notes.forEach((note) => {
-        if (!DRUM_MAP[note.midi]) {
+        const sample = drumSample(note.midi, kit);
+        if (!sample) {
           droppedNoteCounts.set(note.midi, (droppedNoteCounts.get(note.midi) ?? 0) + 1);
+        } else if (sample.standIn !== undefined) {
+          const key = `${note.midi}:${kit}`;
+          const entry = standIns.get(key) ?? { midi: note.midi, standIn: sample.standIn, kit, count: 0 };
+          standIns.set(key, { ...entry, count: entry.count + 1 });
         }
       });
     });
-    const diagnostics = [...droppedNoteCounts.entries()]
+    const gmName = (midi: number) => GM_PERCUSSION[midi] ?? `MIDI ${midi}`;
+    const diagnostics: ConversionDiagnostic[] = [...droppedNoteCounts.entries()]
       .sort(([left], [right]) => left - right)
       .map(([midiNote, count]): ConversionDiagnostic => ({
         code: 'unmapped-drum-note',
@@ -89,6 +109,10 @@ export class StrudelNotation {
         count,
         message: `Dropped ${count} unmapped drum note event${count === 1 ? '' : 's'} for MIDI ${midiNote}`,
       }));
+    // A kit without the exact sound plays the nearest one it has.
+    [...standIns.values()].sort((a, b) => a.midi - b.midi || a.kit.localeCompare(b.kit)).forEach(({ midi, standIn, kit, count }) =>
+      diagnostics.push({ code: 'substituted-drum-note', severity: 'info', midiNote: midi, count,
+        message: `Played ${count} ${gmName(midi)} hit${count === 1 ? '' : 's'} (MIDI ${midi}) as ${gmName(standIn)}: ${kit} has no ${gmName(midi).toLowerCase()}` }));
 
     let mergedDoubles = 0;
     let drumLayers = 0;
@@ -97,10 +121,12 @@ export class StrudelNotation {
     let maxSnapSeconds = 0;
     const effectiveTracks = prepareEffectiveTracks(tracks, this.config).map(({ track, events, snapped }) => {
       // A zero-length pitched note makes no sound; a zero-length drum hit does.
-      const audible = track.isDrum ? events.filter((event) => DRUM_MAP[event.midi])
+      const kit = track.isDrum ? drumKitFor(track) : '';
+      const sampleOf = (midi: number) => drumSample(midi, kit)?.token;
+      const audible = track.isDrum ? events.filter((event) => sampleOf(event.midi))
         : events.filter((event) => event.releaseSeconds > event.onsetSeconds);
       const merged = mergeIdenticalDoubles(audible, track.isDrum);
-      const layered = track.isDrum ? mergeSameSampleHits(merged.events, (midi) => DRUM_MAP[midi]) : merged;
+      const layered = track.isDrum ? mergeSameSampleHits(merged.events, sampleOf) : merged;
       if (!track.hidden) {
         mergedDoubles += merged.merged;
         drumLayers += track.isDrum ? layered.merged : 0;
@@ -160,7 +186,8 @@ export class StrudelNotation {
 
       // Every track retains its original polyphony under one shared loop span.
       const rendered = this.renderTrack(track, events, maxDuration, activeLabels.get(track)!, trackIndex, patterns);
-      blocks.push(`${trackHeader(track.name || activeLabels.get(track)!)}\n${rendered.library}\n\n${phraseRule}\n${rendered.code}`);
+      const key = track.isDrum ? sampleKeyLines(indexedSampleKey(events.map((event) => event.midi), drumKitFor(track))) : '';
+      blocks.push(`${trackHeader(track.name || activeLabels.get(track)!)}\n${key}${rendered.library}\n\n${phraseRule}\n${rendered.code}`);
       if (rendered.budgetExhausted) budgetTracks++;
       const eligibility = assessSourceTimingEligibility(track, events);
       const reasons = new Set<string>(eligibility.fallbackReasons);
@@ -215,11 +242,12 @@ export class StrudelNotation {
     const visualSuffix = buildVisualSuffix(this.config, track);
     const span = { durationSeconds: sharedSpanSeconds, cycleDurationSeconds };
     const fallbackReasons = new Set<string>();
+    const kit = track.isDrum ? drumKitFor(track) : '';
     const valuesFor = (eventsForPattern: EffectiveEvent[]) => eventsForPattern.map((event) => ({
         event,
         id: event.id,
         value: track.isDrum
-          ? DRUM_MAP[event.midi]
+          ? drumSample(event.midi, kit)!.token
           : (this.config.notationType === 'relative' && (this.config.key || this.config.playbackKey)
             ? getRelativeDegree({
               note: event.note,
@@ -265,7 +293,7 @@ export class StrudelNotation {
       return literal;
     };
     const makePattern = (expression: string): string => {
-      const bank = track.isDrum ? `\n  .bank(${JSON.stringify(track.drumBank || 'RolandTR909')})\n  .gain(${DRUM_GAIN})` : '';
+      const bank = track.isDrum ? `\n  .bank(${JSON.stringify(kit)})\n  .gain(${DRUM_GAIN})` : '';
       const soundSuffix = track.isDrum ? '' : `\n  .sound(${JSON.stringify(sound)})`;
       return `$${activeLabel}: ${expression}${soundSuffix}${bank}${visualSuffix};\n`;
     };

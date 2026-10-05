@@ -59,7 +59,7 @@ export interface Track {
 
 export interface ConversionDiagnostic {
   code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes'
-    | 'snapped-to-ear' | 'merged-drum-layers';
+    | 'snapped-to-ear' | 'merged-drum-layers' | 'substituted-drum-note';
   severity: 'warning' | 'info';
   midiNote?: number;
   count?: number;
