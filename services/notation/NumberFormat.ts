@@ -36,6 +36,25 @@ export const roundedDecimal = (value: number): string => (value !== 0 && Math.ab
   ? String(Number(value.toPrecision(3)))
   : String(Math.round(value * 1000) / 1000));
 
+/** A gate release may differ from the exact one by this much (well under the ear's 10 ms). */
+export const GATE_TOLERANCE_SECONDS = 0.001;
+
+/**
+ * A gate ratio (clip) for a slot of `slotSeconds`. Keeps the readable
+ * `roundedDecimal` while its release stays within a millisecond of the exact
+ * one; a long slot (slow tempo, long note) earns extra decimals until it does.
+ */
+export const gateDecimal = (ratio: number, slotSeconds: number): string => {
+  const within = (text: string) => Math.abs(Number(text) - ratio) * slotSeconds <= GATE_TOLERANCE_SECONDS * 0.99;
+  const short = roundedDecimal(ratio);
+  if (within(short)) return short;
+  for (let decimals = 4; decimals <= 15; decimals += 1) {
+    const text = String(Number(ratio.toFixed(decimals)));
+    if (within(text)) return text;
+  }
+  return String(ratio);
+};
+
 /**
  * A cycle ratio derived through float seconds (60 / bpm / ppq ...) can land a
  * few ulps off an exact small fraction. Snap to it: `1.0000000000000002` is 1.

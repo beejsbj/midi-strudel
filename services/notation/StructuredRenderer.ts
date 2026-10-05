@@ -2,7 +2,7 @@ import type { StrudelConfig, Track } from '../../types';
 import type { EffectiveEvent } from './EffectiveEvents';
 import type { SharedLiteralSpan } from './LiteralRenderer';
 import { assessSourceTimingEligibility } from './SourceEligibility';
-import { numberExpression, ratioExpression, roundedDecimal, snappedRatio } from './NumberFormat';
+import { gateDecimal, numberExpression, ratioExpression, roundedDecimal, snappedRatio } from './NumberFormat';
 
 export interface StructuredEvent {
   event: EffectiveEvent;
@@ -12,7 +12,11 @@ export interface StructuredEvent {
 /** Integer tick spans retain rational timing until the final gate serialization. */
 export type RhythmNode =
   | { kind: 'rest'; ticks: number }
-  | { kind: 'event'; ticks: number; gateTicks: number; sources: StructuredEvent[]; sourceGateTicks: number[] }
+  | {
+    kind: 'event'; ticks: number; gateTicks: number; sources: StructuredEvent[]; sourceGateTicks: number[];
+    /** Real seconds per tick, so a gate ratio can be written precisely enough for the ear. */
+    secondsPerTick: number;
+  }
   | { kind: 'sequence'; ticks: number; grouping: 'song' | 'measure' | 'subdivision' | 'weighted'; children: RhythmNode[] }
   | { kind: 'stack'; ticks: number; children: RhythmNode[] };
 
@@ -164,7 +168,7 @@ export const renderStructuredRhythm = ({
         const sources = chordsByOnset.get(start + offset)?.[lane];
         if (!sources) return { kind: 'rest', ticks };
         const sourceGateTicks = sources.map((source) => durations.get(source.event)!);
-        return { kind: 'event', ticks, gateTicks: Math.max(...sourceGateTicks), sources, sourceGateTicks };
+        return { kind: 'event', ticks, gateTicks: Math.max(...sourceGateTicks), sources, sourceGateTicks, secondsPerTick };
       });
       beats.push({ kind: 'sequence', ticks: beatTicks, grouping: equal ? 'subdivision' : 'weighted', children });
     }
@@ -199,14 +203,16 @@ export const renderStructuredRhythm = ({
  */
 export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhythmInput['control'], config: StrudelConfig): TrackControls => {
   const notes = rhythms.flatMap(leaves);
-  const gates = control === 's' ? [] : notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => ({ gate, ticks: leaf.ticks })));
+  const gates = control === 's' ? [] : notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => ({ gate, ticks: leaf.ticks, slotSeconds: leaf.ticks * leaf.secondsPerTick })));
   const velocities = config.includeVelocity ? notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity)) : [];
   const controls: TrackControls = { fields: control === 's' && usesSampleIndex(notes) ? ['n'] : [] };
   if (velocities.length && velocities.some((velocity) => velocity !== velocities[0])) controls.fields.push('velocity');
   else if (velocities.length) controls.velocity = roundedDecimal(velocities[0]);
   const ratio = ({ gate, ticks }: { gate: number; ticks: number }) => gate / ticks;
   if (gates.some((gate) => ratio(gate) !== ratio(gates[0]))) controls.fields.push('clip');
-  else if (gates.length && ratio(gates[0]) !== 1) controls.clip = constantExpression(gates[0].gate, gates[0].ticks);
+  else if (gates.length && ratio(gates[0]) !== 1) {
+    controls.clip = constantExpression(gates[0].gate, gates[0].ticks, Math.max(...gates.map((gate) => gate.slotSeconds)));
+  }
   return controls;
 };
 
@@ -272,17 +278,19 @@ const repeatCounts = <T>(items: T[], same: (a: T, b: T) => boolean): Array<{ ite
   return runs;
 };
 
+const slotSeconds = (node: EventNode) => node.ticks * node.secondsPerTick;
+
 const noteToken = (node: EventNode, attribute: Attribute, fields: Field[]): string => {
   // Mini '/' slows patterns, and the pinned REPL discards template literal
   // interpolation, so changing controls are three-decimal numbers.
-  if (attribute === 'gate') return roundedDecimal(node.gateTicks / node.ticks);
+  if (attribute === 'gate') return gateDecimal(node.gateTicks / node.ticks, slotSeconds(node));
   if (attribute === 'velocity') return roundedDecimal(node.sources[0].event.velocity);
   const parts = node.sources.map((source, index) => {
     // An indexed drum value (`perc:24`) already holds its `n` field.
     const [value, sampleIndex = '0'] = fields[0] === 'n' ? String(source.value).split(':') : [String(source.value)];
     const extra = fields.map((field) => field === 'n' ? sampleIndex
       : field === 'velocity' ? roundedDecimal(source.event.velocity)
-        : roundedDecimal(node.sourceGateTicks[index] / node.ticks));
+        : gateDecimal(node.sourceGateTicks[index] / node.ticks, slotSeconds(node)));
     // Trailing defaults (a clip of 1, the first sample) can be left off.
     while (extra.length && ((fields[extra.length - 1] === 'clip' && extra[extra.length - 1] === '1')
       || (fields[extra.length - 1] === 'n' && extra[extra.length - 1] === '0'))) extra.pop();
@@ -451,7 +459,7 @@ const emitRhythm = (
   const calls: Array<{ text: string; pattern: boolean }> = [];
   if (hasGate && !gatesVary) {
     const leaf = notes[0];
-    calls.push({ text: `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`, pattern: false });
+    calls.push({ text: `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks, Math.max(...notes.map(slotSeconds)))})`, pattern: false });
   } else if (gatesVary) {
     calls.push({ text: `.clip(${mini('gate')})`, pattern: true });
   }
@@ -471,8 +479,11 @@ const emitRhythm = (
   return `${control}(${mini('value')})${lines.map((line) => `\n  ${line}`).join('')}`;
 };
 
-/** Constant JS arguments: a small exact fraction, else three decimals. */
-const constantExpression = (numerator: number, denominator: number): string => {
+/**
+ * Constant JS arguments: a small exact fraction, else a short decimal that
+ * releases within a millisecond of the exact gate in the longest slot it fills.
+ */
+const constantExpression = (numerator: number, denominator: number, slotSeconds: number): string => {
   const exact = ratioExpression(numerator, denominator);
-  return /^-?\d+(\/\d{1,2})?$/.test(exact) ? exact : roundedDecimal(numerator / denominator);
+  return /^-?\d+(\/\d{1,2})?$/.test(exact) ? exact : gateDecimal(numerator / denominator, slotSeconds);
 };
