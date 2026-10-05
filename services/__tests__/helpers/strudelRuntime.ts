@@ -9,6 +9,8 @@ export interface RuntimeEvent {
   /** End of the structural slot; gate tolerances scale with this span. */
   wholeEndSeconds: number;
   value: Record<string, unknown>;
+  /** Source ranges in the evaluated code that produced this event. */
+  locations: Array<{ start: number; end: number }>;
 }
 
 export interface EvaluatedStrudelCode {
@@ -70,6 +72,7 @@ export const evaluateGeneratedStrudelCode = async (
           gateEndSeconds: onsetSeconds + Number(event.duration) / cps,
           wholeEndSeconds: Number(event.whole.end) / cps,
           value: event.value as Record<string, unknown>,
+          locations: (event.context as { locations?: Array<{ start: number; end: number }> })?.locations ?? [],
         };
       });
   return {

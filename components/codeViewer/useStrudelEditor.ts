@@ -321,6 +321,8 @@ export function useStrudelEditor({
           },
           onToggle: (started: boolean) => {
             setIsPlaying(started);
+            const toggledView = editorRef.current?.editor ?? (editorRef.current?.view as EditorView | undefined);
+            if (toggledView) updatePlaybackHighlightOptions(toggledView, { isPlaying: started });
 
             if (!started) {
               playbackSignatureRef.current = 'stopped';

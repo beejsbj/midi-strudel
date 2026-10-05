@@ -12,6 +12,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { isNote, tokenizeNote } from '@strudel/core';
+import { extractChainCallRanges, extractDegreeTokens, extractRestTokens, type CodeRange } from './strudelCodeTokens';
 
 type NumericLike = number | { valueOf(): number };
 
@@ -19,6 +20,8 @@ type PlaybackHighlightOptions = {
   isNoteColoringEnabled: boolean;
   isProgressiveFillEnabled: boolean;
   isPatternTextColoringEnabled: boolean;
+  /** While playing, chain calls dim so the sounding patterns stand out. */
+  isPlaying: boolean;
 };
 
 type HapLike = {
@@ -66,7 +69,12 @@ const defaultOptions: PlaybackHighlightOptions = {
   isNoteColoringEnabled: false,
   isProgressiveFillEnabled: false,
   isPatternTextColoringEnabled: false,
+  isPlaying: false,
 };
+
+/** Rests read as silence: neutral gray, whatever the note palette. */
+const REST_COLOR = 'hsl(0, 0%, 52%)';
+const DIMMED_OPACITY = 0.45;
 
 export const PLAYBACK_PROGRESS_BUCKETS = 120;
 export const EMPTY_PLAYBACK_FRAME: PlaybackFrame = {
@@ -221,6 +229,73 @@ const noteTokens = StateField.define<NoteToken[]>({
   },
 });
 
+type CodeRanges = { rests: CodeRange[]; calls: CodeRange[] };
+const scanCodeRanges = (doc: Text): CodeRanges => {
+  const content = doc.toString();
+  return { rests: extractRestTokens(content), calls: extractChainCallRanges(content) };
+};
+const codeRanges = StateField.define<CodeRanges>({
+  create(state) {
+    return scanCodeRanges(state.doc);
+  },
+  update(ranges, tr) {
+    return tr.docChanged ? scanCodeRanges(tr.newDoc) : ranges;
+  },
+});
+
+const visibleCodeRanges = (ranges: CodeRange[], view: EditorView) =>
+  ranges.filter((range) => view.visibleRanges.some((visible) => range.to > visible.from && range.from < visible.to));
+
+const restDecorations = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildRestDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged || didFieldChange(update, playbackOptions)) {
+        this.decorations = buildRestDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+const dimmedCallDecorations = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildDimmedCallDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged || didFieldChange(update, playbackOptions)) {
+        this.decorations = buildDimmedCallDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function buildRestDecorations(view: EditorView) {
+  if (!view.state.field(playbackOptions).isNoteColoringEnabled) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  const mark = Decoration.mark({ attributes: { 'data-strudel-rest': 'true', style: `color: ${REST_COLOR};` } });
+  for (const range of visibleCodeRanges(view.state.field(codeRanges).rests, view)) builder.add(range.from, range.to, mark);
+  return builder.finish();
+}
+
+function buildDimmedCallDecorations(view: EditorView) {
+  if (!view.state.field(playbackOptions).isPlaying) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  const mark = Decoration.mark({ attributes: { 'data-strudel-dimmed': 'true', style: `opacity: ${DIMMED_OPACITY};` } });
+  for (const range of visibleCodeRanges(view.state.field(codeRanges).calls, view)) builder.add(range.from, range.to, mark);
+  return builder.finish();
+}
+
 const passiveNoteDecorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -268,6 +343,9 @@ export const strudelPlaybackHighlightExtension = [
   playbackOptions,
   activePlayback,
   noteTokens,
+  codeRanges,
+  restDecorations,
+  dimmedCallDecorations,
   passiveNoteDecorations,
   activeNoteDecorations,
 ];
@@ -302,7 +380,12 @@ function extractNoteTokens(doc: Text) {
     });
   }
 
-  return tokens;
+  // Relative phrases: each scale degree takes the colour of the pitch it plays.
+  for (const degree of extractDegreeTokens(content)) {
+    tokens.push({ from: degree.from, to: degree.to, color: midiToHslColor(degree.midi) });
+  }
+
+  return tokens.sort((left, right) => left.from - right.from);
 }
 
 function buildPassiveNoteDecorations(view: EditorView) {
@@ -498,14 +581,20 @@ function noteToHslColor(note: string) {
       acc?.split('').reduce((sum, char) => sum + (accidentals[char] ?? 0), 0) ??
       0;
     const chromaticStep = (((chroma + accidentalOffset) % 12) + 12) % 12;
-    const octave = oct ?? 3;
-    const hue = chromaticStep * 30;
-    const lightness = Math.max(26, Math.min(72, 30 + octave * 7));
-
-    return `hsl(${hue}, 72%, ${lightness}%)`;
+    return pitchHslColor(chromaticStep, oct ?? 3);
   } catch {
     return null;
   }
+}
+
+function midiToHslColor(midi: number) {
+  return pitchHslColor(((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1);
+}
+
+function pitchHslColor(chromaticStep: number, octave: number) {
+  const hue = chromaticStep * 30;
+  const lightness = Math.max(26, Math.min(72, 30 + octave * 7));
+  return `hsl(${hue}, 72%, ${lightness}%)`;
 }
 
 function toTransparentColor(color: string) {
