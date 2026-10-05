@@ -296,7 +296,7 @@ export class StrudelNotation {
       phrases = phrases.map((phrase) => ({ ...phrase, expression: bare(phrase.expression) }));
       passages = passages.map((passage) => ({ ...passage, expression: bare(passage.expression) }));
       remainderExpression = remainderExpression && bare(remainderExpression);
-      trackSuffix = trackControlSuffix(control, controls, scale);
+      trackSuffix = trackControlSuffix(controls);
     }
     const timeline = renderPhraseTimeline({ phrases, passages,
       remainderExpression,

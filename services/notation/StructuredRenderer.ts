@@ -179,16 +179,16 @@ export const renderStructuredRhythm = ({
   const measureTicks = meter.numerator * beatTicks;
   // `<...>` gives each whole measure one cycle; a partial measure would be stretched.
   const measureSteps = spanTicks % measureTicks === 0;
-  const expression = emitRhythm(rhythm, control, config, measureSteps);
   const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
+  const expression = emitRhythm(rhythm, control, config, measureSteps, undefined, scaleSuffix);
   const cycles = snappedRatio((measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds);
   const slowSuffix = cycles === 1 ? '' : `.slow(${numberExpression(cycles)})`;
   return {
     ok: true,
-    expression: `${expression}${scaleSuffix}${slowSuffix}`,
+    expression: `${expression}${slowSuffix}`,
     rhythm,
     // Each phrase names its own fields, so it plays wherever it is pasted.
-    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls)}${slowSuffix}`,
+    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls, scaleSuffix)}${slowSuffix}`,
   };
 };
 
@@ -211,11 +211,10 @@ export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhyth
 };
 
 /** Controls every phrase of the track shares, hoisted onto the track line. */
-export const trackControlSuffix = (control: StructuredRhythmInput['control'], controls: TrackControls, scale?: string): string =>
+export const trackControlSuffix = (controls: TrackControls): string =>
   // One call per line, like the .sound()/.color() chain that follows.
   (controls.clip ? `\n  .clip(${controls.clip})` : '')
-  + (controls.velocity ? `\n  .velocity(${controls.velocity})` : '')
-  + (control === 'n' && scale !== undefined ? `\n  .scale(${JSON.stringify(scale)})` : '');
+  + (controls.velocity ? `\n  .velocity(${controls.velocity})` : '');
 
 type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
@@ -316,7 +315,12 @@ export const LINE_WIDTH = 100;
  * Characters a lane may use: on its key line (`  a: \`...\`.as("note"),`) and
  * on a block row, which sits two indents deep in the track's phrase object.
  */
-interface LaneWidths { key: number; row: number }
+interface LaneWidths {
+  key: number;
+  row: number;
+  /** Lanes that must break in the same places; each break fits the widest. */
+  lanes?: Attribute[];
+}
 const ROW_INDENT = 4;
 /** `  a: ` plus a backtick each side; keys past `zz` are rare enough to ignore. */
 const KEY_LINE_RESERVE = '  zz: ``,'.length;
@@ -325,8 +329,9 @@ const KEY_LINE_RESERVE = '  zz: ``,'.length;
  * Lay out one lane. Whole measures become `<...>` steps (one cycle each). A
  * multi-bar passage is a block with at most N measures per line (`m!3` counts 3
  * and is never split) and at most LINE_WIDTH characters per row; a passage
- * that fits one row, like a one-bar passage, stays on its key line. Widths are measured on the note lane
- * so chained control lanes break in the same places.
+ * that fits one row, like a one-bar passage, stays on its key line. A
+ * measure's width is its widest lane, so chained control lanes break in the
+ * same places as the notes and none passes the line.
  */
 const layoutLane = (
   lane: RhythmNode, attribute: Attribute, fields: Field[], config: StrudelConfig, measureSteps: boolean, widths: LaneWidths,
@@ -338,8 +343,10 @@ const layoutLane = (
     return measures.length > 1 ? `[${text}]` : text;
   }
   const beats = (measure: RhythmNode) => segments(measure, attribute, fields).map((part) => part.text);
+  const measureWidth = (measure: RhythmNode) =>
+    Math.max(...(widths.lanes ?? ['value']).map((lane) => emitGroup(measure, lane, fields).length));
   const tooWide = (measure: RhythmNode, width: number, suffix = '') => measure.kind === 'sequence'
-    && measure.children.length > 1 && emitGroup(measure, 'value', fields).length + suffix.length > width;
+    && measure.children.length > 1 && measureWidth(measure) + suffix.length > width;
   if (measures.length === 1) {
     return tooWide(measures[0], widths.key) ? `[\n  ${beats(measures[0]).join('\n  ')}\n]` : beats(measures[0]).join(' ');
   }
@@ -363,7 +370,7 @@ const layoutLane = (
       lines.push('[', ...beats(item.measure).map((beat) => `  ${beat}`), `]${suffix}`);
       continue;
     }
-    const width = emitGroup(item.measure, 'value', fields).length + suffix.length;
+    const width = measureWidth(item.measure) + suffix.length;
     if (row.length && (count >= perLine || rowWidth + 1 + width > widths.row)) flush();
     row.push(`${item.text}${suffix}`);
     rowWidth += (row.length > 1 ? 1 : 0) + width;
@@ -378,25 +385,30 @@ const layoutLane = (
 const emitRhythm = (
   node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean,
   library?: TrackControls,
+  scaleSuffix = '',
 ): string => {
-  // Library passages are bare strings; the phrase names its own fields once.
+  // Library passages are bare strings; the phrase names its own fields once,
+  // on a call line under the pattern so every pattern starts in one column.
   if (library) {
-    const as = `.as(${JSON.stringify([control, ...library.fields].join(':'))})`;
+    // Relative degrees need their scale to mean pitches, so it travels too.
+    const calls = `.as(${JSON.stringify([control, ...library.fields].join(':'))})${scaleSuffix}`;
     const lanes = node.kind === 'stack' ? node.children : [node];
     // A stacked lane sits on its own line inside `stack(`, one indent deeper.
     const widths = lanes.length === 1
-      ? { key: LINE_WIDTH - KEY_LINE_RESERVE - as.length, row: LINE_WIDTH - ROW_INDENT }
+      ? { key: LINE_WIDTH - '  zz: ``'.length, row: LINE_WIDTH - ROW_INDENT }
       : { key: LINE_WIDTH - ROW_INDENT - '``,'.length, row: LINE_WIDTH - ROW_INDENT - 2 };
     const lane = (child: RhythmNode) => leaves(child).length
       ? `\`${layoutLane(child, 'value', library.fields, config, measureSteps, widths)}\`` : '`~`';
     const body = lanes.length === 1 ? lane(lanes[0])
       : `stack(\n  ${lanes.map((child) => lane(child).replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
-    return `${body}${as}`;
+    return `${body}\n  ${calls}`;
   }
   if (node.kind === 'stack') {
+    if (node.children.length === 1) return emitRhythm(node.children[0], control, config, measureSteps, undefined, scaleSuffix);
+    // One scale reads every lane, so it follows the stack on its own call line.
     const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps));
-    return expressions.length === 1 ? expressions[0]
-      : `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
+    return `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`
+      + (scaleSuffix ? `\n  ${scaleSuffix}` : '');
   }
   const notes = leaves(node);
   if (!notes.length) return 'silence';
@@ -411,25 +423,39 @@ const emitRhythm = (
   const fields: Field[] = config.controlSyntax === 'colon'
     ? [...(config.includeVelocity ? ['velocity' as const] : []), ...(hasGate ? ['clip' as const] : [])] : [];
   // Template literals keep source beat/measure layout visible to the musician.
-  // Varying gates or velocities add a lane to the same key line; they share it.
-  const lanes = 1 + (gatesVary ? 1 : 0) + (velocitiesVary ? 1 : 0);
-  const callWidth = `${control}()`.length + (gatesVary ? '.clip()'.length : 0) + (velocitiesVary ? '.velocity()'.length : 0);
-  const widths = { key: Math.floor((LINE_WIDTH - KEY_LINE_RESERVE - callWidth) / lanes), row: LINE_WIDTH - ROW_INDENT };
+  // Calls sit on a line under the pattern; a call carrying its own pattern
+  // (a varying clip or velocity lane) takes a line of its own, one indent in.
+  const patternCalls = gatesVary || velocitiesVary;
+  const callReserve = ROW_INDENT + (velocitiesVary ? '.velocity(``),' : '.clip(``),').length;
+  const widths = {
+    key: LINE_WIDTH - Math.max(KEY_LINE_RESERVE + `${control}()`.length, patternCalls ? callReserve : 0),
+    // Every lane breaks where the note lane does; a call lane's rows sit two deeper.
+    row: LINE_WIDTH - ROW_INDENT - (patternCalls ? 2 : 0),
+    lanes: ['value' as const, ...(gatesVary ? ['gate' as const] : []), ...(velocitiesVary ? ['velocity' as const] : [])],
+  };
   const mini = (attribute: Attribute) => `\`${layoutLane(node, attribute, fields, config, measureSteps, widths)}\``;
-  if (fields.length) return `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`;
-  let expression = `${control}(${mini('value')})`;
+  if (fields.length) return `${mini('value')}\n  .as(${JSON.stringify([control, ...fields].join(':'))})${scaleSuffix}`;
+  const calls: Array<{ text: string; pattern: boolean }> = [];
   if (hasGate && !gatesVary) {
     const leaf = notes[0];
-    expression += `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`;
+    calls.push({ text: `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`, pattern: false });
   } else if (gatesVary) {
-    expression += `.clip(${mini('gate')})`;
+    calls.push({ text: `.clip(${mini('gate')})`, pattern: true });
   }
   if (config.includeVelocity && !velocitiesVary) {
-    expression += `.velocity(${roundedDecimal(velocities[0])})`;
+    calls.push({ text: `.velocity(${roundedDecimal(velocities[0])})`, pattern: false });
   } else if (velocitiesVary) {
-    expression += `.velocity(${mini('velocity')})`;
+    calls.push({ text: `.velocity(${mini('velocity')})`, pattern: true });
   }
-  return expression;
+  if (scaleSuffix) calls.push({ text: scaleSuffix, pattern: false });
+  const lines: string[] = [];
+  let joinable = false;
+  for (const call of calls) {
+    if (joinable && !call.pattern) lines[lines.length - 1] += call.text;
+    else lines.push(call.text.replace(/\n/g, '\n  '));
+    joinable = !call.pattern;
+  }
+  return `${control}(${mini('value')})${lines.map((line) => `\n  ${line}`).join('')}`;
 };
 
 /** Constant JS arguments: a small exact fraction, else three decimals. */
