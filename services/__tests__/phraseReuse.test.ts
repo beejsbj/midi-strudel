@@ -120,7 +120,7 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.patterns.definitions[0].name).toMatch(/^phrases\.[a-z0-9_]+\.a$/);
     expect(result.patterns.occurrences.flatMap((occurrence) => occurrence.sourceNoteIds)).toHaveLength(36);
     expect(result.code).toContain('<~ a b@2 a!2>');
-    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\n  \.pickRestart\(phrases\.\w+\)/);
+    expect(result.code).toMatch(/"<~ a b@2 a!2>"(\.slow\([^)]+\))?\n {2}\.pickRestart\(phrases\.\w+\)/);
     expect(result.code).not.toContain('cat(');
     expect(result.code).not.toContain('.slow(8)');
   });
@@ -166,7 +166,7 @@ describe('exact phrase reuse through public conversion', () => {
     expect(result.code).toContain('    ab:');
     expect(result.code).toContain('z ~ aa ~ ab\n>`');
     // The 56-bar timeline is wider than a line, so it wraps into a block.
-    expect(result.code).toMatch(/\$piano: `<\n  a ~ b ~ /);
+    expect(result.code).toMatch(/\$piano: `<\n {2}a ~ b ~ /);
   });
 
   it('drops a silent zero-length pitched note without disturbing its neighbours', async () => {
