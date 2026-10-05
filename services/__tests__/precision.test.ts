@@ -47,3 +47,24 @@ describe('gate precision', () => {
     expect(convertMidi(bytes, 'normal.mid').code).toMatch(/\.clip\(0\.602\)/);
   });
 });
+
+describe('playback tempo precision', () => {
+  it('does not drift a late note when the BPM is not a short decimal', async () => {
+    // 30.00049 BPM parses as 30.000495...; displayed to three decimals that is 30.
+    const bytes = buildMidi(30.00049, [4, 4], [{ ticks: 0, durationTicks: 480 }, { ticks: 1_728_000, durationTicks: 480 }]);
+    const result = convertMidi(bytes, 'slow.mid');
+    // No exactBpm/secondsPerCycle correction: the emitted code alone sets the tempo.
+    const runtime = await evaluateGeneratedStrudelCode(result.code);
+    try {
+      const exactOnset = 1_728_000 * 60 / result.config.bpm / 480;
+      const late = runtime.querySeconds(exactOnset - 1, exactOnset + 1);
+      expect(late).toHaveLength(1);
+      expect(Math.abs(late[0].onsetSeconds - exactOnset)).toBeLessThanOrEqual(0.001);
+    } finally { runtime.stop(); }
+  });
+
+  it('keeps the short BPM for ordinary songs', () => {
+    const bytes = buildMidi(125, [4, 4], [{ ticks: 0, durationTicks: 480 }, { ticks: 1920, durationTicks: 480 }]);
+    expect(convertMidi(bytes, 'normal.mid').code).toContain('const BPM = 125;');
+  });
+});
