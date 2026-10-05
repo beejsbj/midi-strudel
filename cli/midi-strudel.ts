@@ -19,7 +19,7 @@ export interface CliOptions {
 
 const HELP = `Usage: midi-strudel [options] <file.mid|file.midi>
 
-Convert a MIDI file to Strudel without interactive prompts.
+Convert a MIDI file to structured Strudel notation without interactive prompts.
 
 Output:
   --format <code|json|url>       stdout format (default: code)
@@ -33,11 +33,9 @@ Conversion:
   --sound <name>                 fallback Strudel sound
   --auto-mapping / --no-auto-mapping
   --velocity / --no-velocity
-  --timing <absoluteDuration|relativeDivision>
   --quantize / --no-quantize
   --quantization-threshold <ms>
   --quantization-strength <0-100>
-  --duration-precision <integer>
 
 Other:
   -h, --help
@@ -94,7 +92,6 @@ export const parseArgs = (args: string[]): CliOptions | null => {
       case '--no-auto-mapping': overrides.useAutoMapping = false; break;
       case '--velocity': overrides.includeVelocity = true; break;
       case '--no-velocity': overrides.includeVelocity = false; break;
-      case '--timing': overrides.timingStyle = choice(consumeValue(), arg, ['absoluteDuration', 'relativeDivision']); break;
       case '--quantize': overrides.isQuantized = true; break;
       case '--no-quantize': overrides.isQuantized = false; break;
       case '--quantization-threshold': overrides.quantizationThreshold = numberValue(consumeValue(), arg); break;
@@ -104,12 +101,10 @@ export const parseArgs = (args: string[]): CliOptions | null => {
         overrides.quantizationStrength = strength;
         break;
       }
-      case '--duration-precision': {
-        const precision = integerValue(consumeValue(), arg);
-        if (precision > 8) fail(`${arg} must be <= 8`);
-        overrides.durationPrecision = precision;
-        break;
-      }
+      case '--rendering':
+      case '--timing':
+      case '--duration-precision':
+        return fail(`${arg} has been retired; structured notation combines timing automatically. Remove this option.`);
       default: fail(`unknown option: ${arg}`);
     }
   }
@@ -128,7 +123,9 @@ const serializeJsonOutput = (input: string, conversion: MidiConversion): string 
     bpm: conversion.config.sourceBpm,
     timeSignature: conversion.config.sourceTimeSignature,
     trackCount: conversion.tracks.length,
+    timing: conversion.source,
   },
+  sharedSpanSeconds: conversion.sharedSpanSeconds,
   config: conversion.config,
   tracks: conversion.tracks.map((track) => ({
     id: track.id,
@@ -140,6 +137,7 @@ const serializeJsonOutput = (input: string, conversion: MidiConversion): string 
   // Additive schema-v1 field: existing consumers may continue reading the
   // stable code/url/config fields while agents can inspect dropped events.
   diagnostics: conversion.diagnostics,
+  patterns: conversion.patterns,
   code: conversion.code,
   url: conversion.link,
 }, null, 2);

@@ -1,9 +1,10 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import MidiPackage from '@tonejs/midi';
 import { parseArgs } from '../midi-strudel';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -11,11 +12,26 @@ const fixture = 'public/examples/ruthlessness-epic-the-musical.mid';
 const denseFixture = 'public/examples/warrior-of-the-mind-epic-the-musical.mid';
 let temporaryDirectory: string;
 let midiFixture: string;
+let changingMapFixture: string;
 
 beforeAll(() => {
   temporaryDirectory = mkdtempSync(join(tmpdir(), 'midi-strudel-cli-'));
   midiFixture = join(temporaryDirectory, 'ruthlessness-epic-the-musical.midi');
   copyFileSync(join(repoRoot, fixture), midiFixture);
+
+  const { Midi } = MidiPackage;
+  const midi = new Midi();
+  midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 480 });
+  midi.header.tempos = [{ ticks: 0, bpm: 120 }, { ticks: 480, bpm: 90 }];
+  midi.header.timeSignatures = [
+    { ticks: 0, timeSignature: [4, 4], measures: 0 },
+    { ticks: 960, timeSignature: [3, 4], measures: 1 },
+  ];
+  const track = midi.addTrack();
+  track.addNote({ midi: 60, ticks: 240, durationTicks: 720 });
+  track.addNote({ midi: 64, ticks: 960, durationTicks: 240 });
+  changingMapFixture = join(temporaryDirectory, 'changing-map.mid');
+  writeFileSync(changingMapFixture, midi.toArray());
 });
 
 afterAll(() => {
@@ -43,6 +59,24 @@ const runCli = (...args: string[]): SpawnSyncReturns<string> => {
 };
 
 describe('midi-strudel CLI', () => {
+  it('uses structured phrase reuse by default in every output format', () => {
+    expect(parseArgs([fixture])?.overrides).toEqual({});
+    const result = runCli(fixture, '--format', 'json');
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.config).not.toHaveProperty('renderingMode');
+    expect(output.code).toContain('note(`');
+    expect(output.schemaVersion).toBe(1);
+    expect(output.patterns.definitions.length).toBeGreaterThan(0);
+    const piano = output.tracks.find((track: { name: string }) => track.name === 'Grand Piano (Classic)');
+    const definition = output.patterns.definitions.find((entry: { trackId: string }) => entry.trackId === piano.id);
+    expect(output.patterns.occurrences.filter((entry: { definitionId: string }) => entry.definitionId === definition.id)
+      .map((entry: { sourceStartMeasure: number }) => entry.sourceStartMeasure)).toEqual([3, 4, 5, 7, 8, 9]);
+    expect(runCli(fixture, '--format', 'code').stdout).toBe(output.code);
+    expect(runCli(fixture, '--format', 'url').stdout.trim()).toBe(output.url);
+    expect(Buffer.from(new URL(output.url).hash.slice(1), 'base64').toString('utf8')).toBe(output.code);
+  });
+
   it('emits Strudel code on stdout for a real MIDI file', () => {
     const result = runCli(fixture, '--format', 'code');
 
@@ -61,15 +95,23 @@ describe('midi-strudel CLI', () => {
       input: 'warrior-of-the-mind-epic-the-musical.mid',
       code: expect.stringContaining('setcps('),
       url: expect.stringMatching(/^https:\/\/strudel\.cc\/#/),
+      sharedSpanSeconds: expect.any(Number),
+      source: {
+        timing: expect.objectContaining({ ppq: expect.any(Number) }),
+      },
       diagnostics: [
         { code: 'unmapped-drum-note', midiNote: 31, count: 85 },
         { code: 'unmapped-drum-note', midiNote: 74, count: 1 },
         { code: 'unmapped-drum-note', midiNote: 78, count: 1 },
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
+        { code: 'precise-literal-fallback', count: expect.any(Number),
+          message: expect.stringContaining('Effective timing differs from source rhythm') },
       ],
     });
-    expect(result.stderr.trim().split('\n')).toHaveLength(5);
+    expect(parsed.patterns.definitions.length).toBeGreaterThan(0);
+    expect(result.stderr.trim().split('\n')).toHaveLength(parsed.diagnostics.length);
+    expect(result.stderr).toContain('[precise-literal-fallback]');
     expect(result.stderr).toContain('Dropped 85 unmapped drum note events for MIDI 31');
     expect(result.stderr).toContain('Dropped 159 unmapped drum note events for MIDI 85');
   });
@@ -85,13 +127,44 @@ describe('midi-strudel CLI', () => {
       .toBe(codeResult.stdout);
   });
 
+  it('keeps changing source maps in JSON while code and URL use the explicit literal fallback', () => {
+    const jsonResult = runCli(changingMapFixture, '--format', 'json');
+    const codeResult = runCli(changingMapFixture, '--format', 'code');
+    const urlResult = runCli(changingMapFixture, '--format', 'url');
+    const parsed = JSON.parse(jsonResult.stdout);
+    const url = new URL(urlResult.stdout.trim());
+
+    expect(jsonResult.status).toBe(0);
+    expect(parsed.source.timing).toMatchObject({
+      ppq: 480,
+      tempos: [{ ticks: 0, bpm: 120 }, { ticks: 480, bpm: expect.closeTo(90, 3) }],
+      timeSignatures: [
+        { ticks: 0, numerator: 4, denominator: 4 },
+        { ticks: 960, numerator: 3, denominator: 4 },
+      ],
+    });
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'precise-literal-fallback',
+      message: expect.stringContaining('tempo and meter changes'),
+    }));
+    expect(jsonResult.stderr).toContain('[precise-literal-fallback]');
+    expect(codeResult.status).toBe(0);
+    expect(codeResult.stderr).toContain('[precise-literal-fallback]');
+    expect(urlResult.status).toBe(0);
+    expect(urlResult.stderr).toContain('[precise-literal-fallback]');
+    expect(Buffer.from(url.hash.slice(1), 'base64').toString('utf8')).toBe(codeResult.stdout);
+  });
+
   it.each(['code', 'url'] as const)(
     'keeps dense %s stdout clean while reporting bounded diagnostics',
     (format) => {
       const result = runCli(denseFixture, '--format', format);
 
       expect(result.status).toBe(0);
-      expect(result.stderr.trim().split('\n')).toHaveLength(5);
+      const diagnostics = result.stderr.trim().split('\n');
+      expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
+      expect(diagnostics.filter((line) => line.includes('[precise-literal-fallback]'))).toHaveLength(1);
+      expect(diagnostics).toHaveLength(6);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);
@@ -147,7 +220,22 @@ describe('midi-strudel arguments', () => {
   it('rejects invalid input and invalid choices', () => {
     expect(() => parseArgs(['song.txt'])).toThrow('.mid or .midi');
     expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
-    expect(() => parseArgs(['--duration-precision', '9', 'song.mid']))
-      .toThrow('--duration-precision must be <= 8');
+  });
+
+  it.each(['--rendering', '--timing', '--duration-precision'])('explains how to migrate retired %s commands', (flag) => {
+    expect(() => parseArgs([flag, 'expanded', 'song.mid'])).toThrow(`${flag} has been retired`);
+    const result = runCli(flag, 'expanded', fixture);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Remove this option.');
+  });
+
+  it('does not advertise retired settings in help', () => {
+    const result = runCli('--help');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('structured Strudel notation');
+    for (const flag of ['--rendering', '--timing', '--duration-precision']) {
+      expect(result.stdout).not.toContain(flag);
+    }
   });
 });

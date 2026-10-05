@@ -49,7 +49,7 @@ export const VisualsSection: React.FC<Props> = ({
       onToggleCollapse={onToggleCollapse}
     >
       <div className="space-y-1.5">
-        <span className={fieldLabelClass}>@duration + :velocity tags</span>
+        <span className={fieldLabelClass}>@weight + :velocity tags</span>
         <SegmentedControl
           aria-label="Inline metadata style"
           value={config.durationTagStyle}
@@ -57,7 +57,7 @@ export const VisualsSection: React.FC<Props> = ({
           columns={3}
           options={DURATION_STYLES.map(({ value, label }) => ({ value, label }))}
         />
-        <HelpText>Styles both inline duration values and velocity values when velocity is included.</HelpText>
+        <HelpText>Styles @ weights and :velocity values in mini-notation.</HelpText>
       </div>
 
       <div className="space-y-1.5">
