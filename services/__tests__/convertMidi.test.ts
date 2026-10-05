@@ -5,6 +5,7 @@ import MidiPackage from '@tonejs/midi';
 import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
+import { drumSample } from '../drums/DrumKits';
 import { DEFAULT_CONFIG, type StrudelConfig } from '../../types';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 
@@ -81,45 +82,33 @@ describe('convertMidi', () => {
     expect(result.tracks[0].sourceTiming).toEqual(result.source);
   });
 
-  it('retains representable GM percussion and aggregates unsupported notes', () => {
-    const result = convertMidi(
-      makePercussionMidi([36, 43, 48, 52, 31, 31, 31]),
-      'percussion.mid',
-    );
-
-    expect(result.code).toContain('lt');
-    expect(result.code).toContain('ht');
-    expect(result.code).toContain('cr');
-    expect(result.diagnostics).toEqual([{
-      code: 'unmapped-drum-note',
-      severity: 'warning',
-      midiNote: 31,
-      count: 3,
-      message: 'Dropped 3 unmapped drum note events for MIDI 31',
-    }]);
+  it('picks the kit that has the part\'s sounds and plays every GM percussion note', async () => {
+    // Sticks are rare: only a few kits have them, so they decide the kit.
+    const result = convertMidi(makePercussionMidi([36, 43, 48, 31, 31, 31]), 'percussion.mid');
+    const kit = result.tracks[0].drumBank!;
+    expect(kit).not.toBe('RolandTR909');
+    expect(drumSample(31, kit)).toEqual({ token: expect.any(String) });
+    expect(result.code).toContain(`.bank("${kit}")`);
+    expect(result.diagnostics.filter(({ code }) => code === 'unmapped-drum-note')).toEqual([]);
+    const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
+    try {
+      expect(runtime.querySeconds(0, result.sharedSpanSeconds)).toHaveLength(6);
+    } finally { runtime.stop(); }
   });
 
-  it('reports an all-unsupported drum track in deterministic MIDI-note order', () => {
-    const result = convertMidi(
-      makePercussionMidi([85, 31, 85]),
-      'unsupported.mid',
-    );
-
+  it('plays a sound the kit lacks as its nearest stand-in and drops only notes outside GM percussion', () => {
+    const project = createMidiProject(parseMidiBuffer(makePercussionMidi([85, 31, 85, 20])), 'unsupported.mid');
+    // The TR-909 has no castanets, sticks, claves or woodblock: both become its rimshot.
+    const tracks = project.tracks.map((track) => ({ ...track, drumBank: 'RolandTR909' }));
+    const result = new StrudelNotation(project.config).generateWithDiagnostics(tracks);
+    expect(result.code).toContain('.bank("RolandTR909")');
     expect(result.diagnostics).toEqual([
-      {
-        code: 'unmapped-drum-note',
-        severity: 'warning',
-        midiNote: 31,
-        count: 1,
-        message: 'Dropped 1 unmapped drum note event for MIDI 31',
-      },
-      {
-        code: 'unmapped-drum-note',
-        severity: 'warning',
-        midiNote: 85,
-        count: 2,
-        message: 'Dropped 2 unmapped drum note events for MIDI 85',
-      },
+      { code: 'unmapped-drum-note', severity: 'warning', midiNote: 20, count: 1,
+        message: 'Dropped 1 unmapped drum note event for MIDI 20' },
+      { code: 'substituted-drum-note', severity: 'info', midiNote: 31, count: 1,
+        message: 'Played 1 Sticks hit (MIDI 31) as Side Stick: RolandTR909 has no sticks' },
+      { code: 'substituted-drum-note', severity: 'info', midiNote: 85, count: 2,
+        message: 'Played 2 Castanets hits (MIDI 85) as Side Stick: RolandTR909 has no castanets' },
     ]);
   });
 

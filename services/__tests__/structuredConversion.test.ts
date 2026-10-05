@@ -5,7 +5,6 @@ import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 import { earNotes } from './helpers/earOracle';
-import { DRUM_MAP } from '../../constants';
 
 /** Round velocity to three decimals, matching the converter's rounding. */
 const roundedVelocity = (velocity: number): number => Math.round(velocity * 1000) / 1000;
@@ -68,7 +67,7 @@ describe('structured public conversion', () => {
       const events = runtime.querySeconds(0, 16 / 3).sort((a, b) => a.onsetSeconds - b.onsetSeconds || String(a.value.s).localeCompare(String(b.value.s)));
       expect(result.sharedSpanSeconds).toBe(2);
       expect(events).toHaveLength(6);
-      expect(events.map((event) => event.value.s)).toEqual([DRUM_MAP[36], DRUM_MAP[42], DRUM_MAP[42], DRUM_MAP[36], DRUM_MAP[42], DRUM_MAP[42]]);
+      expect(events.map((event) => event.value.s)).toEqual(['bd', 'hh', 'hh', 'bd', 'hh', 'hh']);
       expect(events.map((event) => event.onsetSeconds)).toEqual([0, 0, 1 / 3, 8 / 3, 8 / 3, 3]);
       // Drum hits are one-shots: no clip, so samples play out whatever their MIDI length.
       expect(result.code).not.toContain('.clip(');

@@ -100,12 +100,12 @@ describe('midi-strudel CLI', () => {
         timing: expect.objectContaining({ ppq: expect.any(Number) }),
       },
       diagnostics: [
-        { code: 'unmapped-drum-note', midiNote: 31, count: 85 },
-        { code: 'unmapped-drum-note', midiNote: 74, count: 1 },
-        { code: 'unmapped-drum-note', midiNote: 78, count: 1 },
-        { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
-        { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
-        { code: 'merged-duplicate-notes', count: 110 },
+        // Every drum hit plays: kits are matched to each part, and a sound the
+        // kit lacks is played as its nearest stand-in.
+        { code: 'substituted-drum-note', severity: 'info', midiNote: 52, count: 2 },
+        { code: 'substituted-drum-note', severity: 'info', midiNote: 83, count: 47 },
+        { code: 'substituted-drum-note', severity: 'info', midiNote: 85, count: 159 },
+        { code: 'merged-duplicate-notes', count: 206 },
         { code: 'merged-drum-layers', severity: 'info', count: 18 },
         { code: 'snapped-to-ear', severity: 'info', count: 412 },
         { code: 'dropped-silent-notes', count: 9 },
@@ -114,8 +114,8 @@ describe('midi-strudel CLI', () => {
     expect(parsed.patterns.definitions.length).toBeGreaterThan(0);
     expect(result.stderr.trim().split('\n')).toHaveLength(parsed.diagnostics.length);
     expect(result.stderr).toContain('[dropped-silent-notes]');
-    expect(result.stderr).toContain('Dropped 85 unmapped drum note events for MIDI 31');
-    expect(result.stderr).toContain('Dropped 159 unmapped drum note events for MIDI 85');
+    expect(result.stderr).toContain('Played 159 Castanets hits (MIDI 85) as High Woodblock: YamahaRY30 has no castanets');
+    expect(result.stderr).not.toContain('unmapped-drum-note');
   });
 
   it('emits a Strudel URL whose base64 fragment decodes to the emitted code', () => {
@@ -164,12 +164,13 @@ describe('midi-strudel CLI', () => {
 
       expect(result.status).toBe(0);
       const diagnostics = result.stderr.trim().split('\n');
-      expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
+      expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(0);
+      expect(diagnostics.filter((line) => line.includes('info [substituted-drum-note]'))).toHaveLength(3);
       expect(diagnostics.filter((line) => line.includes('[dropped-silent-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('[merged-duplicate-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('info [snapped-to-ear]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('info [merged-drum-layers]'))).toHaveLength(1);
-      expect(diagnostics).toHaveLength(9);
+      expect(diagnostics).toHaveLength(7);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);

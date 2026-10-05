@@ -108,6 +108,16 @@ Drum tracks play at `.gain(0.3)`: samples otherwise play at full level, while
 Strudel's soundfonts and synths peak at 0.3. Drum notes that map to the same
 sample at the same instant (GM 35 and 36 are both `bd`) are merged into one hit.
 
+Each drum track plays on the drum machine bank with the most of its sounds,
+weighted by how often each is hit; the TR-909 wins ties. The kit catalog
+(`services/drums/drumKits.generated.ts`, built by `scripts/generate-drum-kits.mts`
+from Strudel's tidal-drum-machines manifest) lists which General MIDI percussion
+notes each bank plays exactly, reading mixed folders by file name: the MC-303's
+long guiro is `perc:24`, its 25th percussion file. A colon track that uses such
+an index reads `.as("s:n")`. A sound the kit lacks plays as its nearest stand-in
+(castanets → claves, woodblock, sticks, then rimshot) and is reported as
+`substituted-drum-note`; only notes outside GM percussion are dropped.
+
 Here `a` is the repeated riff and `b` is intervening one-off material. Presentation
 can name a one-off passage without claiming to have discovered a repetition.
 Safe passage boundaries preserve crossing notes; material that cannot be factored

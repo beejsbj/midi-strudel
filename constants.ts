@@ -39,25 +39,6 @@ export const INSTRUMENTS = [
   "gm_woodblock", "gm_xylophone"
 ].sort();
 
-export const DRUM_MAP: Record<number, string> = {
-  35: "bd", 36: "bd", // Acoustic Bass Drum, Bass Drum 1
-  38: "sd", 40: "sd", // Acoustic Snare, Electric Snare
-  37: "rim",          // Side Stick
-  42: "hh", 44: "hh", // Closed Hi Hat, Pedal Hi-Hat
-  46: "oh",           // Open Hi-Hat
-  41: "lt", 43: "lt", // Low Floor Tom, High Floor Tom
-  45: "mt",           // Low-Mid Tom
-  47: "ht", 48: "ht", // Low-Mid Tom, Hi-Mid Tom
-  51: "rd",           // Ride Cymbal 1
-  49: "cr", 52: "cr", 57: "cr", // Crash Cymbal 1, Chinese Cymbal, Crash Cymbal 2
-  56: "cb",           // Cowbell
-  82: "sh",           // Shaker
-};
-
-export const DRUM_BANKS = [
-  "RolandTR909", "RolandTR808", "RolandTR707", "LinnDrum", "GM"
-];
-
 /**
  * Heuristic to map MIDI track metadata to Strudel sounds
  * using dynamic scoring for closest name match.

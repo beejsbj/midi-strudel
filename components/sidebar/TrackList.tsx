@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Music, Drum } from 'lucide-react';
 import { StrudelConfig, Track } from '../../types';
-import { INSTRUMENTS, DRUM_BANKS, getAutoSound } from '../../constants';
+import { INSTRUMENTS, getAutoSound } from '../../constants';
+import { DRUM_KIT_NAMES, drumKitFor } from '../../services/drums/DrumKits';
 import { updateConfigValue } from './configUpdates';
 import {
   SidebarSection,
@@ -76,7 +77,7 @@ export const TrackList: React.FC<Props> = ({
     keywords: [instrument.replaceAll('_', ' ')],
   }));
 
-  const drumBankOptions: ComboboxOption[] = DRUM_BANKS.map((bank) => ({
+  const drumBankOptions: ComboboxOption[] = DRUM_KIT_NAMES.map((bank) => ({
     value: bank,
     label: bank.replace(/([A-Z])/g, ' $1').trim(),
     hint: bank,
@@ -199,7 +200,7 @@ export const TrackList: React.FC<Props> = ({
                       <div>
                         <label className="mb-1 block font-display text-[9px] font-medium uppercase tracking-[0.18em] text-zinc-400">Drum Bank</label>
                         <Combobox
-                          value={track.drumBank || "RolandTR909"}
+                          value={drumKitFor(track)}
                           aria-label={`Drum bank for ${track.name}`}
                           onChange={(value) => updateTrackDrumBank(track.id, value)}
                           options={drumBankOptions}
