@@ -68,11 +68,11 @@ export function effectiveCoordinates(track: Track, events: EffectiveEvent[], con
 }
 
 /**
- * Flat vocabulary selection: highest surviving nonoverlapping use count first,
- * then shortest window, greatest estimated byte saving, full signature, origin.
- * Cost includes declaration/lookup overhead, each selector use, and a window
- * complexity penalty. No nested definitions; minimum net saving is 24 bytes.
- * This intentionally favors reusable local vocabulary over global compression.
+ * Flat vocabulary selection: most notes covered by surviving nonoverlapping uses
+ * first, then shortest window, fewest selector tokens, greatest estimated
+ * saving, full signature, origin.
+ * Cost is the library entry plus selector tokens (adjacent one-bar uses share
+ * one `a!n` token). No nested definitions; a phrase must save net characters.
  */
 export function discoverPhrases(input: {
   track: Track;
@@ -91,7 +91,12 @@ export function discoverPhrases(input: {
   if (bars > MAX_BARS || events.length > MAX_EVENT_VISITS) return empty(true);
   const effective = effectiveCoordinates(track, events, config);
   if (!effective) return empty();
-  const { coordinates, denominator, timings } = effective;
+  const { denominator, timings } = effective;
+  // Drum lengths are not heard (one-shot samples): a hit neither sustains into
+  // the next window nor distinguishes otherwise identical bars.
+  const coordinates = track.isDrum
+    ? effective.coordinates.map((coordinate) => ({ ...coordinate, release: coordinate.onset }))
+    : effective.coordinates;
   const barUnits = measureTicks * denominator;
   if (!Number.isSafeInteger(barUnits) || !Number.isSafeInteger(barUnits * bars)) return empty();
   let visits = 0;
@@ -155,12 +160,22 @@ export function discoverPhrases(input: {
       });
       if (occurrences.length < 2) return [];
       const size = occurrences[0].measureCount;
-      const saving = (occurrences.length - 1) * candidate.expression.length
-        - 64 - occurrences.length * 12 - size * 4;
-      return saving >= 24 ? [{ candidate, occurrences, saving, size }] : [];
+      // Costs of the single `phrases` library: one `key: ...,` entry, and one
+      // selector token per use, with adjacent one-bar uses compressing to `a!n`.
+      let tokens = occurrences.length;
+      if (size === 1) {
+        tokens = occurrences.filter((window, index) =>
+          index === 0 || occurrences[index - 1].startMeasure + 1 !== window.startMeasure).length;
+      }
+      const saving = (occurrences.length - 1) * candidate.expression.length - 8 - tokens * 4;
+      return saving > 0 ? [{ candidate, occurrences, saving, size, tokens,
+        notes: occurrences.reduce((sum, window) => sum + window.events.length, 0) }] : [];
     }).sort((a, b) => {
       selectionVisits++;
-      return b.occurrences.length - a.occurrences.length || a.size - b.size
+      // Most notes explained first, so a repeated 4-bar phrase is not chopped
+      // around a bar that recurs inside it, and silent bars earn nothing; then
+      // the smallest unit (`X Y` four times is a 2-bar phrase, not `X Y X Y`).
+      return b.notes - a.notes || a.size - b.size || a.tokens - b.tokens
         || b.saving - a.saving || a.candidate.signature.localeCompare(b.candidate.signature)
         || a.occurrences[0].startMeasure - b.occurrences[0].startMeasure;
     });

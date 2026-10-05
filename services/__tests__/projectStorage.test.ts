@@ -136,16 +136,16 @@ describe('project storage', () => {
     const storage = createMemoryStorage();
     const legacyConfig = { ...DEFAULT_CONFIG, renderingMode, timingStyle: 'relativeDivision',
       durationPrecision: 2, outputStyle: 'melody+harmony', bpm: 135.000135000135,
-      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'measure' as const };
+      sourceBpm: 135.000135000135, measuresPerLine: 2, formatPerLineBy: 'note' };
     const tracks = [{ id: 'legacy', name: 'Piano', isDrum: false,
       notes: [{ note: 'C4', midi: 60, noteOn: 0.125, noteOff: 0.375, velocity: 0.8 }] }];
     storage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(legacyConfig));
     saveTracksToStorage(tracks, storage);
     const restored = loadConfigFromStorage(storage);
     expect(restored).toMatchObject({ bpm: legacyConfig.bpm, sourceBpm: legacyConfig.sourceBpm,
-      measuresPerLine: 2, formatPerLineBy: 'measure' });
+      measuresPerLine: 2 });
     expect(loadTracksFromStorage(storage)).toEqual(tracks);
-    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle']) {
+    for (const field of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy']) {
       expect(restored).not.toHaveProperty(field);
       expect(DEFAULT_CONFIG).not.toHaveProperty(field);
     }

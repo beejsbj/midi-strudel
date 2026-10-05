@@ -6,6 +6,7 @@ import {
   getMeterBeatDuration,
   formatTrackName,
   buildVisualSuffix,
+  formatBpm,
 } from '../NotationUtils';
 import { DEFAULT_CONFIG } from '../../../types';
 
@@ -90,5 +91,15 @@ describe('buildVisualSuffix', () => {
     });
 
     expect(suffix).toContain(".color('hsl(210,60%,60%)')");
+  });
+});
+
+describe('formatBpm', () => {
+  it('rounds display tempo to three decimals without touching integer zeros', () => {
+    expect(formatBpm(120)).toBe('120');
+    expect(formatBpm(100)).toBe('100');
+    expect(formatBpm(135.000135000135)).toBe('135');
+    expect(formatBpm(123.45602804920958)).toBe('123.456');
+    expect(formatBpm(90.5)).toBe('90.5');
   });
 });

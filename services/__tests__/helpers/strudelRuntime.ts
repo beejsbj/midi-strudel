@@ -6,6 +6,8 @@ import { transpiler } from '@strudel/transpiler';
 export interface RuntimeEvent {
   onsetSeconds: number;
   gateEndSeconds: number;
+  /** End of the structural slot; gate tolerances scale with this span. */
+  wholeEndSeconds: number;
   value: Record<string, unknown>;
 }
 
@@ -25,7 +27,24 @@ export interface EvaluatedStrudelCode {
  * deliberately not a RHS extractor: labels, setcps, and REPL pattern stacking
  * are part of the converter's public runtime contract.
  */
-export const evaluateGeneratedStrudelCode = async (code: string): Promise<EvaluatedStrudelCode> => {
+export interface EvaluateOptions {
+  /**
+   * Convert cycles to seconds with the converter's exact cycle length rather
+   * than the emitted (display-rounded) tempo, so positions are compared musically.
+   */
+  secondsPerCycle?: number;
+  /**
+   * The converter's exact playback BPM. The emitted `const BPM` is rounded for
+   * display; scaling the REPL's cps by exact/emitted recovers exact positions
+   * under every cycle unit and meter.
+   */
+  exactBpm?: number;
+}
+
+export const evaluateGeneratedStrudelCode = async (
+  code: string,
+  options: EvaluateOptions = {},
+): Promise<EvaluatedStrudelCode> => {
   await core.evalScope(core, mini, tonal);
   const engine = core.repl({
     getTime: () => 0,
@@ -37,7 +56,10 @@ export const evaluateGeneratedStrudelCode = async (code: string): Promise<Evalua
     engine.stop();
     throw engine.state.evalError ?? new Error('Strudel REPL did not return a pattern');
   }
-  const cps = engine.scheduler.cps;
+  const emittedBpm = Number(/const BPM = ([^;]+);/.exec(code)?.[1]);
+  const cps = options.secondsPerCycle ? 1 / options.secondsPerCycle
+    : options.exactBpm && emittedBpm ? engine.scheduler.cps * options.exactBpm / emittedBpm
+      : engine.scheduler.cps;
   const querySeconds = (startSeconds: number, endSeconds: number): RuntimeEvent[] =>
     pattern.queryArc(startSeconds * cps, endSeconds * cps)
       .filter((event) => event.hasOnset())
@@ -46,6 +68,7 @@ export const evaluateGeneratedStrudelCode = async (code: string): Promise<Evalua
         return {
           onsetSeconds,
           gateEndSeconds: onsetSeconds + Number(event.duration) / cps,
+          wholeEndSeconds: Number(event.whole.end) / cps,
           value: event.value as Record<string, unknown>,
         };
       });
@@ -60,3 +83,7 @@ export const evaluateGeneratedStrudelCode = async (code: string): Promise<Evalua
     stop: () => engine.stop(),
   };
 };
+
+/** Gate values are emitted with three decimals: a gate may differ by 0.0005 of its slot. */
+export const gateTolerance = (event: RuntimeEvent): number =>
+  0.0005 * (event.wholeEndSeconds - event.onsetSeconds) + 1e-9;

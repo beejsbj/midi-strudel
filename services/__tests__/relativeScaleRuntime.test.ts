@@ -1,7 +1,7 @@
 import MidiPackage from '@tonejs/midi';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
-import { evaluateGeneratedStrudelCode } from './helpers/strudelRuntime';
+import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
 
 const { Midi } = MidiPackage;
 const numericPitch = (value: unknown): number => {
@@ -11,6 +11,9 @@ const numericPitch = (value: unknown): number => {
   return (Number(match[3]) + 1) * 12 + semitone
     + [...match[2]].reduce((sum, char) => sum + (char === '#' ? 1 : -1), 0);
 };
+
+/** Round velocity to three decimals, matching the converter's rounding. */
+const roundedVelocity = (velocity: number): number => Math.round(velocity * 1000) / 1000;
 
 it('preserves relative pitches and long gates over a sparse structured score', async () => {
   const midi = new Midi();
@@ -36,18 +39,18 @@ it('preserves relative pitches and long gates over a sparse structured score', a
   expect(result.sharedSpanSeconds).toBe(512);
   expect(result.patterns.definitions).toHaveLength(1);
   expect(result.patterns.occurrences).toHaveLength(3);
-  const runtime = await evaluateGeneratedStrudelCode(result.code);
+  const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
   try {
     const expected = [0, 512].flatMap(offset => source.map(note => ({
       onset: note.time + offset, end: note.time + note.duration + offset,
-      pitch: note.midi, velocity: note.velocity,
+      pitch: note.midi, velocity: roundedVelocity(note.velocity),
     })));
     const actual = runtime.querySeconds(0, 1024).sort((a, b) => a.onsetSeconds - b.onsetSeconds);
     expect(actual).toHaveLength(expected.length);
     actual.forEach((event, index) => {
       expect(numericPitch(event.value.note)).toBe(expected[index].pitch);
       expect(event.onsetSeconds).toBeCloseTo(expected[index].onset, 9);
-      expect(event.gateEndSeconds).toBeCloseTo(expected[index].end, 9);
+      expect(Math.abs(event.gateEndSeconds - expected[index].end)).toBeLessThanOrEqual(gateTolerance(event));
       expect(event.value.velocity).toBe(expected[index].velocity);
     });
     for (const boundary of [512, 1024]) {

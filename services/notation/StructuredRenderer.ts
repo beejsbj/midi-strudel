@@ -2,7 +2,7 @@ import type { StrudelConfig, Track } from '../../types';
 import type { EffectiveEvent } from './EffectiveEvents';
 import type { SharedLiteralSpan } from './LiteralRenderer';
 import { assessSourceTimingEligibility } from './SourceEligibility';
-import { numberExpression, ratioExpression } from './NumberFormat';
+import { numberExpression, ratioExpression, roundedDecimal, snappedRatio } from './NumberFormat';
 
 export interface StructuredEvent {
   event: EffectiveEvent;
@@ -12,7 +12,7 @@ export interface StructuredEvent {
 /** Integer tick spans retain rational timing until the final gate serialization. */
 export type RhythmNode =
   | { kind: 'rest'; ticks: number }
-  | { kind: 'event'; ticks: number; gateTicks: number; sources: StructuredEvent[] }
+  | { kind: 'event'; ticks: number; gateTicks: number; sources: StructuredEvent[]; sourceGateTicks: number[] }
   | { kind: 'sequence'; ticks: number; grouping: 'song' | 'measure' | 'subdivision' | 'weighted'; children: RhythmNode[] }
   | { kind: 'stack'; ticks: number; children: RhythmNode[] };
 
@@ -35,8 +35,24 @@ export interface StructuredRhythmInput {
 }
 
 export type StructuredRhythmResult =
-  | { ok: true; expression: string; rhythm: RhythmNode }
+  | {
+    ok: true;
+    expression: string;
+    rhythm: RhythmNode;
+    /** The passage as a bare pattern string for a track that applies `controls` once. */
+    libraryExpression: (controls: TrackControls) => string;
+  }
   | { ok: false; reason: string };
+
+/**
+ * Colon-style controls decided across a whole track: values that vary travel on
+ * each note as `fields`; a value constant across the track is written once.
+ */
+export interface TrackControls {
+  fields: Field[];
+  clip?: string;
+  velocity?: string;
+}
 
 const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
 const MAX_LOCAL_DIVISIONS = 32;
@@ -76,6 +92,9 @@ export const renderStructuredRhythm = ({
     || Math.abs(spanTicks * secondsPerTick - span.durationSeconds) > 1e-9) {
     return { ok: false, reason: 'Unsupported finite rhythmic span' };
   }
+  // Drum hits are one-shots: the sample plays out whatever the MIDI length,
+  // so a hit's length is ignored and it holds until the next event.
+  const oneShot = control === 's';
   const byOnset = new Map<number, StructuredEvent[]>();
   const durations = new Map<EffectiveEvent, number>();
   for (const item of events) {
@@ -84,28 +103,31 @@ export const renderStructuredRhythm = ({
     const effective = effectiveTiming?.events.get(event);
     const source = effective ? { ticks: effective.onsetTicks, durationTicks: effective.durationTicks } : original;
     if (!source || !Number.isSafeInteger(source.ticks) || !Number.isSafeInteger(source.durationTicks)
-      || source.durationTicks <= 0
+      || (!oneShot && source.durationTicks <= 0)
       || Math.abs((source.ticks - originTicks) * secondsPerTick - (event.onsetSeconds - originSeconds)) > 1e-9
-      || Math.abs(source.durationTicks * secondsPerTick - (event.releaseSeconds - event.onsetSeconds)) > 1e-9) {
+      || (!oneShot && Math.abs(source.durationTicks * secondsPerTick - (event.releaseSeconds - event.onsetSeconds)) > 1e-9)) {
       return { ok: false, reason: 'Effective timing differs from source rhythm' };
     }
     const onset = source.ticks - originTicks;
-    durations.set(event, source.durationTicks);
-    if (onset < 0 || onset >= spanTicks || onset + source.durationTicks > spanTicks) {
+    durations.set(event, oneShot ? spanTicks - onset : source.durationTicks);
+    if (onset < 0 || onset >= spanTicks || (!oneShot && onset + source.durationTicks > spanTicks)) {
       return { ok: false, reason: 'Event crosses finite passage boundary' };
     }
     const group = byOnset.get(onset) ?? [];
     group.push(item);
     byOnset.set(onset, group);
   }
+  const colon = config.controlSyntax === 'colon';
   const chordsByOnset = new Map<number, StructuredEvent[][]>();
   for (const [onset, group] of byOnset) {
     group.sort((a, b) => a.event.midi - b.event.midi
       || durations.get(a.event)! - durations.get(b.event)!
       || a.event.velocity - b.event.velocity || a.event.id.localeCompare(b.event.id));
+    // Chained controls give a chord one gate and velocity, so differing members
+    // need separate lanes. Colon fields travel with each note: one chord.
     const matchingControls = new Map<string, StructuredEvent[]>();
     for (const item of group) {
-      const key = `${durations.get(item.event)}:${config.includeVelocity ? item.event.velocity : ''}`;
+      const key = colon ? '' : `${durations.get(item.event)}:${config.includeVelocity ? item.event.velocity : ''}`;
       const chord = matchingControls.get(key) ?? [];
       chord.push(item);
       matchingControls.set(key, chord);
@@ -140,92 +162,220 @@ export const renderStructuredRhythm = ({
       const children: RhythmNode[] = boundaries.slice(0, -1).map((offset, index) => {
         const ticks = boundaries[index + 1] - offset;
         const sources = chordsByOnset.get(start + offset)?.[lane];
-        return sources
-          ? { kind: 'event', ticks, gateTicks: durations.get(sources[0].event)!, sources }
-          : { kind: 'rest', ticks };
+        if (!sources) return { kind: 'rest', ticks };
+        const sourceGateTicks = sources.map((source) => durations.get(source.event)!);
+        return { kind: 'event', ticks, gateTicks: Math.max(...sourceGateTicks), sources, sourceGateTicks };
       });
       beats.push({ kind: 'sequence', ticks: beatTicks, grouping: equal ? 'subdivision' : 'weighted', children });
     }
     const measures: RhythmNode[] = [];
     for (let index = 0; index < beats.length; index += meter.numerator) {
       const children = beats.slice(index, index + meter.numerator);
-      measures.push({ kind: 'sequence', ticks: children.length * beatTicks, grouping: 'measure', children });
+      measures.push(simplify({ kind: 'sequence', ticks: children.length * beatTicks, grouping: 'measure', children }, oneShot));
     }
     lanes.push({ kind: 'sequence', ticks: spanTicks, grouping: 'song', children: measures });
   }
   const rhythm: RhythmNode = { kind: 'stack', ticks: spanTicks, children: lanes };
-  const expression = emitRhythm(rhythm, control, config);
+  const measureTicks = meter.numerator * beatTicks;
+  // `<...>` gives each whole measure one cycle; a partial measure would be stretched.
+  const measureSteps = spanTicks % measureTicks === 0;
+  const expression = emitRhythm(rhythm, control, config, measureSteps);
   const scaleSuffix = control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '';
-  const cycles = span.durationSeconds / span.cycleDurationSeconds;
+  const cycles = snappedRatio((measureSteps ? measureTicks : spanTicks) * secondsPerTick / span.cycleDurationSeconds);
   const slowSuffix = cycles === 1 ? '' : `.slow(${numberExpression(cycles)})`;
-  return { ok: true, expression: `${expression}${scaleSuffix}${slowSuffix}`, rhythm };
+  return {
+    ok: true,
+    expression: `${expression}${scaleSuffix}${slowSuffix}`,
+    rhythm,
+    libraryExpression: (controls) => `${emitRhythm(rhythm, control, config, measureSteps, controls)}${slowSuffix}`,
+  };
 };
 
+/**
+ * Decide a track's colon controls from all of its passages: a gate or velocity
+ * that is the same on every note is hoisted; one that varies becomes a field.
+ * One-shot drums never carry a gate.
+ */
+export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhythmInput['control'], config: StrudelConfig): TrackControls => {
+  const notes = rhythms.flatMap(leaves);
+  const gates = control === 's' ? [] : notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => ({ gate, ticks: leaf.ticks })));
+  const velocities = config.includeVelocity ? notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity)) : [];
+  const controls: TrackControls = { fields: [] };
+  if (velocities.length && velocities.some((velocity) => velocity !== velocities[0])) controls.fields.push('velocity');
+  else if (velocities.length) controls.velocity = roundedDecimal(velocities[0]);
+  const ratio = ({ gate, ticks }: { gate: number; ticks: number }) => gate / ticks;
+  if (gates.some((gate) => ratio(gate) !== ratio(gates[0]))) controls.fields.push('clip');
+  else if (gates.length && ratio(gates[0]) !== 1) controls.clip = constantExpression(gates[0].gate, gates[0].ticks);
+  return controls;
+};
+
+/** The track line's single reading of its pattern strings. */
+export const trackControlSuffix = (control: StructuredRhythmInput['control'], controls: TrackControls, scale?: string): string =>
+  `.as(${JSON.stringify([control, ...controls.fields].join(':'))})`
+  + (controls.clip ? `.clip(${controls.clip})` : '')
+  + (controls.velocity ? `.velocity(${controls.velocity})` : '')
+  + (control === 'n' && scale !== undefined ? `.scale(${JSON.stringify(scale)})` : '');
+
+type EventNode = Extract<RhythmNode, { kind: 'event' }>;
 type Attribute = 'value' | 'gate' | 'velocity';
-const leaves = (node: RhythmNode): Extract<RhythmNode, { kind: 'event' }>[] =>
+type Field = 'velocity' | 'clip';
+const leaves = (node: RhythmNode): EventNode[] =>
   node.kind === 'event' ? [node] : node.kind === 'rest' ? [] : node.children.flatMap(leaves);
 
-const compressRepetitions = (tokens: string[]): string[] => {
-  const result: string[] = [];
-  for (let index = 0; index < tokens.length;) {
-    let end = index + 1;
-    while (end < tokens.length && tokens[end] === tokens[index]) end += 1;
-    const count = end - index;
-    result.push(count > 1 ? `${tokens[index]}!${count}` : tokens[index]);
-    index = end;
+/**
+ * Held notes become structure: an event absorbs following rest siblings its
+ * gate fully covers, an all-rest group is one rest, and a group reduced to one
+ * child is that child. Bottom-up, so a note held through whole beats reaches
+ * the measure level. Partially covered rests stay; the gate then rings (clip > 1).
+ */
+const unitOf = (items: RhythmNode[]) => items.reduce((divisor, child) => gcd(divisor, child.ticks), 0);
+
+const simplify = (node: RhythmNode, oneShot = false): RhythmNode => {
+  if (node.kind !== 'sequence') return node;
+  const inner = node.children.map((child) => simplify(child, oneShot));
+  const absorbed: RhythmNode[] = [];
+  for (const child of inner) {
+    const previous = absorbed[absorbed.length - 1];
+    if (child.kind === 'rest' && previous?.kind === 'event' && previous.gateTicks >= previous.ticks + child.ticks) {
+      absorbed[absorbed.length - 1] = { ...previous, ticks: previous.ticks + child.ticks };
+    } else {
+      absorbed.push(child);
+    }
   }
-  return result;
+  // A held note owns its rests. A one-shot drum hit has no length to show, so
+  // it absorbs rests only when that coarsens the grid: `[bd ~ sd ~]` is
+  // `[bd sd]`, while `bd!3 ~` stays rather than becoming `bd bd bd@2`.
+  const children = !oneShot || unitOf(absorbed) > unitOf(inner) ? absorbed : inner;
+  if (children.every((child) => child.kind === 'rest')) return { kind: 'rest', ticks: node.ticks };
+  if (children.length === 1) return { ...children[0], ticks: node.ticks };
+  // Adjacent rests merge only when that coarsens the grid: `[X@2 ~ ~]` reads
+  // as `[X ~]`, while a staccato grid such as `[X ~ ~ Y]` stays as written.
+  const merged: RhythmNode[] = [];
+  for (const child of children) {
+    const previous = merged[merged.length - 1];
+    if (child.kind === 'rest' && previous?.kind === 'rest') merged[merged.length - 1] = { kind: 'rest', ticks: previous.ticks + child.ticks };
+    else merged.push(child);
+  }
+  return { ...node, children: unitOf(merged) > unitOf(children) ? merged : children };
 };
 
-const emitMini = (node: RhythmNode, attribute: Attribute, config: StrudelConfig): string => {
-  if (node.kind === 'rest') return '~';
-  if (node.kind === 'event') {
-    // Mini '/' slows patterns, and the pinned REPL discards template literal
-    // interpolation. Keep changing controls decimal; only JS arguments use fractions.
-    if (attribute === 'gate') return String(node.gateTicks / node.ticks);
-    if (attribute === 'velocity') return String(node.sources[0].event.velocity);
-    const values = node.sources.map((source) => source.value);
-    return values.length === 1 ? String(values[0]) : `[${values.join(',')}]`;
+const repeatCounts = <T>(items: T[], same: (a: T, b: T) => boolean): Array<{ item: T; count: number }> => {
+  const runs: Array<{ item: T; count: number }> = [];
+  for (const item of items) {
+    const last = runs[runs.length - 1];
+    if (last && same(last.item, item)) last.count += 1; else runs.push({ item, count: 1 });
   }
-  const unit = node.children.reduce((divisor, child) => gcd(divisor, child.ticks), node.children[0]?.ticks ?? 1);
+  return runs;
+};
+
+const noteToken = (node: EventNode, attribute: Attribute, fields: Field[]): string => {
+  // Mini '/' slows patterns, and the pinned REPL discards template literal
+  // interpolation, so changing controls are three-decimal numbers.
+  if (attribute === 'gate') return roundedDecimal(node.gateTicks / node.ticks);
+  if (attribute === 'velocity') return roundedDecimal(node.sources[0].event.velocity);
+  const values = node.sources.map((source, index) => {
+    const extra = fields.map((field) => field === 'velocity'
+      ? roundedDecimal(source.event.velocity)
+      : roundedDecimal(node.sourceGateTicks[index] / node.ticks));
+    // A trailing clip of 1 is the default; the field can be left off.
+    while (fields[extra.length - 1] === 'clip' && extra[extra.length - 1] === '1') extra.pop();
+    return [String(source.value), ...extra].join(':');
+  });
+  return values.length === 1 ? values[0] : `[${values.join(',')}]`;
+};
+
+/** One bracketed group, or its bare contents at the top of a passage. */
+const emitGroup = (node: RhythmNode, attribute: Attribute, fields: Field[]): string => {
+  if (node.kind === 'rest') return '~';
+  if (node.kind === 'event') return noteToken(node, attribute, fields);
+  const text = segments(node, attribute, fields).map(({ text: segment }) => segment).join(' ');
+  return node.kind === 'sequence' && node.children.length > 1 ? `[${text}]` : text;
+};
+
+/** A sequence's children as tokens with weights and the attacks they hold. */
+const segments = (node: RhythmNode, attribute: Attribute, fields: Field[]): Array<{ text: string; attacks: number }> => {
+  if (node.kind !== 'sequence') return [{ text: emitGroup(node, attribute, fields), attacks: leaves(node).length }];
+  const unit = node.children.reduce((divisor, child) => gcd(divisor, child.ticks), node.children[0].ticks);
   const equal = node.children.every((child) => child.ticks === node.children[0].ticks);
   const tokens = node.children.map((child) => {
-    const value = emitMini(child, attribute, config);
-    return equal ? value : `${value}@${child.ticks / unit}`;
+    const weight = child.ticks / unit;
+    return { text: `${emitGroup(child, attribute, fields)}${equal || weight === 1 ? '' : `@${weight}`}`, attacks: leaves(child).length };
   });
-  // An empty beat or measure occupies its parent's span without needing an
-  // expanded row of rests. This applies equally to notes, gates and velocity.
-  if (tokens.every((token) => token === '~')) return '~';
-  const chunkSize = Math.max(1, config.measuresPerLine);
-  const wrap = node.kind === 'sequence' && ((node.grouping === 'song' && config.formatPerLineBy === 'measure')
-    || (['subdivision', 'weighted'].includes(node.grouping) && config.formatPerLineBy === 'note'));
   // Combining `@weight!count` changes weighted support in the pinned mini
   // parser. Repetition is only shorthand for equal-duration siblings.
-  const compact = equal ? compressRepetitions(tokens) : tokens;
-  const text = wrap
-    ? compact.map((token, index) => `${index && index % chunkSize === 0 ? '\n    ' : index ? ' ' : ''}${token}`).join('')
-    : compact.join(' ');
-  return node.children.length === 1 ? text : `[${text}]`;
+  if (!equal) return tokens;
+  return repeatCounts(tokens, (a, b) => a.text === b.text).map(({ item, count }) =>
+    ({ text: count > 1 ? `${item.text}!${count}` : item.text, attacks: item.attacks * count }));
 };
 
-const emitRhythm = (node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig): string => {
+/**
+ * Lay out one lane. Whole measures become `<...>` steps (one cycle each). A
+ * multi-bar passage is always a block with N measures per line (`m!3` counts
+ * 3 and is never split); a one-bar passage stays on its key line.
+ */
+const layoutLane = (lane: RhythmNode, attribute: Attribute, fields: Field[], config: StrudelConfig, measureSteps: boolean): string => {
+  const measures = lane.kind === 'sequence' ? lane.children : [lane];
+  if (!measureSteps) {
+    // Rare partial final measure: the whole lane is one bracketed cycle.
+    const text = measures.map((measure) => emitGroup(measure, attribute, fields)).join(' ');
+    return measures.length > 1 ? `[${text}]` : text;
+  }
+  if (measures.length === 1) return segments(measures[0], attribute, fields).map((part) => part.text).join(' ');
+  const perLine = Math.max(1, config.measuresPerLine);
+  const rows: string[][] = [[]];
+  let count = 0;
+  const runs = repeatCounts(measures.map((measure) => emitGroup(measure, attribute, fields)), (a, b) => a === b);
+  for (const { item, count: repeats } of runs) {
+    if (count >= perLine && rows[rows.length - 1].length) { rows.push([]); count = 0; }
+    rows[rows.length - 1].push(repeats > 1 ? `${item}!${repeats}` : item);
+    count += repeats;
+  }
+  return `<\n  ${rows.map((row) => row.join(' ')).join('\n  ')}\n>`;
+};
+
+const emitRhythm = (
+  node: RhythmNode, control: StructuredRhythmInput['control'], config: StrudelConfig, measureSteps: boolean,
+  library?: TrackControls,
+): string => {
   if (node.kind === 'stack') {
-    const expressions = node.children.map((child) => emitRhythm(child, control, config));
-    return expressions.length === 1 ? expressions[0] : `stack(\n  ${expressions.join(',\n  ')}\n)`;
+    const expressions = node.children.map((child) => emitRhythm(child, control, config, measureSteps, library));
+    return expressions.length === 1 ? expressions[0]
+      : `stack(\n  ${expressions.map((expression) => expression.replace(/\n/g, '\n  ')).join(',\n  ')}\n)`;
   }
   const notes = leaves(node);
-  if (!notes.length) return 'silence';
+  if (!notes.length) return library ? '`~`' : 'silence';
+  // Library passages are bare strings; the track reads them once.
+  if (library) return `\`${layoutLane(node, 'value', library.fields, config, measureSteps)}\``;
+  const gates = notes.flatMap((leaf) => leaf.sourceGateTicks.map((gate) => gate / leaf.ticks));
+  const velocities = notes.flatMap((leaf) => leaf.sources.map((source) => source.event.velocity));
+  // One-shot drums never carry a gate: clip would cut the sample short.
+  const gatesVary = control !== 's' && gates.some((gate) => gate !== gates[0]);
+  const velocitiesVary = config.includeVelocity && velocities.some((velocity) => velocity !== velocities[0]);
+  const hasGate = control !== 's' && gates.some((gate) => gate !== 1);
+  // Colon style carries every control on its notes, constant or not, so the
+  // two spellings can be compared on any passage that has a control at all.
+  const fields: Field[] = config.controlSyntax === 'colon'
+    ? [...(config.includeVelocity ? ['velocity' as const] : []), ...(hasGate ? ['clip' as const] : [])] : [];
   // Template literals keep source beat/measure layout visible to the musician.
-  let expression = `${control}(\`${emitMini(node, 'value', config)}\`)`;
-  const gates = notes.map((leaf) => leaf.gateTicks / leaf.ticks);
-  if (gates.some((gate) => gate !== 1)) {
-    expression += gates.every((gate) => gate === gates[0])
-      ? `.clip(${ratioExpression(notes[0].gateTicks, notes[0].ticks)})` : `.clip(\`${emitMini(node, 'gate', config)}\`)`;
+  const mini = (attribute: Attribute) => `\`${layoutLane(node, attribute, fields, config, measureSteps)}\``;
+  if (fields.length) return `${mini('value')}.as(${JSON.stringify([control, ...fields].join(':'))})`;
+  let expression = `${control}(${mini('value')})`;
+  if (hasGate && !gatesVary) {
+    const leaf = notes[0];
+    expression += `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks)})`;
+  } else if (gatesVary) {
+    expression += `.clip(${mini('gate')})`;
   }
-  if (config.includeVelocity) {
-    const velocities = notes.map((leaf) => leaf.sources[0].event.velocity);
-    expression += velocities.every((velocity) => velocity === velocities[0])
-      ? `.velocity(${numberExpression(velocities[0])})` : `.velocity(\`${emitMini(node, 'velocity', config)}\`)`;
+  if (config.includeVelocity && !velocitiesVary) {
+    expression += `.velocity(${roundedDecimal(velocities[0])})`;
+  } else if (velocitiesVary) {
+    expression += `.velocity(${mini('velocity')})`;
   }
   return expression;
+};
+
+/** Constant JS arguments: a small exact fraction, else three decimals. */
+const constantExpression = (numerator: number, denominator: number): string => {
+  const exact = ratioExpression(numerator, denominator);
+  return /^-?\d+(\/\d{1,2})?$/.test(exact) ? exact : roundedDecimal(numerator / denominator);
 };
