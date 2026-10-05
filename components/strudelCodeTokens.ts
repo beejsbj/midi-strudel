@@ -50,6 +50,13 @@ const entryEnd = (content: string, from: number): number => {
  */
 export const extractDegreeTokens = (content: string): PitchedRange[] => {
   const tokens: PitchedRange[] = [];
+  // A score repeats a handful of (degree, scale) pairs; resolve each once.
+  const resolved = new Map<string, number | null>();
+  const pitchOf = (step: number, scale: string) => {
+    const key = `${scale}\0${step}`;
+    if (!resolved.has(key)) resolved.set(key, scaleDegreeToMidi(step, scale));
+    return resolved.get(key)!;
+  };
   for (const literal of findStrings(content)) {
     if (!literal.body.length || content[literal.from] !== '`') continue;
     const before = content.slice(Math.max(0, literal.from - 2), literal.from);
@@ -61,7 +68,7 @@ export const extractDegreeTokens = (content: string): PitchedRange[] => {
     // A degree starts a step or chord member; `:` fields, `@` weights and `!`
     // counts are numbers too, but never follow these characters.
     for (const match of literal.body.matchAll(/(?<=^|[\s[<,])(-?\d+)(#+|b+)?(?=$|[\s\]>,:@!*/])/g)) {
-      let midi = scaleDegreeToMidi(Number(match[1]), scale);
+      let midi = pitchOf(Number(match[1]), scale);
       if (midi === null) continue;
       const accidentals = match[2] ?? '';
       midi += accidentals.startsWith('#') ? accidentals.length : -accidentals.length;
@@ -92,7 +99,19 @@ export const extractRestTokens = (content: string): CodeRange[] => {
 export const extractChainCallRanges = (content: string): CodeRange[] => {
   const ranges: CodeRange[] = [];
   const strings = findStrings(content);
-  const inString = (index: number) => strings.some((literal) => index > literal.from && index < literal.to - 1);
+  // Literals are sorted and disjoint: look them up by start offset, and find
+  // the one that could contain an index by binary search.
+  const byStart = new Map(strings.map((literal) => [literal.from, literal]));
+  const inString = (index: number) => {
+    let low = 0;
+    let high = strings.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (strings[mid].from < index) low = mid + 1; else high = mid;
+    }
+    const literal = strings[low - 1];
+    return literal !== undefined && index < literal.to - 1;
+  };
   for (const match of content.matchAll(/\.[A-Za-z_$][\w$]*\(/g)) {
     const from = match.index!;
     if (inString(from)) continue;
@@ -101,7 +120,7 @@ export const extractChainCallRanges = (content: string): CodeRange[] => {
     let close = -1;
     let hasPattern = false;
     for (let index = from + match[0].length - 1; index < content.length; index++) {
-      const literal = strings.find((candidate) => candidate.from === index);
+      const literal = byStart.get(index);
       if (literal) {
         if (content[index] === '`') hasPattern = true;
         index = literal.to - 1;
