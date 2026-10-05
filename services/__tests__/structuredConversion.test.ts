@@ -4,6 +4,7 @@ import { convertMidi, createMidiProject } from '../convertMidi';
 import { parseMidiBuffer } from '../MidiParser';
 import { StrudelNotation } from '../StrudelNotation';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
+import { earNotes } from './helpers/earOracle';
 import { DRUM_MAP } from '../../constants';
 
 /** Round velocity to three decimals, matching the converter's rounding. */
@@ -19,18 +20,18 @@ describe('structured public conversion', () => {
     const notes = [
       { midi: 60, ticks: 0, durationTicks: 2040, velocity: 0.8 },
       { midi: 60, ticks: 0, durationTicks: 120, velocity: 0.6 },
-      { midi: 64, ticks: 17, durationTicks: 620, velocity: 0.4 },
-      { midi: 67, ticks: 239, durationTicks: 50, velocity: 0.7 },
+      { midi: 64, ticks: 17, durationTicks: 606, velocity: 0.4 },
+      { midi: 67, ticks: 229, durationTicks: 60, velocity: 0.7 },
       ...[0, 160, 320].map((offset) => ({ midi: 62, ticks: 480 + offset, durationTicks: 80, velocity: 0.5 })),
       { midi: 65, ticks: 1980, durationTicks: 90, velocity: 0.3 },
     ];
     notes.forEach((note) => track.addNote(note));
     const bytes = midi.toArray().buffer;
-    const result = convertMidi(bytes, 'unfamiliar.mid', { includeVelocity: true, notationType, isQuantized: false });
+    const result = convertMidi(bytes, 'unfamiliar.mid', { includeVelocity: true, notationType });
     expect(result.diagnostics).toEqual([]);
     expect(result.code).toMatch(/@\d+/);
     expect(result.code).toContain(notationType === 'relative' ? 'n(`' : 'note(`');
-    const source = new Midi(bytes).tracks[0].notes;
+    const source = earNotes(new Midi(bytes).tracks[0].notes, 120, 480);
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {
       const { twoLoops, firstBoundary, secondBoundary } = runtime.queryTwoLoopsAndBoundaryWindows(4);
@@ -60,7 +61,7 @@ describe('structured public conversion', () => {
     track.addNote({ midi: 36, ticks: 0, durationTicks: 480, velocity: 0.6 });
     track.addNote({ midi: 42, ticks: 240, durationTicks: 90, velocity: 0.4 });
     const result = convertMidi(midi.toArray().buffer, 'kit.mid', {
-      cycleUnit: 'beat', bpm: 90, timeSignature: { numerator: 3, denominator: 4 }, includeVelocity: true,
+      bpm: 90, timeSignature: { numerator: 3, denominator: 4 }, includeVelocity: true,
     });
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });
     try {
@@ -75,23 +76,26 @@ describe('structured public conversion', () => {
     } finally { runtime.stop(); }
   });
 
-  it('retains requested quantization without rewriting provenance', async () => {
+  it('snaps inaudible timing to the grid without rewriting provenance', async () => {
     const midi = new Midi();
     midi.header.setTempo(120);
-    midi.addTrack().addNote({ midi: 60, ticks: 17, durationTicks: 100 });
+    const track = midi.addTrack();
+    // 7 ticks (7.3 ms) late snaps to the beat; 17 ticks (17.7 ms) is heard and stays.
+    track.addNote({ midi: 60, ticks: 7, durationTicks: 233 });
+    track.addNote({ midi: 62, ticks: 480 + 17, durationTicks: 83 });
     const parsed = parseMidiBuffer(midi.toArray().buffer);
     const before = JSON.stringify(parsed.tracks);
-    const { config, tracks } = createMidiProject(parsed, 'quantized.mid', {
-      isQuantized: true, quantizationThreshold: 100, quantizationStrength: 100,
-    });
+    const { config, tracks } = createMidiProject(parsed, 'played.mid');
     const result = new StrudelNotation(config).generateWithDiagnostics(tracks);
     expect(JSON.stringify(parsed.tracks)).toBe(before);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'snapped-to-ear', severity: 'info', count: 1 })]);
+    expect(result.diagnostics[0].message).toContain('7.3 ms');
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: config.bpm });
     try {
-      const events = runtime.querySeconds(0, 4);
-      expect(events.map((event) => event.onsetSeconds)).toEqual([0, 2]);
-      expect(events[0].gateEndSeconds).toBe(0.125);
+      const events = runtime.querySeconds(0, 2);
+      expect(events.map((event) => event.onsetSeconds)).toEqual([0, (480 + 17) / 960]);
+      // 7 + 233 = 240 ticks: the release was already on the half beat.
+      expect(events[0].gateEndSeconds).toBe(0.25);
     } finally { runtime.stop(); }
   });
 
@@ -110,7 +114,7 @@ describe('structured public conversion', () => {
       }
     }
     const bytes = midi.toArray().buffer;
-    const result = convertMidi(bytes, 'chords.mid', { notationType, includeVelocity, isQuantized: false });
+    const result = convertMidi(bytes, 'chords.mid', { notationType, includeVelocity });
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'merged-duplicate-notes', count: 4 })]);
     expect(result.code).toContain('.clip(1/3)');
     expect(result.code).not.toContain('.slow(1)');
@@ -145,7 +149,7 @@ describe('structured public conversion', () => {
       midi: pitch, ticks: index * 480, durationTicks: index < 2 ? 160 : 240, velocity: 0.8,
     }));
     const bytes = midi.toArray().buffer;
-    const result = convertMidi(bytes, 'changing-gates.mid', { includeVelocity: true, isQuantized: false });
+    const result = convertMidi(bytes, 'changing-gates.mid', { includeVelocity: true });
     expect(result.code).toContain('0.333!2');
     expect(result.code).not.toContain('${');
     const runtime = await evaluateGeneratedStrudelCode(result.code, { exactBpm: result.config.bpm });

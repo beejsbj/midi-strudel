@@ -2,6 +2,7 @@ import type { PatternMetadata } from '../../types';
 import type { DiscoveredPhrase } from './PhraseDiscovery';
 import type { OneOffPassage } from './OneOffPassages';
 import { ratioExpression } from './NumberFormat';
+import { LINE_WIDTH } from './StructuredRenderer';
 
 /** a..z, aa..az: compact local names independent of metadata identity. */
 function phraseKey(index: number): string {
@@ -26,6 +27,21 @@ function compactSelectors(tokens: string[]): string {
     index += count - 1;
   }
   return compact.join(' ');
+}
+
+/**
+ * The REPL transpiles double-quoted and backtick strings to mini patterns; no
+ * cat() wrapper. A timeline wider than a line wraps into a backtick block.
+ */
+function selectorString(selectors: string): string {
+  if (selectors.length + 2 <= LINE_WIDTH) return JSON.stringify(`<${selectors}>`);
+  const rows: string[] = [];
+  for (const token of selectors.split(' ')) {
+    const last = rows[rows.length - 1];
+    if (last !== undefined && last.length + 1 + token.length <= LINE_WIDTH) rows[rows.length - 1] = `${last} ${token}`;
+    else rows.push(token);
+  }
+  return `\`<\n  ${rows.join('\n  ')}\n>\``;
 }
 
 /** A track's values join the single score library; no generated declarations. */
@@ -94,8 +110,7 @@ export function renderPhraseTimeline(input: {
   if (cursor < measures) tokens.push(token('~', measures - cursor));
   const slow = measureSeconds === cycleSeconds ? '' : `.slow(${ratioExpression(measureSeconds, cycleSeconds)})`;
   let expression = entries.length
-    // The REPL transpiles double-quoted strings to mini patterns; no cat() wrapper.
-    ? `${JSON.stringify(`<${compactSelectors(tokens)}>`)}${slow}.pickRestart(phrases.${trackKey})`
+    ? `${selectorString(compactSelectors(tokens))}${slow}\n  .pickRestart(phrases.${trackKey})`
     : '';
   // A lone passage already owns the complete loop; a selector would add noise.
   if (entries.length === 1 && entries[0].start === 0 && entries[0].length === measures) {

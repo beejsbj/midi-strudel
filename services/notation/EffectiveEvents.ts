@@ -1,5 +1,5 @@
 import type { Note, StrudelConfig, Track } from '../../types';
-import { prepareNotes } from './NotationUtils';
+import { snapToEar } from './EarTiming';
 
 /** A serializable rational value used for source-tick locations. */
 export interface RationalTiming {
@@ -8,8 +8,8 @@ export interface RationalTiming {
 }
 
 /**
- * The mutable, performance-time event consumed by renderers. Its `source`
- * remains an immutable reference to the parsed MIDI event when available.
+ * The performance-time event consumed by renderers. Its `source` keeps the
+ * parsed MIDI identity with ear-snapped ticks (see EarTiming).
  */
 export interface EffectiveEvent {
   id: string;
@@ -27,6 +27,8 @@ export interface EffectiveEvent {
 export interface EffectiveTrack {
   track: Track;
   events: EffectiveEvent[];
+  /** Notes whose start or end moved onto the beat grid, and the largest move. */
+  snapped: { moved: number; maxShiftSeconds: number };
 }
 
 export const rationalFromTicks = (ticks: number, ppq: number): RationalTiming => ({
@@ -35,13 +37,13 @@ export const rationalFromTicks = (ticks: number, ppq: number): RationalTiming =>
 });
 
 /**
- * Applies only requested transformations. It deliberately returns new event
- * values, leaving parsed notes and their source identities untouched.
+ * Snaps timing to the ear and returns new event values, leaving parsed notes
+ * untouched.
  */
 export const prepareEffectiveTracks = (tracks: Track[], config: StrudelConfig): EffectiveTrack[] =>
-  tracks.map((track) => ({
-    track,
-    events: prepareNotes(track.notes, config).map((note, index) => ({
+  tracks.map((track) => {
+    const { notes, moved, maxShiftSeconds } = snapToEar(track, config.sourceBpm);
+    return { track, snapped: { moved, maxShiftSeconds }, events: notes.map((note, index) => ({
       id: note.source?.id ?? `${track.id}:effective-${index}`,
       trackId: track.id,
       note: note.note,
@@ -56,8 +58,8 @@ export const prepareEffectiveTracks = (tracks: Track[], config: StrudelConfig): 
       sourceDurationBeats: note.source && track.sourceTiming
         ? rationalFromTicks(note.source.durationTicks, track.sourceTiming.ppq)
         : undefined,
-    })),
-  }));
+    })) };
+  });
 
 /**
  * Fully identical doubles (same pitch, onset, release and velocity) sound as

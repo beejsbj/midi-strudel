@@ -94,7 +94,8 @@ export function removeRetiredNotationSettings(config: StrudelConfig): StrudelCon
   const current = { ...config };
   // Older projects stored rendering choices that are now automatic. Discard
   // only these settings; public conversion must not inherit UI input bounds.
-  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy']) {
+  for (const key of ['renderingMode', 'timingStyle', 'durationPrecision', 'outputStyle', 'formatPerLineBy', 'cycleUnit',
+    'isQuantized', 'quantizationThreshold', 'quantizationStrength']) {
     Reflect.deleteProperty(current, key);
   }
   return current;
@@ -119,18 +120,6 @@ export function sanitizeConfig(config: Partial<StrudelConfig>): StrudelConfig {
       DEFAULT_CONFIG.measuresPerLine,
       1,
       64,
-    ),
-    quantizationThreshold: sanitizeNumber(
-      merged.quantizationThreshold,
-      DEFAULT_CONFIG.quantizationThreshold,
-      0,
-      200,
-    ),
-    quantizationStrength: sanitizeNumber(
-      merged.quantizationStrength,
-      DEFAULT_CONFIG.quantizationStrength,
-      0,
-      100,
     ),
     durationTagStyle:
       typeof merged.durationTagStyle === 'string' &&

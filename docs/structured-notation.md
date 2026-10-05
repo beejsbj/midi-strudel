@@ -27,15 +27,18 @@ produce a migration message rather than silently choosing a different dialect.
 Code, JSON, and Strudel URL exports all use the shared converter. Diagnostics go
 to stderr; JSON also includes them as data.
 
-Absolute/relative pitches, cycle units, quantization, velocity, and line wrapping
-remain separate choices. Displayed BPM is rounded for readability; the stored
+Absolute/relative pitches, velocity, control syntax, and line wrapping remain
+separate choices. One cycle is always one bar. Displayed BPM is rounded for readability; the stored
 and generated playback tempo retains its precise value.
 
 ## Timing and articulation
 
 Source PPQ, ticks, note identities, and tempo/meter maps are retained alongside
-seconds. Requested quantization creates effective events without changing their
-source references. Every track, including a delayed entrance, uses one song-origin
+seconds. Output is exact to the ear, not the tick: a start or end within 10 ms of
+a beat subdivision (halves, triplets, 16ths, sextuplets, 32nds, finer where the
+tempo allows) is snapped onto it, and everything further away stays as played.
+There are no quantize settings; the `snapped-to-ear` diagnostic reports how many
+notes moved and by how much. Every track, including a delayed entrance, uses one song-origin
 loop boundary. Hidden tracks still contribute to that boundary.
 
 Structural spans place attacks; gates control their intended releases. A

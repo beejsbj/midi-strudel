@@ -58,8 +58,9 @@ export interface Track {
 }
 
 export interface ConversionDiagnostic {
-  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes';
-  severity: 'warning';
+  code: 'unmapped-drum-note' | 'precise-literal-fallback' | 'phrase-analysis-budget' | 'merged-duplicate-notes' | 'dropped-silent-notes'
+    | 'snapped-to-ear';
+  severity: 'warning' | 'info';
   midiNote?: number;
   count?: number;
   message: string;
@@ -110,9 +111,6 @@ export interface StrudelConfig {
   // or colon fields on each note via `.as("note:velocity:clip")`.
   controlSyntax: 'chained' | 'colon';
   
-  // Duration System
-  cycleUnit: 'bar' | 'beat';
-  
   // Formatting
   measuresPerLine: number; // bars per line inside a multi-bar phrase block
   
@@ -122,11 +120,6 @@ export interface StrudelConfig {
   
   // Modifiers
   includeVelocity: boolean;
-  
-  // Quantization
-  isQuantized: boolean;
-  quantizationThreshold: number; // ms
-  quantizationStrength: number; // 0-100%
   
   // Source file metadata
   fileName?: string;
@@ -148,16 +141,12 @@ export const DEFAULT_CONFIG: StrudelConfig = {
   sourceTimeSignature: { numerator: 4, denominator: 4 },
   notationType: 'absolute',
   controlSyntax: 'chained',
-  cycleUnit: 'bar',
   measuresPerLine: 4,
   
   useAutoMapping: true,
   globalSound: 'triangle',
   
   includeVelocity: false,
-  isQuantized: false, 
-  quantizationThreshold: 50,
-  quantizationStrength: 100,
 
   durationTagStyle: 'sup',
   visualMethods: [],

@@ -106,6 +106,7 @@ describe('midi-strudel CLI', () => {
         { code: 'unmapped-drum-note', midiNote: 83, count: 47 },
         { code: 'unmapped-drum-note', midiNote: 85, count: 159 },
         { code: 'merged-duplicate-notes', count: 110 },
+        { code: 'snapped-to-ear', severity: 'info', count: 412 },
         { code: 'dropped-silent-notes', count: 9 },
       ],
     });
@@ -165,7 +166,8 @@ describe('midi-strudel CLI', () => {
       expect(diagnostics.filter((line) => line.includes('[unmapped-drum-note]'))).toHaveLength(5);
       expect(diagnostics.filter((line) => line.includes('[dropped-silent-notes]'))).toHaveLength(1);
       expect(diagnostics.filter((line) => line.includes('[merged-duplicate-notes]'))).toHaveLength(1);
-      expect(diagnostics).toHaveLength(7);
+      expect(diagnostics.filter((line) => line.includes('info [snapped-to-ear]'))).toHaveLength(1);
+      expect(diagnostics).toHaveLength(8);
       expect(result.stdout).not.toContain('midi-strudel: warning');
       if (format === 'code') {
         expect(result.stdout).toMatch(/^\/\/ @title warrior-of-the-mind-epic-the-musical/);
@@ -204,15 +206,13 @@ describe('midi-strudel arguments', () => {
   it('parses stable agent-facing conversion flags', () => {
     expect(parseArgs([
       '--format', 'json', '--bpm', '96', '--notation', 'relative',
-      '--cycle-unit', 'beat', '--quantize', '--velocity', 'song.midi',
+      '--velocity', 'song.midi',
     ])).toEqual({
       input: 'song.midi',
       format: 'json',
       overrides: {
         bpm: 96,
         notationType: 'relative',
-        cycleUnit: 'beat',
-        isQuantized: true,
         includeVelocity: true,
       },
     });
@@ -223,7 +223,7 @@ describe('midi-strudel arguments', () => {
     expect(() => parseArgs(['--format', 'xml', 'song.mid'])).toThrow('code, json, url');
   });
 
-  it.each(['--rendering', '--timing', '--duration-precision'])('explains how to migrate retired %s commands', (flag) => {
+  it.each(['--rendering', '--timing', '--duration-precision', '--cycle-unit', '--format-per-line', '--quantize'])('explains how to migrate retired %s commands', (flag) => {
     expect(() => parseArgs([flag, 'expanded', 'song.mid'])).toThrow(`${flag} has been retired`);
     const result = runCli(flag, 'expanded', fixture);
     expect(result.status).not.toBe(0);

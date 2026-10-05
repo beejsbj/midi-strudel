@@ -1,7 +1,6 @@
 import type { StrudelConfig, Track } from '../../types';
 import type { EffectiveEvent } from './EffectiveEvents';
 import { assessSourceTimingEligibility } from './SourceEligibility';
-import { QUANTIZATION_DIVISIONS, quantizeNoteTiming } from './NotationUtils';
 
 /** Hard deterministic bounds. A partial search is never published as a result. */
 const MAX_BARS = 8192;
@@ -29,33 +28,21 @@ export interface PhraseDiscovery {
 }
 
 /**
- * Use a shared integer lattice for exact equality after requested quantization.
- * Its denominator represents ppq/4 grid points and the decimal strength. Source
- * identities and floating subtraction of distant timestamps never enter keys.
+ * Use a shared integer tick lattice for exact equality. Events carry their
+ * ear-snapped source ticks; floating subtraction of distant timestamps never
+ * enters keys.
  */
 export function effectiveCoordinates(track: Track, events: EffectiveEvent[], config: StrudelConfig) {
   const ppq = track.sourceTiming!.ppq;
   const secondsPerTick = 60 / config.sourceBpm / ppq;
-  const strength = config.isQuantized ? config.quantizationStrength : 0;
-  const strengthPlaces = String(strength).split('.')[1]?.length ?? 0;
-  if (!Number.isFinite(strength) || strengthPlaces > 6) return undefined;
-  const scale = 10 ** strengthPlaces;
-  const strengthInteger = strength * scale;
-  const denominator = QUANTIZATION_DIVISIONS * 100 * scale;
-  const sourceNotes = new Map(track.notes.map((note) => [note.source?.id, note]));
+  const denominator = 1;
   const timings = new Map<EffectiveEvent, EffectiveTickTiming>();
   const coordinates: Array<{ event: EffectiveEvent; onset: number; release: number }> = [];
   for (const event of events) {
-    const source = event.source!;
-    const sourceNote = sourceNotes.get(source.id);
-    if (!sourceNote) return undefined;
-    const decision = quantizeNoteTiming(sourceNote, config);
-    const coordinate = (ticks: number, appliedGridIndex: number | undefined) =>
-      ticks * denominator + (appliedGridIndex === undefined ? 0
-        : (appliedGridIndex * ppq - ticks * QUANTIZATION_DIVISIONS) * strengthInteger);
-    const onset = coordinate(source.ticks, decision.onsetGridIndex);
-    const duration = decision.durationClamped ? ppq * denominator / QUANTIZATION_DIVISIONS
-      : coordinate(source.durationTicks, decision.durationGridIndex);
+    const source = event.source;
+    if (!source) return undefined;
+    const onset = source.ticks * denominator;
+    const duration = source.durationTicks * denominator;
     const release = onset + duration;
     if (![onset, duration, release].every(Number.isSafeInteger)
       || Math.abs(onset / denominator * secondsPerTick - event.onsetSeconds) > 1e-9

@@ -47,7 +47,7 @@ earlier notation experiments.
 - detect tempo, time signature, drum tracks, and a likely key
 - convert MIDI tracks into one phrase library with compact Strudel arrangements
 - switch between absolute note names and relative scale degrees
-- adjust playback, quantization, formatting, visuals, and per-track mapping
+- adjust playback, formatting, visuals, and per-track mapping
 - preview the result in the embedded strudel player
 - open the generated code in strudel and keep messing with it there
 
@@ -100,6 +100,6 @@ The schema-v1 JSON object includes a `diagnostics` array. This is an additive,
 backward-compatible field; each dropped percussion entry contains a stable
 diagnostic code, severity, MIDI note number, event count, and message.
 
-Conversion flags include `--bpm`, `--notation absolute|relative`, `--cycle-unit bar|beat`, `--measures-per-line` (alias `--items-per-line`), `--control-syntax chained|colon`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, `--velocity` / `--no-velocity`, `--quantize` / `--no-quantize`, `--quantization-threshold`, and `--quantization-strength`. Run `npm run --silent convert -- --help` for the complete contract.
+Conversion flags include `--bpm`, `--notation absolute|relative`, `--measures-per-line` (alias `--items-per-line`), `--control-syntax chained|colon`, `--sound`, `--auto-mapping` / `--no-auto-mapping`, and `--velocity` / `--no-velocity`. Timing within 10 ms of the beat grid is snapped automatically (exact to the ear), so there are no quantize flags. Run `npm run --silent convert -- --help` for the complete contract.
 
 All conversions use structured notation, combining subdivisions, relative weights, note gates, and exact phrase reuse automatically. The retired `--rendering`, `--timing`, and `--duration-precision` flags now return an explanatory error; remove them from existing commands. Saved browser projects migrate these settings away while retaining their MIDI notes and other preferences.

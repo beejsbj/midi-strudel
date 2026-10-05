@@ -2,6 +2,7 @@ import MidiPackage from '@tonejs/midi';
 import { expect, it } from 'vitest';
 import { convertMidi } from '../convertMidi';
 import { evaluateGeneratedStrudelCode, gateTolerance } from './helpers/strudelRuntime';
+import { earNotes } from './helpers/earOracle';
 
 const { Midi } = MidiPackage;
 const numericPitch = (value: unknown): number => {
@@ -29,7 +30,7 @@ it('preserves relative pitches and long gates over a sparse structured score', a
   track.addNote({ midi: 48, ticks: 220 * 1920, durationTicks: 20 * 1920 + 120, velocity: 0.6 });
   track.addNote({ midi: 74, ticks: 255 * 1920, durationTicks: 120, velocity: 0.8 });
   const bytes = midi.toArray().buffer;
-  const source = new Midi(bytes).tracks[0].notes;
+  const source = earNotes(new Midi(bytes).tracks[0].notes, 120, 480);
   const result = convertMidi(bytes, 'sparse-relative.mid', {
     notationType: 'relative', includeVelocity: true,
   });
