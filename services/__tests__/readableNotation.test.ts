@@ -90,7 +90,7 @@ describe('readable structured notation', () => {
       track.addNote({ midi: 64, ticks: 480, durationTicks: 240 });
     });
     const result = await convertAndVerify(bytes);
-    expect(result.code).toContain('note(`[C4 ~!2 D4] E4 ~!2`).clip(`[1 ~!2 1] 0.5 ~!2`)');
+    expect(result.code).toContain('note(`[C4 ~!2 D4] E4 ~!2`)\n    .clip(`[1 ~!2 1] 0.5 ~!2`)');
   });
 
   describe.each([false, true])('colon controls (velocity %s)', (includeVelocity) => {
@@ -124,7 +124,7 @@ describe('readable structured notation', () => {
       [60, 62, 64, 65].forEach((midi, beat) => track.addNote({ midi, ticks: beat * 480, durationTicks: 160, velocity: 0.8 }));
     });
     const chained = await convertAndVerify(bytes, { controlSyntax: 'chained', includeVelocity: true });
-    expect(chained.code).toContain('note(`C4 D4 E4 F4`).clip(1/3).velocity(0.795)');
+    expect(chained.code).toContain('note(`C4 D4 E4 F4`)\n    .clip(1/3).velocity(0.795)');
     const colon = await convertAndVerify(bytes, { controlSyntax: 'colon', includeVelocity: true });
     // A phrase pasted on its own still knows its fields.
     expect(colon.code).toContain('a: `C4 D4 E4 F4`\n    .as("note"),');
@@ -252,6 +252,19 @@ describe('line wrapping', () => {
   it('indents the block under its phrase key', async () => {
     const result = await convertAndVerify(narrow, { measuresPerLine: 2 });
     expect(result.code).toMatch(/\nconst track_1 = \{\n {2}a: note\(`<\n {4}\[C4 .*\n {4}\[A#4 .*\n {2}>`\),\n\};/);
+  });
+
+  it('puts a varying lane on its own call line and constants together under the pattern', async () => {
+    const staccato = score((track) => [60, 62, 64, 65, 67, 69, 71, 72].forEach((midi, index) =>
+      track.addNote({ midi, ticks: index * 240, durationTicks: index % 2 ? 60 : 240, velocity: 0.8 })));
+    const result = await convertAndVerify(staccato, { notationType: 'relative' });
+    // Pattern, then the clip lane on its own line, then the scale.
+    expect(result.code).toMatch(/: n\(`[\s\S]*?`\)\n {4}\.clip\(`[\s\S]*?`\)\n {4}\.scale\("[^"]+"\),\n/);
+  });
+
+  it('breaks chained lanes where the widest lane needs to, so no lane passes the line', async () => {
+    const result = await convertAndVerify(bytes, { measuresPerLine: 4, includeVelocity: true });
+    result.code.split('\n').forEach((line) => expect(line.length).toBeLessThanOrEqual(100));
   });
 
   it('keeps every line within 100 characters, key and .as included', async () => {
