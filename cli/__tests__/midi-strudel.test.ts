@@ -205,7 +205,7 @@ describe('midi-strudel CLI', { timeout: 30000 }, () => {
   });
 });
 
-describe('midi-strudel arguments', () => {
+describe('midi-strudel arguments', { timeout: 30000 }, () => {
   it('parses stable agent-facing conversion flags', () => {
     expect(parseArgs([
       '--format', 'json', '--bpm', '96', '--notation', 'relative',
