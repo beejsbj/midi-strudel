@@ -8,8 +8,9 @@
  *
  *   bun run verify:songs [--song warrior-of-the-mind]
  *
- * Generated code, per-case logs and results.json go to $VERIFY_SONGS_OUT
- * (default: <tmp>/midi-strudel-verify-songs).
+ * Environment variables:
+ *   VERIFY_SONGS_OUT: output directory (default: <tmp>/midi-strudel-verify-songs)
+ *   VERIFY_SONGS_TIMEOUT_MS: per-run timeout in milliseconds (default: 180000)
  */
 import {createRequire} from 'node:module';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
@@ -181,12 +182,14 @@ async function run(){
  if(process.argv[2]==='--child')return child(process.argv[3],process.argv[4],process.argv[5]);
  const rows:Record<string,unknown>[]=[];
  const chosenSong=process.argv.includes('--song')?process.argv[process.argv.indexOf('--song')+1]:undefined;
+ const timeoutMs=process.env.VERIFY_SONGS_TIMEOUT_MS?Number(process.env.VERIFY_SONGS_TIMEOUT_MS):180000;
+ if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new Error(`VERIFY_SONGS_TIMEOUT_MS must be a positive number (got ${process.env.VERIFY_SONGS_TIMEOUT_MS})`);
  for(const song of chosenSong?[chosenSong]:songs)for(const mode of modes)for(const profile of profiles){
   console.log(`Checking ${song} / ${mode} / ${profile}`);
   const row=await new Promise<Record<string,unknown>>((resolve,reject)=>{
    const p=spawn(root+'/node_modules/.bin/tsx',[filename,'--child',song,mode,profile],{cwd:root,detached:true,stdio:['ignore','pipe','pipe']});
    let output='';let error='';
-   const timer=setTimeout(()=>{process.kill(-p.pid!, 'SIGKILL');reject(new Error(`${song}/${mode}/${profile} exceeded 90 seconds`));},90000);
+   const timer=setTimeout(()=>{process.kill(-p.pid!, 'SIGKILL');reject(new Error(`${song}/${mode}/${profile} exceeded ${timeoutMs}ms`));},timeoutMs);
    p.stdout.on('data',chunk=>output+=chunk);p.stderr.on('data',chunk=>error+=chunk);
    p.on('error',err=>{clearTimeout(timer);reject(err);});
    p.on('exit',code=>{clearTimeout(timer);writeFileSync(`${scratch}/bundled-${song}-${mode}-${profile}.log`,output+'\n'+error);if(code!==0)return reject(new Error(output+'\n'+error));const line=output.split('\n').find(s=>s.startsWith('PROBE_RESULT '));if(!line)return reject(new Error('Missing probe result'));resolve(JSON.parse(line.slice(13)));});

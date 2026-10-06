@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { configDefaults } from 'vitest/config';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -27,5 +28,8 @@ export default defineConfig({
       alias: {
         '@': __dirname,
       }
-    }
+    },
+    test: {
+      exclude: [...configDefaults.exclude, '.claude/**', '.handoff/**'],
+    },
 });
