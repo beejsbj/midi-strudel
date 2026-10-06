@@ -183,7 +183,7 @@ async function run(){
  const rows:Record<string,unknown>[]=[];
  const chosenSong=process.argv.includes('--song')?process.argv[process.argv.indexOf('--song')+1]:undefined;
  const timeoutMs=process.env.VERIFY_SONGS_TIMEOUT_MS?Number(process.env.VERIFY_SONGS_TIMEOUT_MS):180000;
- if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new Error(`VERIFY_SONGS_TIMEOUT_MS must be a positive number (got ${process.env.VERIFY_SONGS_TIMEOUT_MS})`);
+ if(!Number.isFinite(timeoutMs)||timeoutMs<=0||timeoutMs>2147483647)throw new Error(`VERIFY_SONGS_TIMEOUT_MS must be a positive number of milliseconds up to 2147483647 (got ${process.env.VERIFY_SONGS_TIMEOUT_MS})`);
  for(const song of chosenSong?[chosenSong]:songs)for(const mode of modes)for(const profile of profiles){
   console.log(`Checking ${song} / ${mode} / ${profile}`);
   const row=await new Promise<Record<string,unknown>>((resolve,reject)=>{
