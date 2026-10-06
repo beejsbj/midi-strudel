@@ -14,7 +14,7 @@ export type RhythmNode =
   | { kind: 'rest'; ticks: number }
   | {
     kind: 'event'; ticks: number; gateTicks: number; sources: StructuredEvent[]; sourceGateTicks: number[];
-    /** Real seconds per tick, so a gate ratio can be written precisely enough for the ear. */
+    /** Playback seconds per tick (source tempo scaled to the playback BPM), so a gate ratio can be written precisely enough for the ear. */
     secondsPerTick: number;
   }
   | { kind: 'sequence'; ticks: number; grouping: 'song' | 'measure' | 'subdivision' | 'weighted'; children: RhythmNode[] }
@@ -87,6 +87,9 @@ export const renderStructuredRhythm = ({
   const tickScale = effectiveTiming?.scale ?? 1;
   if (!Number.isSafeInteger(tickScale) || tickScale <= 0) return { ok: false, reason: 'Invalid effective tick scale' };
   const secondsPerTick = 60 / bpm / timing.ppq / tickScale;
+  // The pattern is stretched by sourceBpm / bpm on playback, and so is any gate error.
+  const playbackScale = config.sourceBpm > 0 && config.bpm > 0 ? config.sourceBpm / config.bpm : 1;
+  const playbackSecondsPerTick = secondsPerTick * playbackScale;
   const beatTicks = timing.ppq * 4 / meter.denominator * tickScale;
   originTicks *= tickScale;
   const spanTicks = Math.round(span.durationSeconds / secondsPerTick);
@@ -168,7 +171,7 @@ export const renderStructuredRhythm = ({
         const sources = chordsByOnset.get(start + offset)?.[lane];
         if (!sources) return { kind: 'rest', ticks };
         const sourceGateTicks = sources.map((source) => durations.get(source.event)!);
-        return { kind: 'event', ticks, gateTicks: Math.max(...sourceGateTicks), sources, sourceGateTicks, secondsPerTick };
+        return { kind: 'event', ticks, gateTicks: Math.max(...sourceGateTicks), sources, sourceGateTicks, secondsPerTick: playbackSecondsPerTick };
       });
       beats.push({ kind: 'sequence', ticks: beatTicks, grouping: equal ? 'subdivision' : 'weighted', children });
     }
@@ -211,7 +214,7 @@ export const trackControlsFor = (rhythms: RhythmNode[], control: StructuredRhyth
   const ratio = ({ gate, ticks }: { gate: number; ticks: number }) => gate / ticks;
   if (gates.some((gate) => ratio(gate) !== ratio(gates[0]))) controls.fields.push('clip');
   else if (gates.length && ratio(gates[0]) !== 1) {
-    controls.clip = constantExpression(gates[0].gate, gates[0].ticks, Math.max(...gates.map((gate) => gate.slotSeconds)));
+    controls.clip = constantExpression(gates[0].gate, gates[0].ticks, maxOf(gates.map((gate) => gate.slotSeconds)));
   }
   return controls;
 };
@@ -277,6 +280,9 @@ const repeatCounts = <T>(items: T[], same: (a: T, b: T) => boolean): Array<{ ite
   }
   return runs;
 };
+
+/** Iterative: spreading a large array into Math.max overflows the argument limit. */
+const maxOf = (values: number[]): number => values.reduce((max, value) => value > max ? value : max, -Infinity);
 
 const slotSeconds = (node: EventNode) => node.ticks * node.secondsPerTick;
 
@@ -459,7 +465,7 @@ const emitRhythm = (
   const calls: Array<{ text: string; pattern: boolean }> = [];
   if (hasGate && !gatesVary) {
     const leaf = notes[0];
-    calls.push({ text: `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks, Math.max(...notes.map(slotSeconds)))})`, pattern: false });
+    calls.push({ text: `.clip(${constantExpression(leaf.sourceGateTicks[0], leaf.ticks, maxOf(notes.map(slotSeconds)))})`, pattern: false });
   } else if (gatesVary) {
     calls.push({ text: `.clip(${mini('gate')})`, pattern: true });
   }
