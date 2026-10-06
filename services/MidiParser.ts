@@ -22,6 +22,12 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
     throw new Error("Failed to parse MIDI file. The file may be corrupt or in an unsupported format.");
   }
 
+  // MIDI starts at 120 BPM until its first tempo event, even when that event is delayed.
+  if (midi.header.tempos[0]?.ticks > 0) {
+    midi.header.tempos.unshift({ ticks: 0, bpm: 120 });
+    midi.header.update();
+  }
+
   const bpm = midi.header.tempos.length > 0 ? midi.header.tempos[0].bpm : 120;
   const ts = midi.header.timeSignatures.length > 0 
     ? { numerator: midi.header.timeSignatures[0].timeSignature[0], denominator: midi.header.timeSignatures[0].timeSignature[1] }
@@ -51,9 +57,12 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
       },
     }));
 
-    // Improved drum detection: Channel 10 (index 9) or explicit percussion flag or name
+    // Names alone cannot override a pitched program or notes outside GM percussion.
     const nameLower = t.name.toLowerCase();
-    const isDrum = t.instrument.percussion || (t.channel === 9) || nameLower.includes('drum') || nameLower.includes('perc');
+    const drumName = nameLower.includes('drum') || nameLower.includes('perc');
+    const inferredDrums = drumName && t.instrument.number === 0
+      && notes.every((note) => note.midi >= 27 && note.midi <= 87);
+    const isDrum = t.instrument.percussion || (t.channel === 9) || inferredDrums;
 
     return {
       id: `track-${index}`,

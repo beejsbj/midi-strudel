@@ -54,6 +54,99 @@ const queryConvertedOnsets = async (code: string, sharedSpanSeconds: number, con
 };
 
 describe('convertMidi', () => {
+  it.each([
+    { name: 'Steel Drums', program: 114, pitches: [60], isDrum: false },
+    { name: 'Drums', program: 0, pitches: [35, 38, 57], isDrum: true },
+    { name: 'Drums', program: 0, pitches: [35, 88], isDrum: false },
+    { name: 'Percussion', program: 0, pitches: [26, 38], isDrum: false },
+  ])('uses program and note range before treating a pitched $name track as drums', async ({ name, program, pitches, isDrum }) => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    const track = midi.addTrack();
+    track.name = name;
+    track.channel = 0;
+    track.instrument.number = program;
+    pitches.forEach((pitch, index) => track.addNote({ midi: pitch, ticks: index * 480, durationTicks: 480 }));
+
+    const result = convertMidi(midi.toArray().buffer, 'named-instrument.mid');
+    expect(result.tracks[0].isDrum).toBe(isDrum);
+    expect(Boolean(result.tracks[0].drumBank)).toBe(isDrum);
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
+    expect(observed.events).toHaveLength(pitches.length * 2);
+    if (!isDrum) {
+      expect(observed.events.slice(0, pitches.length).map(({ pitch }) => pitch)).toEqual(track.notes.map((note) => note.name));
+    }
+  });
+
+  it('plays the implicit 120 BPM before a delayed first tempo event', async () => {
+    const midi = new Midi();
+    midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 480 });
+    midi.header.tempos = [{ ticks: 960, bpm: 60 }];
+    const track = midi.addTrack();
+    [0, 480, 960, 1440].forEach((ticks) => track.addNote({ midi: 60, ticks, durationTicks: 480, velocity: 0.7 }));
+    const bytes = midi.toArray().buffer;
+    const parsed = parseMidiBuffer(bytes);
+    const result = convertMidi(bytes, 'delayed-tempo.mid', { includeVelocity: true });
+    const observed = await queryConvertedOnsets(result.code, result.sharedSpanSeconds, result.config);
+
+    expect(observed.events.map(({ onset }) => onset)).toEqual([0, 0.5, 1, 2, 4, 4.5, 5, 6]);
+    expect(observed.events.map(({ gateEnd }) => gateEnd)).toEqual([0.5, 1, 2, 3, 4.5, 5, 6, 7]);
+    expect(observed.events.every(({ pitch, velocity }) => pitch === 'C4' && velocity === 88 / 127)).toBe(true);
+    expect(parsed.tracks[0].notes.map(({ noteOn }) => noteOn)).toEqual([0, 0.5, 1, 2]);
+    expect(parsed.bpm).toBe(120);
+    expect(result.sharedSpanSeconds).toBe(4);
+    expect(result.source.tempos).toEqual([{ ticks: 0, bpm: 120 }, { ticks: 960, bpm: 60 }]);
+    expect(result.tracks[0].sourceTiming).toEqual(result.source);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'precise-literal-fallback', message: expect.stringContaining('source has tempo changes'),
+    }));
+  });
+
+  it.each(['chained', 'colon'] as const)('shares the final zero-length drum hit\'s bar with every track in %s syntax', async (controlSyntax) => {
+    const midi = new Midi();
+    midi.header.setTempo(120);
+    const drums = midi.addTrack();
+    drums.name = 'Drums';
+    drums.channel = 9;
+    drums.addNote({ midi: 36, ticks: 0, durationTicks: 120 });
+    drums.addNote({ midi: 38, ticks: 1920, durationTicks: 0 });
+    const piano = midi.addTrack();
+    piano.name = 'Piano';
+    piano.addNote({ midi: 60, ticks: 0, durationTicks: 480 });
+
+    const result = convertMidi(midi.toArray().buffer, 'final-drum-hit.mid', { controlSyntax });
+    const observed = await queryConvertedOnsets(result.code, 4, result.config);
+    expect(observed.events.map(({ pitch, onset }) => ({ pitch, onset }))).toEqual([
+      { pitch: 'bd', onset: 0 }, { pitch: 'C4', onset: 0 }, { pitch: 'sd', onset: 2 },
+      { pitch: 'bd', onset: 4 }, { pitch: 'C4', onset: 4 }, { pitch: 'sd', onset: 6 },
+    ]);
+    expect(result.sharedSpanSeconds).toBe(4);
+    expect(result.code).toContain('$piano: "<a ~>"');
+    expect(observed.boundary.map(({ onsetSeconds }) => onsetSeconds)).toEqual([4, 4, 8, 8]);
+  });
+
+  it('includes a zero-length bar-line hit despite floating-point seconds rounding', async () => {
+    const midi = new Midi();
+    midi.header.setTempo(97);
+    const drums = midi.addTrack();
+    drums.channel = 9;
+    drums.addNote({ midi: 36, ticks: 0, durationTicks: 120 });
+    drums.addNote({ midi: 38, ticks: 27 * 1920, durationTicks: 0 });
+    const piano = midi.addTrack();
+    piano.addNote({ midi: 60, ticks: 0, durationTicks: 480 });
+    const result = convertMidi(midi.toArray().buffer, 'rounded-bar-line.mid');
+    const measureSeconds = 240 / result.config.sourceBpm;
+    const expectedSpan = 28 * measureSeconds;
+    const observed = await queryConvertedOnsets(result.code, expectedSpan, result.config);
+
+    expect(result.sharedSpanSeconds).toBe(expectedSpan);
+    expect(observed.events).toHaveLength(6);
+    const hits = observed.events.filter(({ pitch }) => pitch === 'sd');
+    expect(hits).toHaveLength(2);
+    expect(hits[0].onset).toBeCloseTo(27 * measureSeconds, 9);
+    expect(hits[1].onset).toBeCloseTo(55 * measureSeconds, 9);
+  });
+
   it('retains source tick identity and complete timing maps alongside compatible seconds', () => {
     const midi = new Midi();
     midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 960 });

@@ -62,21 +62,30 @@ export const drumSample = (midi: number, kit: string): DrumSample | undefined =>
 };
 
 /**
- * The kit that plays a drum part most faithfully: each hit scores 1 when the
- * kit has its exact sound and ½ for a stand-in. Ties keep the familiar kits.
+ * Cover the most hits first, then score each exact sound as 1 and stand-in as ½.
+ * Ties keep the familiar kits.
  */
 export const pickDrumKit = (midiNotes: number[]): string => {
   const hits = new Map<number, number>();
   for (const midi of midiNotes) hits.set(midi, (hits.get(midi) ?? 0) + 1);
   let best = DEFAULT_DRUM_KIT;
+  let bestCoverage = -1;
   let bestScore = -1;
   for (const kit of DRUM_KIT_NAMES) {
+    let coverage = 0;
     let score = 0;
     for (const [midi, count] of hits) {
       const sample = drumSample(midi, kit);
-      if (sample) score += sample.standIn === undefined ? count : count / 2;
+      if (sample) {
+        coverage += count;
+        score += sample.standIn === undefined ? count : count / 2;
+      }
     }
-    if (score > bestScore) { best = kit; bestScore = score; }
+    if (coverage > bestCoverage || (coverage === bestCoverage && score > bestScore)) {
+      best = kit;
+      bestCoverage = coverage;
+      bestScore = score;
+    }
   }
   return best;
 };
