@@ -395,5 +395,5 @@ describe('exact phrase reuse through public conversion', () => {
         && result.patterns.occurrences.filter((occurrence) => occurrence.definitionId === definition.id).length >= 18);
       expect(hiHat).toBeDefined();
     }
-  }, 150000); // warrior-of-the-mind phrase discovery takes ~143s; optimized in later PR stack commits
+  }, 300000); // warrior-of-the-mind phrase discovery: ~100s on a quiet box, 180-230s under t3-test-run on a loaded bjslab
 });

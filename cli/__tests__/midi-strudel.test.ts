@@ -58,7 +58,7 @@ const runCli = (...args: string[]): SpawnSyncReturns<string> => {
   return result;
 };
 
-describe('midi-strudel CLI', () => {
+describe('midi-strudel CLI', { timeout: 30000 }, () => {
   it('uses structured phrase reuse by default in every output format', () => {
     expect(parseArgs([fixture])?.overrides).toEqual({});
     const result = runCli(fixture, '--format', 'json');
@@ -205,7 +205,7 @@ describe('midi-strudel CLI', () => {
   });
 });
 
-describe('midi-strudel arguments', () => {
+describe('midi-strudel arguments', { timeout: 30000 }, () => {
   it('parses stable agent-facing conversion flags', () => {
     expect(parseArgs([
       '--format', 'json', '--bpm', '96', '--notation', 'relative',

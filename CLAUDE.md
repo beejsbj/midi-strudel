@@ -53,6 +53,11 @@ configurations through Strudel's evaluator and checks every note against an
 independent oracle. It is slower than the unit suite, so run it before merging
 notation changes rather than on every edit.
 
+### Verify songs environment variables
+
+- `VERIFY_SONGS_OUT`: output directory for generated code and results (default: `<tmp>/midi-strudel-verify-songs`)
+- `VERIFY_SONGS_TIMEOUT_MS`: per-run timeout in milliseconds (default: 180000)
+
 ## Repo notes
 
 - Keep historical markdown files in place unless explicitly asked to remove them.
