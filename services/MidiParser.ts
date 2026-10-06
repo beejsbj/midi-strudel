@@ -33,7 +33,10 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
     if (firstOnset < tempos[0].ticks) {
       tempos.unshift({ ticks: 0, bpm: 120 });
     } else {
-      const governing = tempos.reduce((last, tempo, index) => (tempo.ticks <= firstOnset ? index : last), 0);
+      // Without an onset after tick 0 there is nothing to govern, so the first tempo stands.
+      const governing = firstOnset === Infinity
+        ? 0
+        : tempos.reduce((last, tempo, index) => (tempo.ticks <= firstOnset ? index : last), 0);
       tempos.splice(0, governing);
       tempos[0].ticks = 0;
     }

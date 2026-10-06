@@ -144,6 +144,12 @@ describe('convertMidi', () => {
     expect(parsed.bpm).toBeCloseTo(90, 3);
   });
 
+  it.each([{ label: 'absent', noteTicks: [] as number[] }, { label: 'all at tick 0', noteTicks: [0] }])('keeps the first tempo and later changes when notes are $label', ({ noteTicks }) => {
+    const parsed = parseMidiBuffer(makeDelayedTempoMidi([{ ticks: 10, bpm: 90 }, { ticks: 5000, bpm: 140 }], noteTicks));
+    expect(parsed.source?.tempos.map(({ ticks }) => ticks)).toEqual([0, 5000]);
+    expect(parsed.bpm).toBeCloseTo(90, 3);
+  });
+
   it.each(['chained', 'colon'] as const)('shares the final zero-length drum hit\'s bar with every track in %s syntax', async (controlSyntax) => {
     const midi = new Midi();
     midi.header.setTempo(120);
