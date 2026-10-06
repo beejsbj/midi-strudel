@@ -164,7 +164,7 @@ export class StrudelNotation {
     const timeSig = `${this.config.timeSignature.numerator}/${this.config.timeSignature.denominator}`;
     const title = this.config.fileName ?? 'MIDI Conversion';
     const formattedSourceBpm = formatBpm(this.config.sourceBpm);
-    const formattedBpm = formatPlaybackBpm(this.config.bpm, maxDuration);
+    const formattedBpm = formatPlaybackBpm(this.config.bpm, maxDuration * this.config.sourceBpm / this.config.bpm);
     let output = [
       `// @title ${title}`,
       `// @by midi-strudel`,
