@@ -52,6 +52,22 @@ export function formatBpm(bpm: number): string {
   return String(Math.round(bpm * 1000) / 1000);
 }
 
+/**
+ * The BPM written into `const BPM`, which drives playback. Keeps the short
+ * display value (`125`) while a loop of `spanSeconds` drifts by no more than
+ * `toleranceSeconds` at its end; otherwise adds digits until it does.
+ */
+export function formatPlaybackBpm(bpm: number, spanSeconds: number, toleranceSeconds = 0.001): string {
+  const drift = (text: string) => spanSeconds * Math.abs(Number(text) - bpm) / bpm;
+  const short = formatBpm(bpm);
+  if (drift(short) <= toleranceSeconds * 0.99) return short;
+  for (let decimals = 4; decimals <= 15; decimals += 1) {
+    const text = String(Number(bpm.toFixed(decimals)));
+    if (drift(text) <= toleranceSeconds * 0.99) return text;
+  }
+  return String(bpm);
+}
+
 export function getMeterBeatDuration(config: StrudelConfig): number {
   const denominator = config.timeSignature.denominator || 4;
   const quarterNoteDuration = 60 / config.sourceBpm;
