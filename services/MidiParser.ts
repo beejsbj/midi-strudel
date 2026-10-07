@@ -7,6 +7,9 @@ import { Track, Note, MidiSourceMetadata } from '../types';
 const Midi = MidiPackage.Midi
   ?? (MidiPackage as unknown as { default: typeof MidiPackage }).default.Midi;
 
+// Names of melodic instruments that merely contain "drum" or "perc".
+const MELODIC_NAME = /steel|synth|taiko|melodic|timpani|organ|piano|bass|lead|dnb/;
+
 export interface ParsedMidi {
   tracks: Track[];
   bpm: number;
@@ -72,11 +75,15 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
       },
     }));
 
-    // Names alone cannot override a pitched program or notes outside GM percussion.
-    const nameLower = t.name.toLowerCase();
-    const drumName = nameLower.includes('drum') || nameLower.includes('perc');
+    // Program 0 cannot tell a real piano from a track that never sent a program change, so a
+    // drum-ish name is only trusted when it is not a melodic name and the notes sit on the kit.
+    const nameLower = t.name.toLowerCase().replace('bass drum', 'kick drum');
+    const drumName = (nameLower.includes('drum') || nameLower.includes('perc'))
+      && !MELODIC_NAME.test(nameLower);
+    const kitNotes = notes.filter((note) => note.midi >= 35 && note.midi <= 59).length;
     const inferredDrums = drumName && t.instrument.number === 0
-      && notes.every((note) => note.midi >= 27 && note.midi <= 87);
+      && notes.every((note) => note.midi >= 27 && note.midi <= 87)
+      && kitNotes * 2 >= notes.length;
     const isDrum = t.instrument.percussion || (t.channel === 9) || inferredDrums;
 
     return {

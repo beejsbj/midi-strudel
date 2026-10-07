@@ -59,12 +59,23 @@ describe('convertMidi', () => {
     { name: 'Drums', program: 0, pitches: [35, 38, 57], isDrum: true },
     { name: 'Drums', program: 0, pitches: [35, 88], isDrum: false },
     { name: 'Percussion', program: 0, pitches: [26, 38], isDrum: false },
-  ])('uses program and note range before treating a pitched $name track as drums', async ({ name, program, pitches, isDrum }) => {
+    { name: 'Steel Drums', program: 0, pitches: [60, 64, 67], isDrum: false },
+    { name: 'Percussive Organ', program: 0, pitches: [60, 64], isDrum: false },
+    { name: 'Percussive Organ', program: 17, pitches: [60, 64], isDrum: false },
+    { name: 'Drum & Bass', program: 0, pitches: [36, 37, 38, 39, 40, 41, 42, 43], isDrum: false },
+    { name: 'Drum and Bass', program: 0, pitches: [36, 38, 40], isDrum: false },
+    { name: 'Drums', program: 0, pitches: [36, 38, 42], isDrum: true },
+    { name: 'Drums', program: 0, pitches: [36, 38, 42], channel: 3, isDrum: true },
+    { name: 'Bass Drum', program: 0, pitches: [36, 35], isDrum: true },
+    { name: 'Drums', program: 0, pitches: [60, 64, 67], isDrum: false },
+    { name: 'Piano', program: 0, pitches: [60, 64, 67], channel: 9, isDrum: true },
+    { name: 'Steel Drums', program: 0, pitches: [60, 64, 67], channel: 9, isDrum: true },
+  ])('uses program and note range before treating a pitched $name track as drums', async ({ name, program, pitches, isDrum, channel = 0 }) => {
     const midi = new Midi();
     midi.header.setTempo(120);
     const track = midi.addTrack();
     track.name = name;
-    track.channel = 0;
+    track.channel = channel;
     track.instrument.number = program;
     pitches.forEach((pitch, index) => track.addNote({ midi: pitch, ticks: index * 480, durationTicks: 480 }));
 
@@ -76,6 +87,13 @@ describe('convertMidi', () => {
     if (!isDrum) {
       expect(observed.events.slice(0, pitches.length).map(({ pitch }) => pitch)).toEqual(track.notes.map((note) => note.name));
     }
+  });
+
+  it('treats an empty drum-named track as a hidden kit', () => {
+    const midi = new Midi();
+    midi.addTrack().name = 'Drums';
+    const [track] = parseMidiBuffer(midi.toArray().buffer).tracks;
+    expect(track).toMatchObject({ isDrum: true, hidden: true });
   });
 
   it('plays the implicit 120 BPM before a delayed first tempo event', async () => {
