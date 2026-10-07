@@ -23,8 +23,23 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
   }
 
   // MIDI starts at 120 BPM until its first tempo event, even when that event is delayed.
-  if (midi.header.tempos[0]?.ticks > 0) {
-    midi.header.tempos.unshift({ ticks: 0, bpm: 120 });
+  // That only matters for notes starting strictly between tick 0 and the first tempo tick;
+  // otherwise (typical DAW exports put the tempo a few ticks in) the tempo governing the
+  // first onset is moved to tick 0 so it is not misread as a tempo change.
+  const tempos = midi.header.tempos;
+  if (tempos[0]?.ticks > 0) {
+    const onsets = midi.tracks.flatMap((track) => track.notes.map((note) => note.ticks)).filter((ticks) => ticks > 0);
+    const firstOnset = onsets.reduce((min, ticks) => Math.min(min, ticks), Infinity);
+    if (firstOnset < tempos[0].ticks) {
+      tempos.unshift({ ticks: 0, bpm: 120 });
+    } else {
+      // Without an onset after tick 0 there is nothing to govern, so the first tempo stands.
+      const governing = firstOnset === Infinity
+        ? 0
+        : tempos.reduce((last, tempo, index) => (tempo.ticks <= firstOnset ? index : last), 0);
+      tempos.splice(0, governing);
+      tempos[0].ticks = 0;
+    }
     midi.header.update();
   }
 

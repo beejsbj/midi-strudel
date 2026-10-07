@@ -102,6 +102,54 @@ describe('convertMidi', () => {
     }));
   });
 
+  const makeDelayedTempoMidi = (tempos: { ticks: number; bpm: number }[], noteTicks: number[], durationTicks = 480): ArrayBuffer => {
+    const midi = new Midi();
+    midi.header.fromJSON({ ...midi.header.toJSON(), ppq: 480 });
+    midi.header.tempos = tempos.map((tempo) => ({ ...tempo }));
+    const track = midi.addTrack();
+    noteTicks.forEach((ticks) => track.addNote({ midi: 60, ticks, durationTicks }));
+    return midi.toArray().buffer;
+  };
+
+  it.each([1, 10])('snaps a tempo event at tick %i to tick 0 when no note starts before it', (tempoTick) => {
+    const bytes = makeDelayedTempoMidi(
+      [{ ticks: tempoTick, bpm: 90 }],
+      Array.from({ length: 32 }, (_, index) => index * 480),
+    );
+    const result = convertMidi(bytes, 'daw-tempo.mid');
+
+    expect(result.source.tempos.map(({ ticks }) => ticks)).toEqual([0]);
+    expect(result.source.tempos[0].bpm).toBeCloseTo(90, 3);
+    expect(result.config.sourceBpm).toBeCloseTo(90, 3);
+    expect(result.sharedSpanSeconds).toBeCloseTo(21.333, 3);
+    expect(result.diagnostics.map(({ code }) => code)).not.toContain('precise-literal-fallback');
+    expect(result.code).toMatch(/\$\w+: /);
+    expect(result.code).toContain('const ');
+  });
+
+  it('uses the latest tempo at or before the first onset when several precede it', () => {
+    const bytes = makeDelayedTempoMidi(
+      [{ ticks: 1, bpm: 100 }, { ticks: 5, bpm: 90 }],
+      [0, 480, 960],
+    );
+    const parsed = parseMidiBuffer(bytes);
+    expect(parsed.source?.tempos.map(({ ticks }) => ticks)).toEqual([0]);
+    expect(parsed.bpm).toBeCloseTo(90, 3);
+    parsed.tracks[0].notes.map(({ noteOn }) => noteOn).forEach((onset, index) => expect(onset).toBeCloseTo(index * 60 / 90, 4));
+  });
+
+  it('keeps the first tempo for a file with no notes', () => {
+    const parsed = parseMidiBuffer(makeDelayedTempoMidi([{ ticks: 10, bpm: 90 }], []));
+    expect(parsed.source?.tempos.map(({ ticks }) => ticks)).toEqual([0]);
+    expect(parsed.bpm).toBeCloseTo(90, 3);
+  });
+
+  it.each([{ label: 'absent', noteTicks: [] as number[] }, { label: 'all at tick 0', noteTicks: [0] }])('keeps the first tempo and later changes when notes are $label', ({ noteTicks }) => {
+    const parsed = parseMidiBuffer(makeDelayedTempoMidi([{ ticks: 10, bpm: 90 }, { ticks: 5000, bpm: 140 }], noteTicks));
+    expect(parsed.source?.tempos.map(({ ticks }) => ticks)).toEqual([0, 5000]);
+    expect(parsed.bpm).toBeCloseTo(90, 3);
+  });
+
   it.each(['chained', 'colon'] as const)('shares the final zero-length drum hit\'s bar with every track in %s syntax', async (controlSyntax) => {
     const midi = new Midi();
     midi.header.setTempo(120);
