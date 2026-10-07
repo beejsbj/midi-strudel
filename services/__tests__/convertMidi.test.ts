@@ -76,6 +76,8 @@ describe('convertMidi', () => {
     { name: 'Latin Percussion', program: 0, pitches: [60, 62, 64, 70], isDrum: true },
     { name: 'Percussion', program: 0, pitches: [82, 83, 85, 87], isDrum: true },
     { name: 'Percussion', program: 0, pitches: [27, 29, 33], isDrum: true },
+    { name: 'Hand Drums', program: 0, pitches: [60, 61, 62, 64, 66, 68, 69, 70], isDrum: true },
+    { name: 'Conga Drums', program: 0, pitches: [62, 63, 64], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 38, 42, 46, 60, 62], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 60], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 60, 62], isDrum: false },

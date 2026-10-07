@@ -10,6 +10,8 @@ const Midi = MidiPackage.Midi
 // Names of melodic instruments that merely contain "drum" or "perc".
 const MELODIC_NAME = /steel|taiko|melodic|timpani|\borgan\b|piano|bass|\blead\b/;
 
+const HAND_PERCUSSION_NAME = /hand|conga|bongo|latin|djembe|cajon|timbale/;
+
 export interface ParsedMidi {
   tracks: Track[];
   bpm: number;
@@ -80,8 +82,10 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
     const nameLower = t.name.toLowerCase().replace(/bass[\s_-]*drum/g, 'kick drum');
     const drumName = (nameLower.includes('drum') || nameLower.includes('perc'))
       && !MELODIC_NAME.test(nameLower);
-    // Hand percussion ("Percussion", "Latin Perc") may use any supported percussion note, 27-87.
-    const [kitMin, kitMax] = nameLower.includes('drum') ? [35, 59] : [27, 87];
+    // Hand percussion (bongos 60, congas 62, timbales 65...) sits above the kit window, so
+    // names without "drum" or with a hand-percussion word may use any supported note, 27-87.
+    const handPercussion = !nameLower.includes('drum') || HAND_PERCUSSION_NAME.test(nameLower);
+    const [kitMin, kitMax] = handPercussion ? [27, 87] : [35, 59];
     const kitNotes = notes.filter((note) => note.midi >= kitMin && note.midi <= kitMax).length;
     const inferredDrums = drumName && t.instrument.number === 0
       && notes.every((note) => note.midi >= 27 && note.midi <= 87)
