@@ -7,6 +7,11 @@ import { Track, Note, MidiSourceMetadata } from '../types';
 const Midi = MidiPackage.Midi
   ?? (MidiPackage as unknown as { default: typeof MidiPackage }).default.Midi;
 
+// Names of melodic instruments that merely contain "drum" or "perc".
+const MELODIC_NAME = /steel|taiko|melodic|timpani|\borgan\b|piano|bass|\blead\b/;
+
+const HAND_PERCUSSION_NAME = /hand|conga|bongo|latin|djembe|cajon|timbale/;
+
 export interface ParsedMidi {
   tracks: Track[];
   bpm: number;
@@ -72,11 +77,19 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
       },
     }));
 
-    // Names alone cannot override a pitched program or notes outside GM percussion.
-    const nameLower = t.name.toLowerCase();
-    const drumName = nameLower.includes('drum') || nameLower.includes('perc');
+    // Program 0 cannot tell a real piano from a track that never sent a program change, so a
+    // drum-ish name is only trusted when it is not a melodic name and the notes sit on the kit.
+    const nameLower = t.name.toLowerCase().replace(/bass[\s_-]*drum/g, 'kick drum');
+    const drumName = (nameLower.includes('drum') || nameLower.includes('perc'))
+      && !MELODIC_NAME.test(nameLower);
+    // Hand percussion (bongos 60, congas 62, timbales 65...) sits above the kit window, so
+    // names without "drum" or with a hand-percussion word may use any supported note, 27-87.
+    const handPercussion = !nameLower.includes('drum') || HAND_PERCUSSION_NAME.test(nameLower);
+    const [kitMin, kitMax] = handPercussion ? [27, 87] : [35, 59];
+    const kitNotes = notes.filter((note) => note.midi >= kitMin && note.midi <= kitMax).length;
     const inferredDrums = drumName && t.instrument.number === 0
-      && notes.every((note) => note.midi >= 27 && note.midi <= 87);
+      && notes.every((note) => note.midi >= 27 && note.midi <= 87)
+      && kitNotes * 2 >= notes.length;
     const isDrum = t.instrument.percussion || (t.channel === 9) || inferredDrums;
 
     return {
