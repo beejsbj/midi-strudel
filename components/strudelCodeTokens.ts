@@ -36,11 +36,26 @@ const findStrings = (content: string): StringLiteral[] => {
   return strings;
 };
 
-/** A phrase entry ends at the next object key, closing brace, or track line. */
-const entryEnd = (content: string, from: number): number => {
-  const rest = content.slice(from);
-  const boundary = rest.search(/\n\s*[a-z]+: |\n\};|\n\$/);
-  return boundary < 0 ? content.length : from + boundary;
+const ENTRY_BOUNDARY = /\n\s*[a-z]+: |\n\};|\n\$/g;
+
+/**
+ * A phrase entry ends at the next object key, closing brace, or track line.
+ * Searches the full string from `from` (the pattern has no anchors or
+ * lookbehind, so that matches searching the tail). Calls must come with
+ * non-decreasing `from`: no boundary starts in `[lastFrom, lastBoundary)`, so a
+ * `from` inside that span has the same answer and costs nothing.
+ */
+const createEntryEnd = (content: string) => {
+  let lastFrom = -1;
+  let lastEnd = -1;
+  return (from: number): number => {
+    if (from >= lastFrom && from <= lastEnd) return lastEnd;
+    ENTRY_BOUNDARY.lastIndex = from;
+    const boundary = ENTRY_BOUNDARY.exec(content);
+    lastFrom = from;
+    lastEnd = boundary ? boundary.index : content.length;
+    return lastEnd;
+  };
 };
 
 /**
@@ -57,13 +72,30 @@ export const extractDegreeTokens = (content: string): PitchedRange[] => {
     if (!resolved.has(key)) resolved.set(key, scaleDegreeToMidi(step, scale));
     return resolved.get(key)!;
   };
+  const entryEnd = createEntryEnd(content);
+  // The first `.scale("...")` at or after the previous literal; reused until a
+  // literal passes it, so a long entry of literals is scanned once.
+  const scaleCall = /\.scale\("([^"]+)"\)/g;
+  let scaleMatch: RegExpExecArray | null = null;
+  let scaleFrom = -1;
+  const scaleAfter = (from: number) => {
+    if (scaleFrom < 0 || from < scaleFrom || (scaleMatch && from > scaleMatch.index)) {
+      scaleCall.lastIndex = from;
+      scaleMatch = scaleCall.exec(content);
+      scaleFrom = from;
+    }
+    return scaleMatch;
+  };
   for (const literal of findStrings(content)) {
     if (!literal.body.length || content[literal.from] !== '`') continue;
     const before = content.slice(Math.max(0, literal.from - 2), literal.from);
     const after = content.slice(literal.to, literal.to + 40);
     if (before !== 'n(' && !/^\s*\.as\("n[:"]/.test(after)) continue;
-    const end = entryEnd(content, literal.to);
-    const scale = /\.scale\("([^"]+)"\)/.exec(content.slice(literal.to, end))?.[1];
+    const end = entryEnd(literal.to);
+    // The call must lie wholly inside the entry; one straddling `end` is not
+    // found by searching the entry alone, nor is any later one.
+    const call = scaleAfter(literal.to);
+    const scale = call && call.index + call[0].length <= end ? call[1] : undefined;
     if (!scale) continue;
     // A degree starts a step or chord member; `:` fields, `@` weights and `!`
     // counts are numbers too, but never follow these characters.
