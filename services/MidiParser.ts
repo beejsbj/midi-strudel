@@ -8,7 +8,7 @@ const Midi = MidiPackage.Midi
   ?? (MidiPackage as unknown as { default: typeof MidiPackage }).default.Midi;
 
 // Names of melodic instruments that merely contain "drum" or "perc".
-const MELODIC_NAME = /steel|synth|taiko|melodic|timpani|organ|piano|bass|lead|dnb/;
+const MELODIC_NAME = /steel|taiko|melodic|timpani|\borgan\b|piano|bass|\blead\b/;
 
 export interface ParsedMidi {
   tracks: Track[];
@@ -77,10 +77,12 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
 
     // Program 0 cannot tell a real piano from a track that never sent a program change, so a
     // drum-ish name is only trusted when it is not a melodic name and the notes sit on the kit.
-    const nameLower = t.name.toLowerCase().replace('bass drum', 'kick drum');
+    const nameLower = t.name.toLowerCase().replace(/bass[\s_-]*drum/g, 'kick drum');
     const drumName = (nameLower.includes('drum') || nameLower.includes('perc'))
       && !MELODIC_NAME.test(nameLower);
-    const kitNotes = notes.filter((note) => note.midi >= 35 && note.midi <= 59).length;
+    // Hand percussion ("Percussion", "Latin Perc") legitimately reaches up to GM 81.
+    const kitMax = nameLower.includes('drum') ? 59 : 81;
+    const kitNotes = notes.filter((note) => note.midi >= 35 && note.midi <= kitMax).length;
     const inferredDrums = drumName && t.instrument.number === 0
       && notes.every((note) => note.midi >= 27 && note.midi <= 87)
       && kitNotes * 2 >= notes.length;
