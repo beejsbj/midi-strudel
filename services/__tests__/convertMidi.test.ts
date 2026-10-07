@@ -74,6 +74,7 @@ describe('convertMidi', () => {
     { name: 'Drum Pad', program: 0, pitches: [36, 38, 42], isDrum: true },
     { name: 'Organic Percussion', program: 0, pitches: [36, 38, 42], isDrum: true },
     { name: 'Latin Percussion', program: 0, pitches: [60, 62, 64, 70], isDrum: true },
+    { name: 'Percussion', program: 0, pitches: [82, 83, 85, 87], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 38, 42, 46, 60, 62], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 60], isDrum: true },
     { name: 'Drums', program: 0, pitches: [36, 60, 62], isDrum: false },

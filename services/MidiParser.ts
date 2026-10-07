@@ -80,8 +80,8 @@ export const parseMidiBuffer = (arrayBuffer: ArrayBuffer): ParsedMidi => {
     const nameLower = t.name.toLowerCase().replace(/bass[\s_-]*drum/g, 'kick drum');
     const drumName = (nameLower.includes('drum') || nameLower.includes('perc'))
       && !MELODIC_NAME.test(nameLower);
-    // Hand percussion ("Percussion", "Latin Perc") legitimately reaches up to GM 81.
-    const kitMax = nameLower.includes('drum') ? 59 : 81;
+    // Hand percussion ("Percussion", "Latin Perc") legitimately reaches the top of the supported range (87).
+    const kitMax = nameLower.includes('drum') ? 59 : 87;
     const kitNotes = notes.filter((note) => note.midi >= 35 && note.midi <= kitMax).length;
     const inferredDrums = drumName && t.instrument.number === 0
       && notes.every((note) => note.midi >= 27 && note.midi <= 87)
