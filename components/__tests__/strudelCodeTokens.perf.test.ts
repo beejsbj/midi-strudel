@@ -1,6 +1,7 @@
 import MidiPackage from '@tonejs/midi';
 import { describe, expect, it } from 'vitest';
 import { convertMidi } from '../../services/convertMidi';
+import { extractDegreeTokensSlicing } from './helpers/slicingDegreeTokens';
 import { extractChainCallRanges, extractDegreeTokens, extractRestTokens } from '../strudelCodeTokens';
 
 const { Midi } = MidiPackage;
@@ -49,5 +50,22 @@ describe('editor token scans on large scores', () => {
     const degrees = timed(() => extractDegreeTokens(code));
     expect(degrees.result.length).toBeGreaterThanOrEqual(50_000);
     expect(degrees.ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it('scans one entry of thousands of degree literals in linear time', () => {
+    const entry = (literals: number) => `const lead = {\n  a: ${Array.from({ length: literals },
+      (_, index) => `n(\`${index % 7} 2\`)`).join('.add(')}\n    .scale("C:major"),\n};\n`;
+    const small = entry(1_250);
+    const large = entry(5_000);
+    const oldSmall = timed(() => extractDegreeTokensSlicing(small));
+    const oldLarge = timed(() => extractDegreeTokensSlicing(large));
+    const fast = timed(() => extractDegreeTokens(large));
+    expect(fast.result).toEqual(oldLarge.result);
+    expect(fast.result).toHaveLength(10_000);
+    console.log(`degree scan, 5,000 literals: old ${oldLarge.ms.toFixed(0)}ms (1,250: ${oldSmall.ms.toFixed(0)}ms), new ${fast.ms.toFixed(0)}ms`);
+    expect(fast.ms).toBeLessThan(BUDGET_MS);
+    // The slicing scan grows faster than the literal count (its copies are cheap, so the
+    // margin is modest and left unasserted); the new scan must beat it by a wide margin.
+    expect(fast.ms).toBeLessThan(oldLarge.ms / 5);
   });
 });
