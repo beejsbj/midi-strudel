@@ -1,0 +1,114 @@
+# Review evidence gate.
+#
+# A PR is mergeable only when every review thread is resolved AND each resolved
+# thread has a reply that shows why: a fix commit, a reasoned decline, or a
+# tracking issue. Ticking "resolved" alone is not evidence.
+#
+# Accepted replies (anywhere in the thread after the first comment):
+#   Fixed in <sha>                 the commit must exist in this repo
+#   Declined: <reason>             also: Not a bug: / Obsolete: / Duplicate: (reason >= 20 chars)
+#   Tracked in #<issue>            deferred to an issue in this repo
+#
+# Thread resolution fires no workflow event. If you resolve without replying,
+# this check stays red; reply in the thread (or push) to re-run it.
+name: review-evidence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: review-evidence-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request.number;
+            const query = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100, after: $after) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes {
+                      isResolved path line
+                      comments(first: 100) { nodes { body url author { login } } }
+                    }
+                  }
+                }
+              }
+            }`;
+            const threads = [];
+            let after = null;
+            do {
+              const res = await github.graphql(query, { owner, repo, number, after });
+              const page = res.repository.pullRequest.reviewThreads;
+              threads.push(...page.nodes);
+              after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+            } while (after);
+
+            const SHA = /(?<![0-9a-zA-Z/])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![0-9a-zA-Z])/g;
+            const DECLINE = /^\s*(?:declined|won'?t fix|not a bug|obsolete|duplicate)\s*[:—-]\s*(.{20,})/im;
+            const TRACKED = /tracked in\s+(?:#|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/)(\d+)/i;
+            const known = new Map();
+            const commitExists = async (sha) => {
+              if (!known.has(sha)) {
+                try { await github.rest.repos.getCommit({ owner, repo, ref: sha }); known.set(sha, true); }
+                catch { known.set(sha, false); }
+              }
+              return known.get(sha);
+            };
+            const issueExists = async (n) => {
+              try {
+                const { data } = await github.rest.issues.get({ owner, repo, issue_number: n });
+                return !data.pull_request;
+              } catch { return false; }
+            };
+
+            const unresolved = [];
+            const unevidenced = [];
+            for (const t of threads) {
+              const comments = t.comments.nodes;
+              const where = `${t.path}${t.line ? `:${t.line}` : ''} - ${comments[0]?.url ?? ''}`;
+              if (!t.isResolved) { unresolved.push(where); continue; }
+              const replies = comments.slice(1).map((c) => c.body).join('\n');
+              let ok = DECLINE.test(replies);
+              const tracked = replies.match(TRACKED);
+              if (!ok && tracked) ok = await issueExists(Number(tracked[1]));
+              if (!ok) {
+                for (const sha of new Set(replies.match(SHA) ?? [])) {
+                  if (await commitExists(sha)) { ok = true; break; }
+                }
+              }
+              if (!ok) unevidenced.push(where);
+            }
+
+            const summary = core.summary.addHeading('Review evidence', 3)
+              .addRaw(`${threads.length} review thread(s): ${unresolved.length} unresolved, ${unevidenced.length} resolved without evidence.`, true);
+            if (unresolved.length) summary.addHeading('Unresolved', 4).addList(unresolved);
+            if (unevidenced.length) summary.addHeading('Resolved without evidence', 4).addList(unevidenced);
+            await summary.write();
+
+            if (unresolved.length || unevidenced.length) {
+              core.setFailed(
+                `${unresolved.length} unresolved and ${unevidenced.length} unevidenced review thread(s). ` +
+                'Each thread needs a reply with one of: "Fixed in <sha>" (an existing commit), ' +
+                '"Declined: <reason>" (or Not a bug: / Obsolete: / Duplicate:), or "Tracked in #<issue>", ' +
+                'and then to be resolved. Details are in the job summary.'
+              );
+            }
