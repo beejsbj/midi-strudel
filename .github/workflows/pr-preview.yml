@@ -1,0 +1,112 @@
+# One Vercel preview per pull request, not one per push.
+#
+# vercel.json turns Git deployments off for every branch except `main` and
+# `preview/**`, so pushing to a PR branch builds nothing. Once a PR has been
+# quiet for ten minutes, this workflow puts a marker commit on top of the PR
+# head and points `preview/pr-<number>` at it; that push is the one Vercel
+# builds. The marker is needed because Vercel ignores a commit it has already
+# seen on a branch it does not deploy.
+#
+# Vercel reports on the marker commit, which the PR does not show, so the
+# result is copied to the PR head as the `Vercel preview` status.
+#
+# A new push cancels the wait and restarts it, and so does converting the PR
+# to a draft. Drafts and fork PRs get no preview. The preview branch is deleted when the PR closes.
+#
+# The trigger is pull_request_target so the workflow still runs, and still
+# cleans up, when the PR has merge conflicts. That is safe here because no step
+# checks out or runs the PR's code.
+#
+# Every deployment counts toward Vercel's 100-per-day Hobby limit, across all
+# projects; per-push previews exhausted it on 2026-11-09.
+name: pr-preview
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  contents: write
+  deployments: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  REF: heads/preview/pr-${{ github.event.pull_request.number }}
+
+jobs:
+  preview:
+    if: >-
+      github.event.action != 'closed' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SHA: ${{ github.event.pull_request.head.sha }}
+      NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Wait for the PR to go quiet
+        run: sleep 600
+      - name: Stop if the PR moved on during the wait
+        id: live
+        run: |
+          # A re-run keeps its original event, so ask for the PR as it is now.
+          live=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq '"\(.state) draft=\(.draft) \(.head.sha)"')
+          if [ "$live" = "open draft=false $SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No preview: this run is for $SHA, and the PR is now: $live"
+          fi
+      - name: Push a marker commit to the preview branch
+        id: marker
+        if: steps.live.outputs.current == 'true'
+        run: |
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$SHA" --jq .tree.sha)
+          marker=$(gh api -X POST "repos/$GITHUB_REPOSITORY/git/commits" \
+            -f message="Preview of #$NUMBER at ${SHA:0:7}" -f tree="$tree" -f "parents[]=$SHA" --jq .sha)
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/$REF" -f sha="$marker" -F force=true --silent ||
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/$REF" -f sha="$marker" --silent
+          echo "sha=$marker" >> "$GITHUB_OUTPUT"
+      - name: Copy Vercel's result to the PR head
+        if: steps.live.outputs.current == 'true'
+        env:
+          MARKER: ${{ steps.marker.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          report() {
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$SHA" --silent \
+              -f context="Vercel preview" -f state="$1" -f target_url="$2" -f description="$3"
+          }
+          for _ in $(seq 60); do
+            sleep 15
+            id=$(gh api "repos/$GITHUB_REPOSITORY/deployments?sha=$MARKER" --jq '.[0].id // empty')
+            [ -n "$id" ] || continue
+            result=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+              --jq 'map(select(.state == "success" or .state == "failure" or .state == "error"))[0] // empty')
+            [ -n "$result" ] && break
+          done
+          if [ -z "$result" ]; then
+            report error "$RUN_URL" "Vercel reported no result within 15 minutes"
+            exit 1
+          fi
+          url=$(jq -r '.environment_url // .log_url // empty' <<<"$result")
+          if [ "$(jq -r .state <<<"$result")" = success ]; then
+            report success "$url" "Preview of ${SHA:0:7}"
+          else
+            report failure "${url:-$RUN_URL}" "Preview of ${SHA:0:7} failed to build"
+            exit 1
+          fi
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete the preview branch
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/$REF" --silent || true
